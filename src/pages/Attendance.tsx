@@ -20,6 +20,7 @@ interface AttendanceRecord {
   date: string;
   source: string;
   notes: string | null;
+  employee_name?: string;
 }
 
 export default function Attendance() {
@@ -36,8 +37,16 @@ export default function Attendance() {
     if (!isAdmin) query = query.eq("employee_id", user?.id);
     const { data, error } = await query;
     if (error) toast.error(error.message);
-    setRecords(data || []);
-
+    
+    // Fetch employee names for admin view
+    let enriched = data || [];
+    if (isAdmin && enriched.length > 0) {
+      const empIds = [...new Set(enriched.map(r => r.employee_id))];
+      const { data: profiles } = await supabase.from("profiles").select("user_id, full_name").in("user_id", empIds);
+      const nameMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
+      enriched = enriched.map(r => ({ ...r, employee_name: nameMap.get(r.employee_id) || undefined }));
+    }
+    setRecords(enriched as AttendanceRecord[]);
     // Get today's record for current user
     if (user) {
       const { data: today } = await supabase.from("attendance_records").select("*").eq("employee_id", user.id).eq("date", format(new Date(), "yyyy-MM-dd")).limit(1).maybeSingle();
@@ -115,7 +124,7 @@ export default function Attendance() {
         <Table>
           <TableHeader>
             <TableRow>
-              {isAdmin && <TableHead>Employee ID</TableHead>}
+              {isAdmin && <TableHead>Employee</TableHead>}
               <TableHead>Date</TableHead>
               <TableHead>Check In</TableHead>
               <TableHead>Check Out</TableHead>
@@ -129,7 +138,7 @@ export default function Attendance() {
               <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No records for this date</TableCell></TableRow>
             ) : records.map(r => (
               <TableRow key={r.id}>
-                {isAdmin && <TableCell className="font-mono text-xs">{r.employee_id.slice(0, 8)}...</TableCell>}
+                {isAdmin && <TableCell className="text-sm">{r.employee_name || r.employee_id.slice(0, 8) + "..."}</TableCell>}
                 <TableCell>{format(new Date(r.date), "dd MMM yyyy")}</TableCell>
                 <TableCell>{r.check_in ? format(new Date(r.check_in), "hh:mm a") : "—"}</TableCell>
                 <TableCell>{r.check_out ? format(new Date(r.check_out), "hh:mm a") : "—"}</TableCell>

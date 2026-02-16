@@ -241,7 +241,19 @@ export default function Sales() {
                   {new Date(q.created_at).toLocaleDateString("en-IN")}
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 items-center">
+                    <Select value={q.status} onValueChange={async (v) => {
+                      const { error } = await supabase.from("quotations").update({ status: v as any }).eq("id", q.id);
+                      if (error) toast.error(error.message);
+                      else { toast.success("Status updated"); fetchQuotations(); }
+                    }}>
+                      <SelectTrigger className="h-7 w-[100px] text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {["draft", "sent", "accepted", "rejected", "expired"].map(s => (
+                          <SelectItem key={s} value={s} className="capitalize text-xs">{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Button variant="ghost" size="icon" onClick={() => copyPublicLink(q.public_token)} title="Copy link">
                       <Copy className="h-4 w-4" />
                     </Button>

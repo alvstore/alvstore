@@ -243,6 +243,10 @@ function BusinessTab() {
     if (settingsId) {
       const { error } = await supabase.from("business_settings").update(form).eq("id", settingsId);
       if (error) toast.error(error.message); else toast.success("Settings saved");
+    } else {
+      const { data, error } = await supabase.from("business_settings").insert(form).select().single();
+      if (error) toast.error(error.message);
+      else { toast.success("Settings saved"); setSettingsId(data.id); }
     }
     setSaving(false);
   };
