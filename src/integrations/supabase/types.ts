@@ -62,6 +62,63 @@ export type Database = {
         }
         Relationships: []
       }
+      products: {
+        Row: {
+          barcode: string | null
+          category: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          gst_percentage: number | null
+          id: string
+          image_url: string | null
+          low_stock_threshold: number
+          name: string
+          purchase_price: number | null
+          selling_price: number | null
+          sku: string | null
+          stock_quantity: number
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          barcode?: string | null
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          gst_percentage?: number | null
+          id?: string
+          image_url?: string | null
+          low_stock_threshold?: number
+          name: string
+          purchase_price?: number | null
+          selling_price?: number | null
+          sku?: string | null
+          stock_quantity?: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          barcode?: string | null
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          gst_percentage?: number | null
+          id?: string
+          image_url?: string | null
+          low_stock_threshold?: number
+          name?: string
+          purchase_price?: number | null
+          selling_price?: number | null
+          sku?: string | null
+          stock_quantity?: number
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -91,6 +148,304 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      quotation_items: {
+        Row: {
+          gst_percentage: number | null
+          id: string
+          image_url: string | null
+          notes: string | null
+          product_id: string | null
+          product_name: string
+          quantity: number
+          quotation_id: string
+          total: number
+          unit_price: number
+        }
+        Insert: {
+          gst_percentage?: number | null
+          id?: string
+          image_url?: string | null
+          notes?: string | null
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          quotation_id: string
+          total?: number
+          unit_price?: number
+        }
+        Update: {
+          gst_percentage?: number | null
+          id?: string
+          image_url?: string | null
+          notes?: string | null
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          quotation_id?: string
+          total?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_items_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          gst_amount: number | null
+          id: string
+          notes: string | null
+          public_token: string
+          quotation_number: string
+          status: Database["public"]["Enums"]["quotation_status"]
+          subtotal: number | null
+          terms: string | null
+          total: number | null
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          gst_amount?: number | null
+          id?: string
+          notes?: string | null
+          public_token?: string
+          quotation_number: string
+          status?: Database["public"]["Enums"]["quotation_status"]
+          subtotal?: number | null
+          terms?: string | null
+          total?: number | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          gst_amount?: number | null
+          id?: string
+          notes?: string | null
+          public_token?: string
+          quotation_number?: string
+          status?: Database["public"]["Enums"]["quotation_status"]
+          subtotal?: number | null
+          terms?: string | null
+          total?: number | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      repair_images: {
+        Row: {
+          caption: string | null
+          created_at: string
+          id: string
+          image_url: string
+          ticket_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          image_url: string
+          ticket_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string
+          ticket_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_images_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "repair_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      repair_status_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string
+          id: string
+          new_status: Database["public"]["Enums"]["repair_status"]
+          notes: string | null
+          old_status: Database["public"]["Enums"]["repair_status"] | null
+          ticket_id: string
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_status: Database["public"]["Enums"]["repair_status"]
+          notes?: string | null
+          old_status?: Database["public"]["Enums"]["repair_status"] | null
+          ticket_id: string
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_status?: Database["public"]["Enums"]["repair_status"]
+          notes?: string | null
+          old_status?: Database["public"]["Enums"]["repair_status"] | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_status_history_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "repair_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      repair_tickets: {
+        Row: {
+          assigned_technician_id: string | null
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          device_brand: string | null
+          device_model: string | null
+          device_type: string | null
+          diagnosis_notes: string | null
+          estimated_cost: number | null
+          final_cost: number | null
+          id: string
+          issue_description: string | null
+          priority: Database["public"]["Enums"]["repair_priority"]
+          repair_notes: string | null
+          serial_number: string | null
+          status: Database["public"]["Enums"]["repair_status"]
+          ticket_number: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_technician_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          device_brand?: string | null
+          device_model?: string | null
+          device_type?: string | null
+          diagnosis_notes?: string | null
+          estimated_cost?: number | null
+          final_cost?: number | null
+          id?: string
+          issue_description?: string | null
+          priority?: Database["public"]["Enums"]["repair_priority"]
+          repair_notes?: string | null
+          serial_number?: string | null
+          status?: Database["public"]["Enums"]["repair_status"]
+          ticket_number?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_technician_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          device_brand?: string | null
+          device_model?: string | null
+          device_type?: string | null
+          diagnosis_notes?: string | null
+          estimated_cost?: number | null
+          final_cost?: number | null
+          id?: string
+          issue_description?: string | null
+          priority?: Database["public"]["Enums"]["repair_priority"]
+          repair_notes?: string | null
+          serial_number?: string | null
+          status?: Database["public"]["Enums"]["repair_status"]
+          ticket_number?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_tickets_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          product_id: string
+          quantity: number
+          reference: string | null
+          type: Database["public"]["Enums"]["stock_movement_type"]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          product_id: string
+          quantity: number
+          reference?: string | null
+          type: Database["public"]["Enums"]["stock_movement_type"]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          product_id?: string
+          quantity?: number
+          reference?: string | null
+          type?: Database["public"]["Enums"]["stock_movement_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -125,6 +480,16 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "staff" | "technician" | "customer"
+      quotation_status: "draft" | "sent" | "accepted" | "rejected" | "expired"
+      repair_priority: "low" | "normal" | "high" | "urgent"
+      repair_status:
+        | "pending"
+        | "assigned"
+        | "in_progress"
+        | "waiting_parts"
+        | "completed"
+        | "delivered"
+      stock_movement_type: "in" | "out" | "adjustment"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -253,6 +618,17 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "staff", "technician", "customer"],
+      quotation_status: ["draft", "sent", "accepted", "rejected", "expired"],
+      repair_priority: ["low", "normal", "high", "urgent"],
+      repair_status: [
+        "pending",
+        "assigned",
+        "in_progress",
+        "waiting_parts",
+        "completed",
+        "delivered",
+      ],
+      stock_movement_type: ["in", "out", "adjustment"],
     },
   },
 } as const
