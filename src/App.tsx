@@ -12,6 +12,10 @@ import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
+import JobSheets from "./pages/JobSheets";
+import JobSheetCreate from "./pages/JobSheetCreate";
+import JobSheetDetail from "./pages/JobSheetDetail";
+import PublicJobSheet from "./pages/PublicJobSheet";
 import CRM from "./pages/CRM";
 import Inventory from "./pages/Inventory";
 import Sales from "./pages/Sales";
@@ -45,7 +49,7 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/sales/public/:token" element={<PublicQuotation />} />
-
+            <Route path="/job/public/:token" element={<PublicJobSheet />} />
             {/* Protected routes with layout */}
             <Route
               element={
@@ -60,6 +64,9 @@ const App = () => (
               <Route path="/pos" element={<POS />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/repairs" element={<Repairs />} />
+              <Route path="/job-sheets" element={<JobSheets />} />
+              <Route path="/job-sheets/new" element={<JobSheetCreate />} />
+              <Route path="/job-sheets/:id" element={<JobSheetDetail />} />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/reports" element={<Reports />} />

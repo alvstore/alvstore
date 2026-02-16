@@ -149,6 +149,225 @@ export type Database = {
         }
         Relationships: []
       }
+      device_brands: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      device_types: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      job_sheet_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          details: string | null
+          id: string
+          ip_address: string | null
+          job_sheet_id: string
+          user_id: string | null
+          user_role: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          ip_address?: string | null
+          job_sheet_id: string
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          ip_address?: string | null
+          job_sheet_id?: string
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_sheet_audit_log_job_sheet_id_fkey"
+            columns: ["job_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "job_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_sheet_images: {
+        Row: {
+          caption: string | null
+          created_at: string
+          id: string
+          image_type: string
+          image_url: string
+          job_sheet_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          image_type?: string
+          image_url: string
+          job_sheet_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          image_type?: string
+          image_url?: string
+          job_sheet_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_sheet_images_job_sheet_id_fkey"
+            columns: ["job_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "job_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_sheets: {
+        Row: {
+          approval_ip: string | null
+          approval_status: string | null
+          approval_timestamp: string | null
+          assigned_technician_id: string | null
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          device_brand: string
+          device_color: string | null
+          device_model: string | null
+          device_type: string
+          estimated_completion: string | null
+          estimated_cost: number | null
+          final_cost: number | null
+          id: string
+          imei_number: string | null
+          issue_tags: Json | null
+          job_number: string
+          post_repair_checklist: Json | null
+          pre_repair_checklist: Json | null
+          priority: Database["public"]["Enums"]["repair_priority"]
+          problem_description: string
+          public_token: string
+          repair_notes: string | null
+          serial_number: string | null
+          staff_notes: string | null
+          status: Database["public"]["Enums"]["job_sheet_status"]
+          storage_capacity: string | null
+          updated_at: string
+        }
+        Insert: {
+          approval_ip?: string | null
+          approval_status?: string | null
+          approval_timestamp?: string | null
+          assigned_technician_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          device_brand: string
+          device_color?: string | null
+          device_model?: string | null
+          device_type: string
+          estimated_completion?: string | null
+          estimated_cost?: number | null
+          final_cost?: number | null
+          id?: string
+          imei_number?: string | null
+          issue_tags?: Json | null
+          job_number?: string
+          post_repair_checklist?: Json | null
+          pre_repair_checklist?: Json | null
+          priority?: Database["public"]["Enums"]["repair_priority"]
+          problem_description: string
+          public_token?: string
+          repair_notes?: string | null
+          serial_number?: string | null
+          staff_notes?: string | null
+          status?: Database["public"]["Enums"]["job_sheet_status"]
+          storage_capacity?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approval_ip?: string | null
+          approval_status?: string | null
+          approval_timestamp?: string | null
+          assigned_technician_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          device_brand?: string
+          device_color?: string | null
+          device_model?: string | null
+          device_type?: string
+          estimated_completion?: string | null
+          estimated_cost?: number | null
+          final_cost?: number | null
+          id?: string
+          imei_number?: string | null
+          issue_tags?: Json | null
+          job_number?: string
+          post_repair_checklist?: Json | null
+          pre_repair_checklist?: Json | null
+          priority?: Database["public"]["Enums"]["repair_priority"]
+          problem_description?: string
+          public_token?: string
+          repair_notes?: string | null
+          serial_number?: string | null
+          staff_notes?: string | null
+          status?: Database["public"]["Enums"]["job_sheet_status"]
+          storage_capacity?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_sheets_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
@@ -724,6 +943,18 @@ export type Database = {
     Enums: {
       app_role: "admin" | "staff" | "technician" | "customer"
       attendance_source: "manual" | "biometric"
+      job_sheet_status:
+        | "created"
+        | "pending_approval"
+        | "approved"
+        | "rejected"
+        | "assigned"
+        | "in_progress"
+        | "waiting_parts"
+        | "repair_completed"
+        | "quality_check"
+        | "invoice_generated"
+        | "delivered"
       payment_method_type: "cash" | "card" | "upi" | "online"
       payment_status: "pending" | "completed" | "failed" | "refunded"
       payment_type: "invoice" | "pos" | "online"
@@ -867,6 +1098,19 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "staff", "technician", "customer"],
       attendance_source: ["manual", "biometric"],
+      job_sheet_status: [
+        "created",
+        "pending_approval",
+        "approved",
+        "rejected",
+        "assigned",
+        "in_progress",
+        "waiting_parts",
+        "repair_completed",
+        "quality_check",
+        "invoice_generated",
+        "delivered",
+      ],
       payment_method_type: ["cash", "card", "upi", "online"],
       payment_status: ["pending", "completed", "failed", "refunded"],
       payment_type: ["invoice", "pos", "online"],

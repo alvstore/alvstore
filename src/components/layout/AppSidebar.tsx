@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Users, ShoppingCart, Monitor, Package,
   Wrench, Clock, CreditCard, BarChart3, UserCheck,
-  UserCog, FileText, Settings, ChevronLeft, ChevronRight, Home,
+  UserCog, FileText, Settings, ChevronLeft, ChevronRight, Home, ClipboardList,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,6 +14,7 @@ const adminStaffNav = [
   { title: "POS", url: "/pos", icon: Monitor },
   { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Repair Management", url: "/repairs", icon: Wrench },
+  { title: "Job Sheets", url: "/job-sheets", icon: ClipboardList },
   { title: "Attendance", url: "/attendance", icon: Clock },
   { title: "Payments", url: "/payments", icon: CreditCard },
   { title: "Reports", url: "/reports", icon: BarChart3 },
