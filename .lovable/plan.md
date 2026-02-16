@@ -1,95 +1,139 @@
 
-# ERP-CRM Phase 4: Live Dashboard, Data Polish & System Hardening
 
-All core modules (CRM, Sales, POS, Inventory, Repairs, Payments, Attendance, Templates, Reports, Settings) are built. This phase focuses on making the system production-ready by connecting the dashboard to real data, fixing usability gaps, and adding missing features.
+# ERP-CRM Phase 5: Customer Portal, Notifications & Integration Wiring
 
----
-
-## 1. Live Dashboard (Real Data)
-
-The dashboard currently shows hardcoded KPI values and chart data. This phase replaces all static data with live queries from the database.
-
-### KPI Cards (live queries)
-- **Sales Today**: SUM of `pos_transactions.total` where `created_at` is today
-- **Sales This Month**: SUM of `pos_transactions.total` where `created_at` is current month
-- **Pending Payments**: SUM of `payments.amount` where `status = 'pending'`
-- **Cash Balance**: SUM of completed payments (simplified cash tracking)
-- **Low Stock Items**: COUNT of `products` where `stock_quantity <= low_stock_threshold`
-- **Active Repairs**: COUNT of `repair_tickets` where status is NOT 'completed' or 'delivered'
-- **Completed Repairs Today**: COUNT of `repair_tickets` where status changed to 'completed' today (from `repair_status_history`)
-- **Total Customers**: COUNT of `customers`
-
-### Charts (live queries)
-- **Sales Trend**: Group `pos_transactions` by day for last 7 days
-- **Revenue vs Expenses**: Monthly totals from `pos_transactions` (revenue) and `stock_movements` type 'in' with purchase prices (expenses approximation)
-- **Top Selling Products**: Aggregate POS transaction items (JSONB) to find top 5 products by quantity
-- **Repair Status Breakdown**: Group `repair_tickets` by status
-
-### Implementation
-- Use React Query (`useQuery`) for caching and background refresh
-- Add a manual "Refresh" button
-- Add loading skeletons while data loads
+Phases 1-4 built all core modules with live data. This phase focuses on customer-facing features, notification plumbing, and connecting the integration settings to actual functionality.
 
 ---
 
-## 2. Sidebar Collapse Fix
+## 1. Customer Portal
 
-The sidebar collapse state is local to `AppSidebar` but the main content area always uses `md:ml-60`. When collapsed, the content area does not adjust.
+Customers who log in with the "customer" role currently see an empty sidebar with no accessible pages. This phase creates a dedicated customer experience.
 
-### Fix
-- Lift the `collapsed` state up to `AppLayout` so the main content `div` can use `md:ml-16` when collapsed and `md:ml-60` when expanded
-- Pass collapsed state and toggle function as props to both `AppSidebar` and `AppHeader`
+### New Page: `/portal`
+A single dashboard page for customers showing:
+- Their quotations (fetched by matching `customers.email` to the logged-in user's email, or by a new `customers.user_id` column)
+- Their repair tickets (same lookup)
+- Their invoices/payments
+- Accept/reject quotation actions inline
+- Repair status timeline view
 
----
+### Database Change
+- Add `user_id` column (nullable UUID) to `customers` table to link a customer record to an auth user
+- Add RLS policy: customers with "customer" role can SELECT their own row from `customers` where `user_id = auth.uid()`
+- Add RLS policies on `quotations`, `repair_tickets`, and `payments` so customers can view records linked to their `customer_id`
 
-## 3. Attendance: Show Employee Names
-
-Currently the attendance table shows truncated UUIDs for employee IDs. This should show the employee's full name from the `profiles` table.
-
-### Fix
-- Join `attendance_records` with `profiles` on `employee_id = user_id`
-- Display `full_name` instead of raw UUID
-
----
-
-## 4. Business Settings: Allow First-Time Insert
-
-The `BusinessTab` in Settings only updates existing records but never inserts the first record. If no `business_settings` row exists, the save button silently fails.
-
-### Fix
-- If no settings row exists, insert a new one instead of updating
-- Add upsert logic to the save function
+### Routing
+- When a user with "customer" role logs in, redirect them to `/portal` instead of `/`
+- Hide all admin/staff sidebar items for customer role; show only Portal, Settings
 
 ---
 
-## 5. Quotation Status Updates
+## 2. Email Notifications via Edge Function
 
-Currently there is no way to change a quotation's status (e.g., mark as "sent" after creating a draft). The public quotation page allows accept/reject, but admin/staff need to update status too.
+### Edge Function: `send-email`
+- Accepts: `to`, `subject`, `body` (HTML), `template_id` (optional)
+- Uses SMTP credentials stored as secrets (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS)
+- If `template_id` is provided, fetches the template from `templates` table and replaces variables
+- Returns success/failure
 
-### Fix
-- Add a status dropdown in the quotation table row actions
-- Allow admin/staff to change status to: draft, sent, accepted, rejected, expired
+### Trigger Points (called from frontend)
+- Quotation created/sent: email customer with quotation link
+- Payment received: email receipt
+- Repair status update: email customer with new status
+
+### Secrets Required
+- SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
 
 ---
 
-## 6. Repair Ticket: Show Customer & Technician Names
+## 3. SMS Notifications via Edge Function
 
-The repair tickets list currently only stores IDs. Display actual names by joining with `customers` and `profiles` tables.
+### Edge Function: `send-sms`
+- Accepts: `phone`, `message`, `template_id` (optional)
+- Uses SMS API credentials stored as secrets (SMS_API_URL, SMS_API_KEY, SMS_SENDER_ID, SMS_DLT_ENTITY_ID)
+- DLT-compliant: uses registered template IDs
+- If `template_id` is provided, fetches template and replaces variables
+
+### Trigger Points
+- POS sale completed: SMS receipt to customer (if phone provided)
+- Repair status update: SMS to customer
+- Payment confirmation: SMS to customer
+
+### Secrets Required
+- SMS_API_URL, SMS_API_KEY, SMS_SENDER_ID, SMS_DLT_ENTITY_ID
+
+---
+
+## 4. Integration Settings -- Make Functional
+
+The current IntegrationsTab in Settings shows disabled input fields. This phase makes them functional by:
+- Storing integration credentials in the `business_settings` table as a JSONB column (`integrations`)
+- When the admin saves credentials, they are written to `business_settings.integrations`
+- Edge functions read credentials from `business_settings` at runtime (or better: store as Lovable secrets)
+
+### Database Change
+- Add `integrations` JSONB column to `business_settings` (default: `'{}'`)
+
+---
+
+## 5. POS Receipt Printing & Sending
+
+### Receipt View
+- After completing a POS sale, show a printable receipt dialog with:
+  - Business name and details (from `business_settings`)
+  - Item list with GST breakdown
+  - Total and payment method
+  - Transaction number and date
+- Print button (window.print with print-specific CSS)
+
+### Send Receipt
+- Email button: calls `send-email` edge function with receipt HTML
+- SMS button: calls `send-sms` edge function with receipt summary
+- Requires customer selection (optional) in POS to get contact info
+
+---
+
+## 6. PDF Generation for Quotations
+
+### Client-Side PDF
+- On the public quotation page, add a working "Download PDF" button
+- Use a lightweight approach: open a print-friendly view and trigger `window.print()` (saves as PDF)
+- Or use a library like `jspdf` + `html2canvas` for direct PDF download
+
+### No new dependencies preferred
+- Use the print-to-PDF approach first (no extra library needed)
 
 ---
 
 ## Technical Summary
 
-### Database changes: None
-All required tables and RLS policies already exist.
+### Database Changes
+- Add `user_id` column to `customers` table
+- Add `integrations` JSONB column to `business_settings`
+- Add RLS policies for customer role on `quotations`, `repair_tickets`, `payments`
 
-### Files modified: ~6
-- `src/pages/Dashboard.tsx` -- complete rewrite with live queries
-- `src/components/layout/AppLayout.tsx` -- lift collapsed state
-- `src/components/layout/AppSidebar.tsx` -- accept collapsed prop
-- `src/pages/Attendance.tsx` -- join with profiles
-- `src/pages/Settings.tsx` -- upsert logic for business settings
-- `src/pages/Sales.tsx` -- add status update dropdown
+### New Files
+- `src/pages/CustomerPortal.tsx` -- customer-facing dashboard
+- `supabase/functions/send-email/index.ts` -- SMTP email edge function
+- `supabase/functions/send-sms/index.ts` -- SMS API edge function
 
-### No new dependencies needed
-Uses existing `@tanstack/react-query` and `@supabase/supabase-js`.
+### Modified Files
+- `src/App.tsx` -- add `/portal` route, customer redirect logic
+- `src/components/layout/AppSidebar.tsx` -- role-based nav filtering
+- `src/pages/Settings.tsx` -- functional integration settings
+- `src/pages/POS.tsx` -- receipt dialog with print/send
+- `src/pages/PublicQuotation.tsx` -- PDF download button
+
+### Secrets Needed
+- SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+- SMS_API_URL, SMS_API_KEY, SMS_SENDER_ID, SMS_DLT_ENTITY_ID
+
+### Implementation Order
+1. Customer portal (database + page + routing)
+2. Email edge function + send-email integration
+3. SMS edge function + send-sms integration
+4. Integration settings wiring
+5. POS receipt printing and sending
+6. Quotation PDF download
+
