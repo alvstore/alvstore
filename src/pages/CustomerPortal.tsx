@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  FileText, Wrench, CreditCard, Check, X, Clock, Package,
+  FileText, Wrench, CreditCard, Check, X,
   AlertCircle, CheckCircle2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,14 +25,13 @@ export default function CustomerPortal() {
   const { user } = useAuth();
   const [customer, setCustomer] = useState<CustomerRecord | null>(null);
   const [quotations, setQuotations] = useState<any[]>([]);
-  const [repairs, setRepairs] = useState<any[]>([]);
+  const [jobSheets, setJobSheets] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      // Find customer record linked to this user
       const { data: cust } = await supabase
         .from("customers")
         .select("id, name, email, phone")
@@ -43,15 +41,14 @@ export default function CustomerPortal() {
       if (!cust) { setLoading(false); return; }
       setCustomer(cust);
 
-      // Fetch all related data in parallel
-      const [qRes, rRes, pRes] = await Promise.all([
+      const [qRes, jRes, pRes] = await Promise.all([
         supabase.from("quotations").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
-        supabase.from("repair_tickets").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
+        supabase.from("job_sheets").select("id, job_number, device_brand, device_model, status, priority, estimated_cost, final_cost, problem_description, created_at").eq("customer_id", cust.id).order("created_at", { ascending: false }),
         supabase.from("payments").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
       ]);
 
       setQuotations(qRes.data || []);
-      setRepairs(rRes.data || []);
+      setJobSheets((jRes.data as any) || []);
       setPayments(pRes.data || []);
       setLoading(false);
     };
@@ -74,9 +71,15 @@ export default function CustomerPortal() {
       accepted: "bg-success/10 text-success",
       rejected: "bg-destructive/10 text-destructive",
       pending: "bg-warning/10 text-warning",
+      created: "bg-muted text-muted-foreground",
+      pending_approval: "bg-warning/10 text-warning",
+      approved: "bg-info/10 text-info",
       assigned: "bg-info/10 text-info",
       in_progress: "bg-primary/10 text-primary",
       waiting_parts: "bg-warning/10 text-warning",
+      repair_completed: "bg-success/10 text-success",
+      quality_check: "bg-accent/10 text-accent-foreground",
+      invoice_generated: "bg-success/10 text-success",
       completed: "bg-success/10 text-success",
       delivered: "bg-success/10 text-success",
     };
@@ -131,7 +134,7 @@ export default function CustomerPortal() {
               <Wrench className="h-5 w-5 text-warning" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{repairs.filter(r => r.status !== "delivered").length}</p>
+              <p className="text-2xl font-bold">{jobSheets.filter(r => !["delivered", "rejected"].includes(r.status)).length}</p>
               <p className="text-xs text-muted-foreground">Active Repairs</p>
             </div>
           </CardContent>
@@ -158,9 +161,7 @@ export default function CustomerPortal() {
 
         <TabsContent value="quotations">
           <Card>
-            <CardHeader>
-              <CardTitle>Your Quotations</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Your Quotations</CardTitle></CardHeader>
             <CardContent>
               {quotations.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">No quotations found.</p>
@@ -206,27 +207,25 @@ export default function CustomerPortal() {
 
         <TabsContent value="repairs">
           <Card>
-            <CardHeader>
-              <CardTitle>Your Repair Tickets</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Your Repairs</CardTitle></CardHeader>
             <CardContent>
-              {repairs.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No repair tickets found.</p>
+              {jobSheets.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">No repairs found.</p>
               ) : (
                 <div className="space-y-4">
-                  {repairs.map(r => (
+                  {jobSheets.map(r => (
                     <div key={r.id} className="flex items-start gap-4 p-4 rounded-lg border bg-card">
                       <div className="p-2 rounded-lg bg-muted">
                         <Wrench className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium">{r.ticket_number}</p>
-                          <Badge className={statusColor(r.status)}>{r.status.replace("_", " ")}</Badge>
+                          <p className="font-medium">{r.job_number}</p>
+                          <Badge className={statusColor(r.status)}>{r.status.replace(/_/g, " ")}</Badge>
                           <Badge variant="outline" className="capitalize">{r.priority}</Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">{r.device_type} {r.device_brand} {r.device_model}</p>
-                        {r.issue_description && <p className="text-sm mt-1">{r.issue_description}</p>}
+                        <p className="text-sm text-muted-foreground mt-1">{r.device_brand} {r.device_model || ""}</p>
+                        <p className="text-sm mt-1">{r.problem_description}</p>
                         <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                           <span>Created: {new Date(r.created_at).toLocaleDateString("en-IN")}</span>
                           {r.estimated_cost && <span>Est. Cost: ₹{r.estimated_cost}</span>}
@@ -243,9 +242,7 @@ export default function CustomerPortal() {
 
         <TabsContent value="payments">
           <Card>
-            <CardHeader>
-              <CardTitle>Your Payments</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Your Payments</CardTitle></CardHeader>
             <CardContent>
               {payments.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">No payments found.</p>

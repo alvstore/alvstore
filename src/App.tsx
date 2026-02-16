@@ -20,7 +20,6 @@ import CRM from "./pages/CRM";
 import Inventory from "./pages/Inventory";
 import Sales from "./pages/Sales";
 import PublicQuotation from "./pages/PublicQuotation";
-import Repairs from "./pages/Repairs";
 import TechnicianDashboard from "./pages/TechnicianDashboard";
 import Settings from "./pages/Settings";
 import POS from "./pages/POS";
@@ -63,10 +62,9 @@ const App = () => (
               <Route path="/sales" element={<Sales />} />
               <Route path="/pos" element={<POS />} />
               <Route path="/inventory" element={<Inventory />} />
-              <Route path="/repairs" element={<Repairs />} />
-              <Route path="/job-sheets" element={<JobSheets />} />
-              <Route path="/job-sheets/new" element={<JobSheetCreate />} />
-              <Route path="/job-sheets/:id" element={<JobSheetDetail />} />
+              <Route path="/repairs" element={<JobSheets />} />
+              <Route path="/repairs/new" element={<JobSheetCreate />} />
+              <Route path="/repairs/:id" element={<JobSheetDetail />} />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/reports" element={<Reports />} />

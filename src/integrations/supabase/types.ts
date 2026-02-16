@@ -266,6 +266,8 @@ export type Database = {
       }
       job_sheets: {
         Row: {
+          apple_id: string | null
+          apple_id_password: string | null
           approval_ip: string | null
           approval_status: string | null
           approval_timestamp: string | null
@@ -275,11 +277,14 @@ export type Database = {
           customer_id: string
           device_brand: string
           device_color: string | null
+          device_lock_code: string | null
           device_model: string | null
           device_type: string
           estimated_completion: string | null
           estimated_cost: number | null
           final_cost: number | null
+          google_account: string | null
+          google_account_password: string | null
           id: string
           imei_number: string | null
           issue_tags: Json | null
@@ -297,6 +302,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          apple_id?: string | null
+          apple_id_password?: string | null
           approval_ip?: string | null
           approval_status?: string | null
           approval_timestamp?: string | null
@@ -306,11 +313,14 @@ export type Database = {
           customer_id: string
           device_brand: string
           device_color?: string | null
+          device_lock_code?: string | null
           device_model?: string | null
           device_type: string
           estimated_completion?: string | null
           estimated_cost?: number | null
           final_cost?: number | null
+          google_account?: string | null
+          google_account_password?: string | null
           id?: string
           imei_number?: string | null
           issue_tags?: Json | null
@@ -328,6 +338,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          apple_id?: string | null
+          apple_id_password?: string | null
           approval_ip?: string | null
           approval_status?: string | null
           approval_timestamp?: string | null
@@ -337,11 +349,14 @@ export type Database = {
           customer_id?: string
           device_brand?: string
           device_color?: string | null
+          device_lock_code?: string | null
           device_model?: string | null
           device_type?: string
           estimated_completion?: string | null
           estimated_cost?: number | null
           final_cost?: number | null
+          google_account?: string | null
+          google_account_password?: string | null
           id?: string
           imei_number?: string | null
           issue_tags?: Json | null

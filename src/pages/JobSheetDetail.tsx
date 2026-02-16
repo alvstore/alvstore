@@ -3,21 +3,16 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
   ArrowLeft, Copy, Loader2, User, Smartphone, ClipboardCheck,
-  History, Shield, Upload, CheckCircle,
+  History, Shield, Upload, CheckCircle, Circle, Clock,
+  FileText, Wrench, Package, Eye, Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +35,19 @@ const statusColors: Record<string, string> = {
   invoice_generated: "bg-success/10 text-success",
   delivered: "bg-muted text-muted-foreground",
 };
+
+const TIMELINE_STEPS = [
+  { key: "created", label: "Created", icon: FileText },
+  { key: "pending_approval", label: "Pending Approval", icon: Clock },
+  { key: "approved", label: "Approved", icon: CheckCircle },
+  { key: "assigned", label: "Assigned", icon: User },
+  { key: "in_progress", label: "In Progress", icon: Wrench },
+  { key: "waiting_parts", label: "Waiting Parts", icon: Package },
+  { key: "repair_completed", label: "Repair Completed", icon: CheckCircle },
+  { key: "quality_check", label: "Quality Check", icon: Shield },
+  { key: "invoice_generated", label: "Invoice Generated", icon: FileText },
+  { key: "delivered", label: "Delivered", icon: Truck },
+];
 
 const POST_REPAIR_ITEMS = [
   "Device powers ON", "Display working", "Touch working", "Speaker working",
@@ -68,7 +76,7 @@ export default function JobSheetDetail() {
       supabase.from("job_sheet_images").select("*").eq("job_sheet_id", id).order("created_at"),
       supabase.from("job_sheet_audit_log").select("*").eq("job_sheet_id", id).order("created_at", { ascending: true }),
     ]);
-    if (jobRes.error) { toast.error("Job sheet not found"); navigate("/job-sheets"); return; }
+    if (jobRes.error) { toast.error("Job sheet not found"); navigate("/repairs"); return; }
     setJob(jobRes.data);
     setImages(imgRes.data || []);
     setAuditLog(logRes.data || []);
@@ -77,7 +85,6 @@ export default function JobSheetDetail() {
       setPostChecklist(jobRes.data.post_repair_checklist as any);
     }
 
-    // Fetch technicians for assignment
     const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "technician");
     if (roles && roles.length > 0) {
       const { data: profiles } = await supabase.from("profiles").select("user_id, full_name").in("user_id", roles.map(r => r.user_id));
@@ -153,14 +160,18 @@ export default function JobSheetDetail() {
   if (!job) return null;
 
   const checklist = (job.pre_repair_checklist as any[]) || [];
-  const categories = [...new Set(checklist.map((c: any) => c.category))];
+  const checklistCategories = [...new Set(checklist.map((c: any) => c.category))];
   const techName = technicians.find(t => t.user_id === job.assigned_technician_id)?.full_name;
+
+  // Timeline logic
+  const currentStatusIndex = TIMELINE_STEPS.findIndex(s => s.key === job.status);
+  const isRejected = job.status === "rejected";
 
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/job-sheets")}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/repairs")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
@@ -177,6 +188,65 @@ export default function JobSheetDetail() {
           <Copy className="h-3 w-3 mr-1.5" /> Public Link
         </Button>
       </div>
+
+      {/* Repair Progress Timeline */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><History className="h-4 w-4" /> Repair Progress</CardTitle></CardHeader>
+        <CardContent>
+          {isRejected ? (
+            <div className="flex items-center gap-3 text-destructive">
+              <div className="w-8 h-8 rounded-full bg-destructive/15 flex items-center justify-center">
+                <Circle className="h-4 w-4 fill-destructive text-destructive" />
+              </div>
+              <div>
+                <p className="font-medium">Rejected</p>
+                <p className="text-xs text-muted-foreground">Customer rejected the repair</p>
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              {TIMELINE_STEPS.map((step, idx) => {
+                const isCompleted = idx < currentStatusIndex;
+                const isCurrent = idx === currentStatusIndex;
+                const isFuture = idx > currentStatusIndex;
+                const StepIcon = step.icon;
+                const logEntry = auditLog.find(l => l.details?.toLowerCase().includes(step.key.replace(/_/g, " ")) || (l.action === "created" && step.key === "created"));
+
+                return (
+                  <div key={step.key} className="flex gap-4 relative">
+                    {/* Connector line */}
+                    {idx < TIMELINE_STEPS.length - 1 && (
+                      <div className={`absolute left-4 top-9 w-0.5 h-[calc(100%-12px)] ${isCompleted ? "bg-primary" : "bg-border"}`} />
+                    )}
+                    {/* Icon */}
+                    <div className={`relative z-10 flex items-center justify-center w-8 h-8 rounded-full shrink-0 transition-all ${
+                      isCompleted ? "bg-primary text-primary-foreground" :
+                      isCurrent ? "bg-primary/20 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background" :
+                      "bg-muted text-muted-foreground"
+                    }`}>
+                      {isCompleted ? <CheckCircle className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
+                    </div>
+                    {/* Content */}
+                    <div className={`pb-6 ${isFuture ? "opacity-40" : ""}`}>
+                      <p className={`text-sm font-medium ${isCurrent ? "text-primary" : ""}`}>{step.label}</p>
+                      {logEntry && (
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(logEntry.created_at).toLocaleString("en-IN")}
+                        </p>
+                      )}
+                      {isCurrent && (
+                        <span className="inline-block mt-1 text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                          Current
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Customer Info */}
       <Card>
@@ -200,8 +270,22 @@ export default function JobSheetDetail() {
           <p><span className="text-muted-foreground">IMEI:</span> {job.imei_number || "—"}</p>
           <p><span className="text-muted-foreground">Color:</span> {job.device_color || "—"}</p>
           <p><span className="text-muted-foreground">Storage:</span> {job.storage_capacity || "—"}</p>
+          <p><span className="text-muted-foreground">Lock Code:</span> {job.device_lock_code || "—"}</p>
         </CardContent>
       </Card>
+
+      {/* Account Credentials (admin/staff only) */}
+      {isAdminStaff && (job.apple_id || job.google_account) && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Account Credentials</CardTitle></CardHeader>
+          <CardContent className="text-sm grid grid-cols-2 gap-2">
+            {job.apple_id && <p><span className="text-muted-foreground">Apple ID:</span> {job.apple_id}</p>}
+            {job.apple_id_password && <p><span className="text-muted-foreground">Apple Password:</span> ••••••••</p>}
+            {job.google_account && <p><span className="text-muted-foreground">Google:</span> {job.google_account}</p>}
+            {job.google_account_password && <p><span className="text-muted-foreground">Google Password:</span> ••••••••</p>}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Photos */}
       {images.length > 0 && (
@@ -224,7 +308,7 @@ export default function JobSheetDetail() {
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Pre-Repair Checklist</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {categories.map(cat => (
+          {checklistCategories.map(cat => (
             <div key={cat as string}>
               <p className="text-xs font-medium text-muted-foreground mb-1">{cat as string}</p>
               <div className="space-y-1">
@@ -323,9 +407,9 @@ export default function JobSheetDetail() {
         </Card>
       )}
 
-      {/* Status Timeline */}
+      {/* Audit Log */}
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><History className="h-4 w-4" /> Audit Log</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" /> Audit Log</CardTitle></CardHeader>
         <CardContent>
           {auditLog.length === 0 ? (
             <p className="text-sm text-muted-foreground">No audit entries yet.</p>

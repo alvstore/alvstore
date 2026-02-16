@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,7 +12,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Upload, Plus, X } from "lucide-react";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
@@ -21,7 +24,10 @@ interface ChecklistItem {
   category: string;
   item: string;
   value: "yes" | "no" | "na" | "";
+  autoSet?: boolean;
 }
+
+const POWER_DEPENDENT_CATEGORIES = ["Display", "Audio", "Camera", "Network", "Hardware"];
 
 const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { category: "Power", item: "Device turns ON", value: "" },
@@ -40,10 +46,6 @@ const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { category: "Hardware", item: "Charging port working", value: "" },
   { category: "Hardware", item: "Fingerprint working", value: "" },
   { category: "Hardware", item: "Face ID working", value: "" },
-  { category: "Accounts", item: "Apple ID present", value: "" },
-  { category: "Accounts", item: "Apple ID password provided", value: "" },
-  { category: "Accounts", item: "Google account present", value: "" },
-  { category: "Accounts", item: "Google password provided", value: "" },
   { category: "Accessories", item: "Charger received", value: "" },
   { category: "Accessories", item: "Cable received", value: "" },
   { category: "Accessories", item: "Cover received", value: "" },
@@ -63,6 +65,12 @@ export default function JobSheetCreate() {
   const [newTag, setNewTag] = useState("");
   const [imageFiles, setImageFiles] = useState<{ type: string; file: File }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [deviceIsOff, setDeviceIsOff] = useState(false);
+  const [showApplePassword, setShowApplePassword] = useState(false);
+  const [showGooglePassword, setShowGooglePassword] = useState(false);
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
+    Power: true, Display: true, Audio: true, Camera: true, Network: true, Hardware: true, Accessories: true,
+  });
 
   const [form, setForm] = useState({
     customer_id: "",
@@ -80,6 +88,11 @@ export default function JobSheetCreate() {
     estimated_cost: "",
     estimated_completion: "",
     priority: "normal",
+    apple_id: "",
+    apple_id_password: "",
+    google_account: "",
+    google_account_password: "",
+    device_lock_code: "",
   });
 
   useEffect(() => {
@@ -96,9 +109,26 @@ export default function JobSheetCreate() {
 
   const updateField = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const updateChecklist = (index: number, value: "yes" | "no" | "na") => {
-    setChecklist(prev => prev.map((c, i) => i === index ? { ...c, value } : c));
-  };
+  const updateChecklist = useCallback((index: number, value: "yes" | "no" | "na") => {
+    setChecklist(prev => {
+      const updated = prev.map((c, i) => i === index ? { ...c, value, autoSet: false } : c);
+      // Smart logic: if "Device turns ON" is set to "No", auto-set dependent items to N/A
+      const powerOnItem = updated.find(c => c.item === "Device turns ON");
+      if (powerOnItem && powerOnItem.value === "no") {
+        setDeviceIsOff(true);
+        return updated.map(c => {
+          if (POWER_DEPENDENT_CATEGORIES.includes(c.category) && !c.autoSet && c.value === "") {
+            return { ...c, value: "na" as const, autoSet: true };
+          }
+          return c;
+        });
+      } else if (powerOnItem && powerOnItem.value !== "no") {
+        setDeviceIsOff(false);
+        return updated.map(c => c.autoSet ? { ...c, value: "" as const, autoSet: false } : c);
+      }
+      return updated;
+    });
+  }, []);
 
   const addTag = () => {
     if (newTag.trim() && !issueTags.includes(newTag.trim())) {
@@ -128,7 +158,6 @@ export default function JobSheetCreate() {
     setSaving(true);
 
     try {
-      // Save custom brand/type if "Other"
       let finalBrand = form.device_brand;
       if (form.device_brand === "__other__" && form.custom_brand.trim()) {
         finalBrand = form.custom_brand.trim();
@@ -151,19 +180,23 @@ export default function JobSheetCreate() {
         storage_capacity: form.storage_capacity || null,
         problem_description: form.problem_description,
         issue_tags: issueTags,
-        pre_repair_checklist: checklist,
+        pre_repair_checklist: checklist.map(({ category, item, value }) => ({ category, item, value })),
         staff_notes: form.staff_notes,
         estimated_cost: form.estimated_cost ? parseFloat(form.estimated_cost) : null,
         estimated_completion: form.estimated_completion || null,
         priority: form.priority,
         status: "pending_approval",
         created_by: user?.id,
+        apple_id: form.apple_id || null,
+        apple_id_password: form.apple_id_password || null,
+        google_account: form.google_account || null,
+        google_account_password: form.google_account_password || null,
+        device_lock_code: form.device_lock_code || null,
       };
       const { data: job, error } = await supabase.from("job_sheets").insert(insertData).select().single();
 
       if (error) throw error;
 
-      // Upload images
       for (const img of imageFiles) {
         const ext = img.file.name.split(".").pop();
         const path = `job-sheets/${job.id}/${img.type}.${ext}`;
@@ -179,7 +212,6 @@ export default function JobSheetCreate() {
         }
       }
 
-      // Insert audit log entry
       await supabase.from("job_sheet_audit_log").insert({
         job_sheet_id: job.id,
         action: "created",
@@ -189,7 +221,7 @@ export default function JobSheetCreate() {
       });
 
       toast.success(`Job Sheet ${job.job_number} created`);
-      navigate(`/job-sheets/${job.id}`);
+      navigate(`/repairs/${job.id}`);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -200,10 +232,16 @@ export default function JobSheetCreate() {
   const categories = [...new Set(checklist.map(c => c.category))];
   const imageTypes = ["front", "back", "side", "damage"];
 
+  const getCategoryProgress = (cat: string) => {
+    const items = checklist.filter(c => c.category === cat);
+    const completed = items.filter(c => c.value !== "").length;
+    return { completed, total: items.length };
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/job-sheets")}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/repairs")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
@@ -305,37 +343,116 @@ export default function JobSheetCreate() {
         </CardContent>
       </Card>
 
+      {/* Account Credentials */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Account & Security Credentials</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Apple ID</Label>
+              <Input placeholder="apple@icloud.com" value={form.apple_id} onChange={e => updateField("apple_id", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Apple ID Password</Label>
+              <div className="relative">
+                <Input
+                  type={showApplePassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={form.apple_id_password}
+                  onChange={e => updateField("apple_id_password", e.target.value)}
+                />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowApplePassword(p => !p)}>
+                  {showApplePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Google Account</Label>
+              <Input placeholder="user@gmail.com" value={form.google_account} onChange={e => updateField("google_account", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Google Account Password</Label>
+              <div className="relative">
+                <Input
+                  type={showGooglePassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={form.google_account_password}
+                  onChange={e => updateField("google_account_password", e.target.value)}
+                />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowGooglePassword(p => !p)}>
+                  {showGooglePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="max-w-sm space-y-1.5">
+            <Label>Device Lock Code / PIN</Label>
+            <Input placeholder="Enter lock code" value={form.device_lock_code} onChange={e => updateField("device_lock_code", e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Pre-Repair Checklist */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Pre-Repair Checklist *</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          {categories.map(cat => (
-            <div key={cat}>
-              <p className="text-sm font-medium mb-2">{cat}</p>
-              <div className="space-y-2">
-                {checklist.map((item, idx) => item.category !== cat ? null : (
-                  <div key={idx} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="flex-1">{item.item}</span>
-                    <div className="flex gap-1">
-                      {(["yes", "no", "na"] as const).map(v => (
-                        <Button
-                          key={v}
-                          type="button"
-                          variant={item.value === v ? "default" : "outline"}
-                          size="sm"
-                          className="h-7 px-2.5 text-xs"
-                          onClick={() => updateChecklist(idx, v)}
-                        >
-                          {v === "na" ? "N/A" : v === "yes" ? "Yes" : "No"}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Separator className="mt-3" />
+        <CardHeader>
+          <CardTitle className="text-base">Pre-Repair Checklist *</CardTitle>
+          {deviceIsOff && (
+            <div className="flex items-center gap-2 text-xs text-warning mt-1">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span>Device is OFF — dependent checks auto-set to N/A. You can override manually.</span>
             </div>
-          ))}
+          )}
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {categories.map(cat => {
+            const progress = getCategoryProgress(cat);
+            const isComplete = progress.completed === progress.total;
+            return (
+              <Collapsible
+                key={cat}
+                open={openCategories[cat]}
+                onOpenChange={(open) => setOpenCategories(prev => ({ ...prev, [cat]: open }))}
+              >
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm">
+                    <div className="flex items-center gap-2">
+                      <ChevronDown className={`h-4 w-4 transition-transform ${openCategories[cat] ? "" : "-rotate-90"}`} />
+                      <span className="font-medium">{cat}</span>
+                    </div>
+                    <Badge variant={isComplete ? "default" : "secondary"} className={`text-xs ${!isComplete && progress.completed < progress.total ? "bg-warning/15 text-warning border-warning/30" : ""}`}>
+                      {progress.completed}/{progress.total}
+                    </Badge>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="px-3 pt-2 pb-1 space-y-2">
+                  {checklist.map((item, idx) => item.category !== cat ? null : (
+                    <div key={idx} className="flex items-center justify-between gap-2 text-sm">
+                      <div className="flex-1 flex items-center gap-2">
+                        <span>{item.item}</span>
+                        {item.autoSet && (
+                          <span className="text-[10px] text-warning bg-warning/10 px-1.5 py-0.5 rounded">Auto: Device OFF</span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        {(["yes", "no", "na"] as const).map(v => (
+                          <Button
+                            key={v}
+                            type="button"
+                            variant={item.value === v ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 px-2.5 text-xs"
+                            onClick={() => updateChecklist(idx, v)}
+                          >
+                            {v === "na" ? "N/A" : v === "yes" ? "Yes" : "No"}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -407,7 +524,7 @@ export default function JobSheetCreate() {
       </Card>
 
       <div className="flex gap-3 justify-end pb-6">
-        <Button variant="outline" onClick={() => navigate("/job-sheets")}>Cancel</Button>
+        <Button variant="outline" onClick={() => navigate("/repairs")}>Cancel</Button>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "Creating..." : "Create Job Sheet"}
         </Button>
