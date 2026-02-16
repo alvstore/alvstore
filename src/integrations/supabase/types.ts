@@ -62,6 +62,7 @@ export type Database = {
           created_at: string
           gst_number: string | null
           id: string
+          integrations: Json | null
           invoice_prefix: string | null
           logo_url: string | null
           quotation_prefix: string | null
@@ -75,6 +76,7 @@ export type Database = {
           created_at?: string
           gst_number?: string | null
           id?: string
+          integrations?: Json | null
           invoice_prefix?: string | null
           logo_url?: string | null
           quotation_prefix?: string | null
@@ -88,6 +90,7 @@ export type Database = {
           created_at?: string
           gst_number?: string | null
           id?: string
+          integrations?: Json | null
           invoice_prefix?: string | null
           logo_url?: string | null
           quotation_prefix?: string | null
@@ -110,6 +113,7 @@ export type Database = {
           pincode: string | null
           state: string | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           address?: string | null
@@ -125,6 +129,7 @@ export type Database = {
           pincode?: string | null
           state?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           address?: string | null
@@ -140,6 +145,7 @@ export type Database = {
           pincode?: string | null
           state?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }

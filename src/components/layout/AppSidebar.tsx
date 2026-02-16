@@ -1,12 +1,13 @@
 import {
   LayoutDashboard, Users, ShoppingCart, Monitor, Package,
   Wrench, Clock, CreditCard, BarChart3, UserCheck,
-  UserCog, FileText, Settings, ChevronLeft, ChevronRight,
+  UserCog, FileText, Settings, ChevronLeft, ChevronRight, Home,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+const adminStaffNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "CRM", url: "/crm", icon: Users },
   { title: "Sales", url: "/sales", icon: ShoppingCart },
@@ -23,12 +24,30 @@ const navItems = [
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
+const customerNav = [
+  { title: "My Portal", url: "/portal", icon: Home },
+  { title: "Settings", url: "/settings", icon: Settings },
+];
+
+const technicianNav = [
+  { title: "My Repairs", url: "/technicians", icon: Wrench },
+  { title: "Settings", url: "/settings", icon: Settings },
+];
+
 interface AppSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
 }
 
 export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
+  const { hasRole } = useAuth();
+
+  const navItems = hasRole("customer")
+    ? customerNav
+    : hasRole("technician") && !hasRole("admin") && !hasRole("staff")
+    ? technicianNav
+    : adminStaffNav;
+
   return (
     <aside
       className={cn(

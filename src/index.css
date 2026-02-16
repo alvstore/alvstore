@@ -131,3 +131,10 @@
     border-radius: 3px;
   }
 }
+
+@media print {
+  body * { visibility: hidden; }
+  .max-w-3xl, .max-w-3xl * { visibility: visible; }
+  .max-w-3xl { position: absolute; left: 0; top: 0; width: 100%; }
+  button, .flex.gap-3.pt-4, .pt-2 { display: none !important; }
+}

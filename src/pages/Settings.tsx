@@ -283,16 +283,46 @@ function BusinessTab() {
 }
 
 function IntegrationsTab() {
+  const [integrations, setIntegrations] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    supabase.from("business_settings").select("integrations").limit(1).single().then(({ data }) => {
+      if (data?.integrations && typeof data.integrations === "object") {
+        setIntegrations(data.integrations as Record<string, string>);
+      }
+    });
+  }, []);
+
+  const updateField = (key: string, value: string) => {
+    setIntegrations(prev => ({ ...prev, [key]: value }));
+  };
+
+  const saveIntegrations = async () => {
+    setSaving(true);
+    const { data: existing } = await supabase.from("business_settings").select("id").limit(1).single();
+    if (existing) {
+      const { error } = await supabase.from("business_settings").update({ integrations }).eq("id", existing.id);
+      if (error) toast.error(error.message); else toast.success("Integration settings saved");
+    } else {
+      const { error } = await supabase.from("business_settings").insert({ integrations }).select().single();
+      if (error) toast.error(error.message); else toast.success("Integration settings saved");
+    }
+    setSaving(false);
+  };
+
+  const integrationGroups = [
+    { title: "Payment Gateway (Razorpay)", fields: [{ key: "razorpay_api_key", label: "API Key" }, { key: "razorpay_secret", label: "Secret Key" }] },
+    { title: "Payment Gateway (CCAvenue)", fields: [{ key: "ccavenue_merchant_id", label: "Merchant ID" }, { key: "ccavenue_access_code", label: "Access Code" }, { key: "ccavenue_working_key", label: "Working Key" }] },
+    { title: "Payment Gateway (PhonePe)", fields: [{ key: "phonepe_merchant_id", label: "Merchant ID" }, { key: "phonepe_salt_key", label: "Salt Key" }, { key: "phonepe_salt_index", label: "Salt Index" }] },
+    { title: "SMS API", fields: [{ key: "sms_api_url", label: "API Endpoint" }, { key: "sms_api_key", label: "API Key" }, { key: "sms_sender_id", label: "Sender ID" }, { key: "sms_dlt_entity_id", label: "DLT Entity ID" }] },
+    { title: "Email (SMTP)", fields: [{ key: "smtp_host", label: "SMTP Host" }, { key: "smtp_port", label: "SMTP Port" }, { key: "smtp_user", label: "Username" }, { key: "smtp_pass", label: "Password" }] },
+    { title: "Biometric (Hikvision)", fields: [{ key: "hik_device_ip", label: "Device IP" }, { key: "hik_username", label: "Username" }, { key: "hik_password", label: "Password" }] },
+  ];
+
   return (
     <div className="grid gap-6 max-w-2xl">
-      {[
-        { title: "Payment Gateway (Razorpay)", fields: ["API Key", "Secret Key"] },
-        { title: "Payment Gateway (CCAvenue)", fields: ["Merchant ID", "Access Code", "Working Key"] },
-        { title: "Payment Gateway (PhonePe)", fields: ["Merchant ID", "Salt Key", "Salt Index"] },
-        { title: "SMS API", fields: ["API Endpoint", "API Key", "Sender ID", "DLT Entity ID"] },
-        { title: "Email (SMTP)", fields: ["SMTP Host", "SMTP Port", "Username", "Password"] },
-        { title: "Biometric (Hikvision)", fields: ["Device IP", "Username", "Password"] },
-      ].map(integration => (
+      {integrationGroups.map(integration => (
         <Card key={integration.title}>
           <CardHeader>
             <CardTitle className="text-base">{integration.title}</CardTitle>
@@ -300,15 +330,22 @@ function IntegrationsTab() {
           </CardHeader>
           <CardContent className="space-y-3">
             {integration.fields.map(field => (
-              <div key={field} className="space-y-1.5">
-                <Label>{field}</Label>
-                <Input type="password" placeholder={`Enter ${field.toLowerCase()}`} disabled />
+              <div key={field.key} className="space-y-1.5">
+                <Label>{field.label}</Label>
+                <Input
+                  type="password"
+                  placeholder={`Enter ${field.label.toLowerCase()}`}
+                  value={integrations[field.key] || ""}
+                  onChange={e => updateField(field.key, e.target.value)}
+                />
               </div>
             ))}
-            <p className="text-xs text-muted-foreground">Integration credentials will be securely stored in a future update.</p>
           </CardContent>
         </Card>
       ))}
+      <Button onClick={saveIntegrations} disabled={saving}>
+        {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save All Integrations
+      </Button>
     </div>
   );
 }
