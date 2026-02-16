@@ -82,10 +82,10 @@ export default function JobSheets() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Job Sheets</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Repair Management</h1>
           <p className="text-muted-foreground">Enterprise repair workflow management</p>
         </div>
-        <Button onClick={() => navigate("/job-sheets/new")}>
+        <Button onClick={() => navigate("/repairs/new")}>
           <Plus className="h-4 w-4 mr-2" /> New Job Sheet
         </Button>
       </div>
@@ -152,7 +152,7 @@ export default function JobSheets() {
                 <ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" />No job sheets found
               </TableCell></TableRow>
             ) : jobs.map(j => (
-              <TableRow key={j.id} className="cursor-pointer" onClick={() => navigate(`/job-sheets/${j.id}`)}>
+              <TableRow key={j.id} className="cursor-pointer" onClick={() => navigate(`/repairs/${j.id}`)}>
                 <TableCell className="font-medium">{j.job_number}</TableCell>
                 <TableCell className="hidden sm:table-cell">{j.customers?.name || "—"}</TableCell>
                 <TableCell className="hidden md:table-cell">{[j.device_brand, j.device_model].filter(Boolean).join(" ") || "—"}</TableCell>
