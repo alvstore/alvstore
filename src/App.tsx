@@ -18,7 +18,14 @@ import Sales from "./pages/Sales";
 import PublicQuotation from "./pages/PublicQuotation";
 import Repairs from "./pages/Repairs";
 import TechnicianDashboard from "./pages/TechnicianDashboard";
-import ComingSoon from "./pages/ComingSoon";
+import Settings from "./pages/Settings";
+import POS from "./pages/POS";
+import Payments from "./pages/Payments";
+import Attendance from "./pages/Attendance";
+import Staff from "./pages/Staff";
+import Customers from "./pages/Customers";
+import Templates from "./pages/Templates";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,17 +56,17 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/crm" element={<CRM />} />
               <Route path="/sales" element={<Sales />} />
-              <Route path="/pos" element={<ComingSoon />} />
+              <Route path="/pos" element={<POS />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/repairs" element={<Repairs />} />
-              <Route path="/attendance" element={<ComingSoon />} />
-              <Route path="/payments" element={<ComingSoon />} />
-              <Route path="/reports" element={<ComingSoon />} />
-              <Route path="/customers" element={<ComingSoon />} />
+              <Route path="/attendance" element={<Attendance />} />
+              <Route path="/payments" element={<Payments />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/customers" element={<Customers />} />
               <Route path="/technicians" element={<TechnicianDashboard />} />
-              <Route path="/staff" element={<ComingSoon />} />
-              <Route path="/templates" element={<ComingSoon />} />
-              <Route path="/settings" element={<ComingSoon />} />
+              <Route path="/staff" element={<Staff />} />
+              <Route path="/templates" element={<Templates />} />
+              <Route path="/settings" element={<Settings />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
