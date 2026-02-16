@@ -58,6 +58,7 @@ interface Ticket {
   assigned_technician_id: string | null;
   created_at: string;
   customers?: { name: string } | null;
+  technician_name?: string;
 }
 
 interface StatusHistory {
@@ -96,7 +97,16 @@ export default function Repairs() {
     if (search) query = query.or(`ticket_number.ilike.%${search}%,device_brand.ilike.%${search}%,device_model.ilike.%${search}%`);
     const { data, error } = await query;
     if (error) toast.error(error.message);
-    else setTickets(data || []);
+    
+    let enriched = data || [];
+    // Resolve technician names
+    const techIds = [...new Set(enriched.filter(t => t.assigned_technician_id).map(t => t.assigned_technician_id!))];
+    if (techIds.length > 0) {
+      const { data: profiles } = await supabase.from("profiles").select("user_id, full_name").in("user_id", techIds);
+      const nameMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
+      enriched = enriched.map(t => ({ ...t, technician_name: t.assigned_technician_id ? nameMap.get(t.assigned_technician_id) || undefined : undefined }));
+    }
+    setTickets(enriched as Ticket[]);
     setLoading(false);
   };
 
@@ -258,7 +268,10 @@ export default function Repairs() {
                   {selectedTicket.ticket_number}
                   <Badge className={statusColors[selectedTicket.status] || ""} variant="secondary">{selectedTicket.status.replace("_", " ")}</Badge>
                 </SheetTitle>
-                <SheetDescription>{selectedTicket.customers?.name}</SheetDescription>
+                <SheetDescription>
+                  {selectedTicket.customers?.name}
+                  {selectedTicket.technician_name && <span className="ml-2 text-xs">· Tech: {selectedTicket.technician_name}</span>}
+                </SheetDescription>
               </SheetHeader>
               <div className="space-y-5 mt-6">
                 {/* Device info */}
