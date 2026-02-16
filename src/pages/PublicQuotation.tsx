@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Check, X, FileText } from "lucide-react";
+import { Check, X, FileText, Download } from "lucide-react";
 import { toast } from "sonner";
 
 interface QuotationData {
@@ -158,6 +158,12 @@ export default function PublicQuotation() {
                 </Button>
               </div>
             )}
+
+            <div className="pt-2">
+              <Button variant="secondary" className="w-full" onClick={() => window.print()}>
+                <Download className="h-4 w-4 mr-2" /> Download PDF
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

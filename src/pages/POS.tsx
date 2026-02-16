@@ -9,7 +9,10 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, Banknote, Smartphone, Package, Barcode } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, Banknote, Smartphone, Package, Barcode, Printer, Mail, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 interface Product {
@@ -40,6 +43,8 @@ export default function POS() {
   const [processing, setProcessing] = useState(false);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [barcodeInput, setBarcodeInput] = useState("");
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [lastSale, setLastSale] = useState<{ items: CartItem[]; subtotal: number; gst: number; total: number; method: string; txnNumber: string; date: string } | null>(null);
 
   const fetchProducts = useCallback(async () => {
     let query = supabase.from("products").select("id,name,sku,barcode,image_url,selling_price,gst_percentage,stock_quantity,unit").gt("stock_quantity", 0);
@@ -110,20 +115,18 @@ export default function POS() {
     if (cart.length === 0) { toast.error("Cart is empty"); return; }
     setProcessing(true);
     try {
-      // Create POS transaction
       const items = cart.map(c => ({
         product_id: c.product.id, name: c.product.name,
         qty: c.quantity, price: c.product.selling_price,
         gst: c.product.gst_percentage, total: c.lineTotal + c.lineGst,
       }));
 
-      const { error: txnError } = await supabase.from("pos_transactions").insert({
+      const { data: txn, error: txnError } = await supabase.from("pos_transactions").insert({
         items, subtotal, gst_amount: gstAmount, total,
         payment_method: paymentMethod, created_by: user?.id,
-      });
+      }).select("transaction_number, created_at").single();
       if (txnError) throw txnError;
 
-      // Deduct stock via stock_movements
       for (const c of cart) {
         const { error: mvError } = await supabase.from("stock_movements").insert({
           product_id: c.product.id, type: "out" as const,
@@ -133,6 +136,14 @@ export default function POS() {
         if (mvError) throw mvError;
       }
 
+      setLastSale({
+        items: [...cart],
+        subtotal, gst: gstAmount, total,
+        method: paymentMethod,
+        txnNumber: txn?.transaction_number || "",
+        date: txn?.created_at || new Date().toISOString(),
+      });
+      setReceiptOpen(true);
       toast.success(`Sale completed — ₹${total.toFixed(2)}`);
       setCart([]);
       fetchProducts();
@@ -140,6 +151,34 @@ export default function POS() {
       toast.error(err.message || "Sale failed");
     }
     setProcessing(false);
+  };
+
+  const printReceipt = () => {
+    const printWindow = window.open("", "_blank", "width=300,height=600");
+    if (!printWindow || !lastSale) return;
+    const html = `<!DOCTYPE html><html><head><title>Receipt</title><style>
+      body{font-family:monospace;font-size:12px;padding:10px;max-width:280px;margin:0 auto}
+      .center{text-align:center} .bold{font-weight:bold} .line{border-top:1px dashed #000;margin:8px 0}
+      table{width:100%;border-collapse:collapse} td{padding:2px 0}
+    </style></head><body>
+      <div class="center bold" style="font-size:16px">ERPMaster</div>
+      <div class="center">${lastSale.txnNumber}</div>
+      <div class="center">${new Date(lastSale.date).toLocaleString("en-IN")}</div>
+      <div class="line"></div>
+      <table>${lastSale.items.map(c => `<tr><td>${c.product.name} x${c.quantity}</td><td style="text-align:right">₹${(c.lineTotal + c.lineGst).toFixed(0)}</td></tr>`).join("")}</table>
+      <div class="line"></div>
+      <table>
+        <tr><td>Subtotal</td><td style="text-align:right">₹${lastSale.subtotal.toFixed(2)}</td></tr>
+        <tr><td>GST</td><td style="text-align:right">₹${lastSale.gst.toFixed(2)}</td></tr>
+        <tr class="bold"><td>TOTAL</td><td style="text-align:right">₹${lastSale.total.toFixed(2)}</td></tr>
+      </table>
+      <div class="line"></div>
+      <div class="center">Payment: ${lastSale.method.toUpperCase()}</div>
+      <div class="center" style="margin-top:10px">Thank you!</div>
+      <script>window.print();window.close();</script>
+    </body></html>`;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   return (
@@ -246,6 +285,45 @@ export default function POS() {
           )}
         </CardContent>
       </Card>
+      {/* Receipt Dialog */}
+      <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Sale Complete</DialogTitle>
+          </DialogHeader>
+          {lastSale && (
+            <div className="space-y-3 text-sm">
+              <div className="text-center">
+                <p className="font-bold text-lg">{lastSale.txnNumber}</p>
+                <p className="text-muted-foreground">{new Date(lastSale.date).toLocaleString("en-IN")}</p>
+              </div>
+              <Separator />
+              {lastSale.items.map(c => (
+                <div key={c.product.id} className="flex justify-between">
+                  <span>{c.product.name} ×{c.quantity}</span>
+                  <span>₹{(c.lineTotal + c.lineGst).toFixed(0)}</span>
+                </div>
+              ))}
+              <Separator />
+              <div className="flex justify-between"><span>Subtotal</span><span>₹{lastSale.subtotal.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span>GST</span><span>₹{lastSale.gst.toFixed(2)}</span></div>
+              <div className="flex justify-between font-bold text-base"><span>Total</span><span>₹{lastSale.total.toFixed(2)}</span></div>
+              <div className="text-center text-muted-foreground capitalize">Paid via {lastSale.method}</div>
+            </div>
+          )}
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" className="flex-1" onClick={printReceipt}>
+              <Printer className="h-4 w-4 mr-1.5" />Print
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => toast.info("Configure SMTP in Settings → Integrations to enable email receipts")}>
+              <Mail className="h-4 w-4 mr-1.5" />Email
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => toast.info("Configure SMS API in Settings → Integrations to enable SMS receipts")}>
+              <MessageSquare className="h-4 w-4 mr-1.5" />SMS
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
