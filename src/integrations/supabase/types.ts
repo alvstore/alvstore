@@ -248,6 +248,54 @@ export type Database = {
         }
         Relationships: []
       }
+      employees: {
+        Row: {
+          created_at: string
+          department: string | null
+          designation: string | null
+          email: string | null
+          id: string
+          joining_date: string | null
+          name: string
+          phone: string | null
+          role: string | null
+          salary: number | null
+          status: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          department?: string | null
+          designation?: string | null
+          email?: string | null
+          id?: string
+          joining_date?: string | null
+          name: string
+          phone?: string | null
+          role?: string | null
+          salary?: number | null
+          status?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          department?: string | null
+          designation?: string | null
+          email?: string | null
+          id?: string
+          joining_date?: string | null
+          name?: string
+          phone?: string | null
+          role?: string | null
+          salary?: number | null
+          status?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       finance_accounts: {
         Row: {
           account_number: string | null
@@ -438,6 +486,133 @@ export type Database = {
             columns: ["to_account_id"]
             isOneToOne: false
             referencedRelation: "finance_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_items: {
+        Row: {
+          gst_percentage: number | null
+          id: string
+          invoice_id: string
+          product_id: string | null
+          product_name: string
+          quantity: number | null
+          total: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          gst_percentage?: number | null
+          id?: string
+          invoice_id: string
+          product_id?: string | null
+          product_name: string
+          quantity?: number | null
+          total?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          gst_percentage?: number | null
+          id?: string
+          invoice_id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number | null
+          total?: number | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          due_date: string | null
+          gst_amount: number | null
+          id: string
+          invoice_number: string
+          job_sheet_id: string | null
+          notes: string | null
+          paid_amount: number | null
+          payment_status: string | null
+          quotation_id: string | null
+          status: string | null
+          subtotal: number | null
+          total: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          due_date?: string | null
+          gst_amount?: number | null
+          id?: string
+          invoice_number?: string
+          job_sheet_id?: string | null
+          notes?: string | null
+          paid_amount?: number | null
+          payment_status?: string | null
+          quotation_id?: string | null
+          status?: string | null
+          subtotal?: number | null
+          total?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          due_date?: string | null
+          gst_amount?: number | null
+          id?: string
+          invoice_number?: string
+          job_sheet_id?: string | null
+          notes?: string | null
+          paid_amount?: number | null
+          payment_status?: string | null
+          quotation_id?: string | null
+          status?: string | null
+          subtotal?: number | null
+          total?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_job_sheet_id_fkey"
+            columns: ["job_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "job_sheets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
             referencedColumns: ["id"]
           },
         ]
@@ -640,6 +815,59 @@ export type Database = {
           },
         ]
       }
+      leads: {
+        Row: {
+          assigned_to: string | null
+          converted_customer_id: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          source: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          converted_customer_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          converted_customer_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_converted_customer_id_fkey"
+            columns: ["converted_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
@@ -706,6 +934,59 @@ export type Database = {
             columns: ["quotation_id"]
             isOneToOne: false
             referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll: {
+        Row: {
+          basic_salary: number | null
+          bonus: number | null
+          created_at: string
+          created_by: string | null
+          deductions: number | null
+          employee_id: string
+          id: string
+          month: string
+          net_salary: number | null
+          notes: string | null
+          paid_date: string | null
+          payment_status: string | null
+        }
+        Insert: {
+          basic_salary?: number | null
+          bonus?: number | null
+          created_at?: string
+          created_by?: string | null
+          deductions?: number | null
+          employee_id: string
+          id?: string
+          month: string
+          net_salary?: number | null
+          notes?: string | null
+          paid_date?: string | null
+          payment_status?: string | null
+        }
+        Update: {
+          basic_salary?: number | null
+          bonus?: number | null
+          created_at?: string
+          created_by?: string | null
+          deductions?: number | null
+          employee_id?: string
+          id?: string
+          month?: string
+          net_salary?: number | null
+          notes?: string | null
+          paid_date?: string | null
+          payment_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
@@ -1141,6 +1422,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      system_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          details: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          ip_address: string | null
+          module: string | null
+          staff_name: string | null
+          user_id: string | null
+          user_role: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          module?: string | null
+          staff_name?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          module?: string | null
+          staff_name?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Relationships: []
+      }
+      tasks: {
+        Row: {
+          assigned_by: string | null
+          assigned_to: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          id: string
+          priority: string | null
+          related_entity_id: string | null
+          related_entity_type: string | null
+          status: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          priority?: string | null
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          status?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_by?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          priority?: string | null
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          status?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       templates: {
         Row: {
