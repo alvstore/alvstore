@@ -1,304 +1,148 @@
 
 
-# Phase 10: ERP Structure Correction and Missing Module Implementation
+# Hikvision Attendance Sync Module
 
-This phase restructures the entire ERP navigation into an enterprise-grade hierarchy with expandable sub-menus, and implements five missing core modules: Lead Management, Task Management, Invoices, HRM (Employees/Payroll), and a standalone Audit Log viewer.
+## Architecture Overview
 
----
+The Hikvision device at 10.0.1.116 uses the ISAPI protocol. Since the ERP runs on Lovable Cloud, a backend function will proxy requests to the device. The device must be reachable from the internet (via port forwarding or VPN) for automatic sync to work. The module includes device management, attendance log storage, employee mapping, and audit logging.
 
-## 1. Sidebar Navigation Restructure
+## 1. Database Changes
 
-Replace the flat nav structure with collapsible category groups containing sub-items. When a category has multiple children, clicking the parent expands/collapses its children. Single-item categories remain direct links.
+### New Tables
 
-```text
-MAIN
-  Dashboard
+**`hikvision_devices`** -- Stores configured Hikvision devices
 
-CRM
-  Leads          (NEW)
-  Customers      (moved from SERVICE)
-
-SALES
-  Quotations     (was "Sales")
-  Invoices       (NEW)
-
-POS
-  POS Terminal   (was "POS")
-
-INVENTORY
-  Products       (was "Inventory")
-  Stock Movements (NEW sub-tab, links to Inventory with tab)
-
-REPAIR
-  Repair Management (existing)
-
-FINANCE
-  Finance        (existing, contains tabs for Income/Expenses/Accounts/etc.)
-
-HRM
-  Employees      (NEW)
-  Attendance     (existing, moved here)
-  Payroll        (NEW)
-
-TASKS
-  Task Management (NEW)
-
-REPORTS
-  Reports        (existing)
-
-SYSTEM
-  Audit Logs     (NEW)
-  Settings       (existing)
-```
-
-**Removed:** Duplicate "Customers" from SERVICE, "Technicians" (merged into Employees), standalone "Staff" (merged into Employees)
-
-**Technical approach:** Add a `children` property to the `NavItem` interface in `AppSidebar.tsx`. Categories with children render as expandable accordions. Track expanded state in localStorage.
-
----
-
-## 2. New Database Tables
-
-### `leads`
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID PK | |
-| name | TEXT NOT NULL | |
-| phone | TEXT | |
-| email | TEXT | |
-| source | TEXT | website/walkin/referral/ads |
-| status | TEXT DEFAULT 'new' | new/contacted/qualified/converted/lost |
-| assigned_to | UUID | staff user_id |
-| notes | TEXT | |
-| converted_customer_id | UUID | FK customers, nullable |
-| created_by | UUID | |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
-
-RLS: Admin + Staff full access.
-
-### `tasks`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| title | TEXT NOT NULL | |
-| description | TEXT | |
-| assigned_to | UUID | |
-| assigned_by | UUID | |
-| priority | TEXT DEFAULT 'medium' | low/medium/high |
-| status | TEXT DEFAULT 'pending' | pending/in_progress/completed |
-| due_date | DATE | |
-| related_entity_type | TEXT | customer/repair/invoice/lead |
-| related_entity_id | UUID | |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
-
-RLS: Admin + Staff full access. Technicians can view/update assigned tasks.
-
-### `invoices`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| invoice_number | TEXT | auto-generated (INV-00001) |
-| customer_id | UUID FK customers | |
-| quotation_id | UUID FK quotations | nullable, if created from quotation |
-| job_sheet_id | UUID FK job_sheets | nullable, if created from repair |
-| subtotal | NUMERIC DEFAULT 0 | |
-| gst_amount | NUMERIC DEFAULT 0 | |
-| total | NUMERIC DEFAULT 0 | |
-| paid_amount | NUMERIC DEFAULT 0 | |
-| payment_status | TEXT DEFAULT 'unpaid' | unpaid/partial/paid |
-| status | TEXT DEFAULT 'draft' | draft/sent/paid/cancelled |
-| notes | TEXT | |
-| due_date | DATE | |
-| created_by | UUID | |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
-
-### `invoice_items`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| invoice_id | UUID FK invoices | |
-| product_id | UUID FK products | nullable |
-| product_name | TEXT NOT NULL | |
-| quantity | INTEGER DEFAULT 1 | |
-| unit_price | NUMERIC DEFAULT 0 | |
-| gst_percentage | NUMERIC DEFAULT 18 | |
-| total | NUMERIC DEFAULT 0 | |
-
-### `employees`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| user_id | UUID | links to auth user |
-| name | TEXT NOT NULL | |
-| phone | TEXT | |
-| email | TEXT | |
-| role | TEXT | admin/staff/technician |
-| department | TEXT | |
-| designation | TEXT | |
-| salary | NUMERIC DEFAULT 0 | |
-| joining_date | DATE | |
+| name | TEXT NOT NULL | e.g., "Office Controller" |
+| ip_address | TEXT NOT NULL | |
+| port | INTEGER DEFAULT 80 | |
+| username | TEXT | |
+| password | TEXT | encrypted in integrations JSONB |
 | status | TEXT DEFAULT 'active' | active/inactive |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
-
-### `payroll`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| employee_id | UUID FK employees | |
-| month | TEXT | e.g. "2026-02" |
-| basic_salary | NUMERIC DEFAULT 0 | |
-| deductions | NUMERIC DEFAULT 0 | |
-| bonus | NUMERIC DEFAULT 0 | |
-| net_salary | NUMERIC DEFAULT 0 | |
-| payment_status | TEXT DEFAULT 'pending' | pending/paid |
-| paid_date | DATE | |
-| notes | TEXT | |
+| last_sync_at | TIMESTAMPTZ | |
 | created_by | UUID | |
-| created_at | TIMESTAMPTZ | |
+| created_at | TIMESTAMPTZ | now() |
 
-### `system_audit_log`
+RLS: Admin only.
+
+**`hikvision_attendance_logs`** -- Raw attendance events from device
+
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID PK | |
-| user_id | UUID | |
-| user_role | TEXT | |
-| staff_name | TEXT | |
-| action | TEXT NOT NULL | |
-| module | TEXT | crm/sales/pos/inventory/repair/finance/hrm |
-| entity_type | TEXT | |
-| entity_id | UUID | |
-| details | TEXT | |
-| ip_address | TEXT | |
-| created_at | TIMESTAMPTZ | |
+| device_id | UUID FK hikvision_devices | |
+| employee_code | TEXT | From device |
+| employee_name | TEXT | From device |
+| employee_id | UUID | Mapped ERP employee, nullable |
+| device_ip | TEXT | |
+| device_name | TEXT | |
+| event_time | TIMESTAMPTZ NOT NULL | |
+| event_type | TEXT | checkin/checkout/access |
+| raw_data | JSONB | Full event JSON |
+| created_at | TIMESTAMPTZ | now() |
 
-RLS: Admin SELECT only. Authenticated INSERT. No UPDATE/DELETE.
+Unique constraint on (device_id, employee_code, event_time) to prevent duplicates. RLS: Admin + Staff SELECT.
 
-### Triggers
-- `generate_invoice_number()`: auto-generates INV-00001 format
-- Invoice number trigger on INSERT
+**`hikvision_employee_mapping`** -- Maps device employee codes to ERP employees
 
----
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| device_employee_code | TEXT NOT NULL | |
+| device_employee_name | TEXT | |
+| erp_employee_id | UUID FK employees | nullable until mapped |
+| device_id | UUID FK hikvision_devices | |
+| created_at | TIMESTAMPTZ | now() |
 
-## 3. New Pages
+Unique on (device_employee_code, device_id). RLS: Admin only.
 
-### `src/pages/Leads.tsx`
-- Table with search, filter by status (New/Contacted/Qualified/Converted/Lost)
-- Slide-over form: Name, Phone, Email, Source, Assigned Staff, Notes
-- "Convert to Customer" button that creates a customer record and updates lead status to "converted"
-- Status pipeline view (tabs or kanban-style status filters)
+**`hikvision_sync_log`** -- Audit trail for sync operations
 
-### `src/pages/Tasks.tsx`
-- Table with filters by status, priority, assignee
-- Slide-over form: Title, Description, Assigned To (staff/technician dropdown), Priority, Due Date, Related Entity
-- Status toggle buttons for quick updates
-- "My Tasks" filter for current user
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| device_id | UUID FK hikvision_devices | |
+| action | TEXT | sync_started/sync_completed/sync_failed/test_connection |
+| status | TEXT | success/error |
+| records_synced | INTEGER DEFAULT 0 | |
+| error_message | TEXT | |
+| created_at | TIMESTAMPTZ | now() |
 
-### `src/pages/Invoices.tsx`
-- Table with search, status filter (draft/sent/paid/cancelled)
-- Slide-over form to create invoice manually (select customer, add products from inventory, GST auto-calc)
-- "Create from Quotation" flow: button on Sales page that copies quotation items to a new invoice
-- Payment recording: slide-over to record partial/full payment
-- PDF download support (client-side generation)
+RLS: Admin SELECT + INSERT.
 
-### `src/pages/Employees.tsx`
-- Replaces Staff.tsx and merges Technicians view
-- Table of all employees with role badges
-- Slide-over form: Name, Phone, Email, Role, Department, Designation, Salary, Joining Date
-- Uses the existing `manage-staff` edge function for user creation
-- Links to attendance and payroll for each employee
+Seed default device: "Office Hikvision Controller" at 10.0.1.116:80.
 
-### `src/pages/Payroll.tsx`
-- Monthly payroll processing
-- Select month, view all employees with salary, deductions, bonus, net pay
-- Generate salary slips
-- Mark as paid
-- Export CSV
+## 2. Backend Function: `hikvision-sync`
 
-### `src/pages/AuditLogs.tsx`
-- Read-only table of all system actions
-- Filter by module, action type, date range, user
-- No edit/delete capability
-- Pulls from both `finance_audit_log` and `system_audit_log`
+A new edge function that handles three operations:
 
----
+- **test**: Calls `GET /ISAPI/System/deviceInfo` with Digest Auth to verify connectivity
+- **sync**: Calls `POST /ISAPI/AccessControl/AcsEvent?format=json` to fetch access events, stores new records, auto-creates employee mappings for unknown codes, and links to `attendance_records` for mapped employees
+- **device-info**: Returns device information
 
-## 4. Modified Pages
+The function receives device credentials and IP from the request body (fetched from DB by the caller). It uses HTTP Basic/Digest auth as required by ISAPI.
 
-### `src/pages/Sales.tsx`
-- Rename heading to "Quotations"
-- Add "Convert to Invoice" button on each accepted quotation row
+**Important note**: The device must be reachable from the internet for cloud-based sync. If only accessible on the local network, users should access the ERP from the same network and use browser-based sync as a fallback.
 
-### `src/pages/Inventory.tsx`
-- Add a "Stock Movements" tab showing the `stock_movements` table data
-- Existing product management stays as-is
+## 3. Enhanced Attendance Page
 
-### `src/pages/Attendance.tsx`
-- No structural changes, just re-routed under HRM in sidebar
+Restructure `src/pages/Attendance.tsx` with tabs:
 
----
+**Tab: Attendance** (existing)
+- Current manual check-in/check-out and records table (unchanged)
 
-## 5. Route Changes in `App.tsx`
+**Tab: Devices** (new, admin only)
+- Table of configured Hikvision devices with status indicators (green/red)
+- "Add Device" slide-over form: Name, IP, Port, Username, Password
+- "Test Connection" button per device
+- "Sync Now" button per device
+- Last sync timestamp display
+- Edit/delete device
 
-New routes:
-- `/leads` -- Leads.tsx
-- `/invoices` -- Invoices.tsx
-- `/tasks` -- Tasks.tsx
-- `/employees` -- Employees.tsx
-- `/payroll` -- Payroll.tsx
-- `/audit-logs` -- AuditLogs.tsx
+**Tab: Sync Logs** (new, admin only)
+- Table of all sync operations: Timestamp, Device, Action, Status, Records Synced, Error
+- Filter by device and date
 
-Removed/redirected:
-- `/customers` -- redirect to `/crm` (already does this)
-- `/staff` -- redirect to `/employees`
-- `/technicians` -- redirect to `/employees`
+**Tab: Employee Mapping** (new, admin only)
+- Table of device employee codes mapped to ERP employees
+- Auto-populated when sync finds new employee codes
+- Dropdown to select ERP employee for each mapping
+- "Auto Map" button that matches by employee code
 
----
+**Tab: Device Logs** (new, admin only)
+- Raw attendance events from Hikvision devices
+- Filters by device, employee, date range
+- Shows event time, employee code/name, event type, device
 
-## 6. Implementation Order
+## 4. File Changes
 
-1. **Database migration** -- Create all 6 new tables + triggers + RLS
-2. **Sidebar restructure** -- Expandable nav with sub-items
-3. **Leads page** -- CRM lead management
-4. **Invoices page** -- Full GST invoice system with inventory integration
-5. **Tasks page** -- Task assignment and tracking
-6. **Employees page** -- Merge Staff + Technicians into unified HRM
-7. **Payroll page** -- Monthly salary processing
-8. **Audit Logs page** -- System-wide action log viewer
-9. **Route cleanup** -- Add new routes, redirect old ones
-10. **Sales page update** -- Add "Convert to Invoice" action
+### New Files
+- `supabase/functions/hikvision-sync/index.ts` -- Edge function for device communication
 
----
-
-## Technical Summary
+### Modified Files
+- `src/pages/Attendance.tsx` -- Add tabs for Devices, Sync Logs, Employee Mapping, Device Logs
+- `src/components/layout/AppSidebar.tsx` -- No changes needed (Attendance already under HRM)
 
 ### Database Migration
-- 7 new tables: `leads`, `tasks`, `invoices`, `invoice_items`, `employees`, `payroll`, `system_audit_log`
-- 1 new trigger: `generate_invoice_number()`
-- RLS policies for all tables following existing admin/staff/technician pattern
+- Create 4 new tables with RLS policies
+- Seed default device record
+- Update `supabase/config.toml` to register the new edge function
 
-### New Files (7)
-- `src/pages/Leads.tsx`
-- `src/pages/Invoices.tsx`
-- `src/pages/Tasks.tsx`
-- `src/pages/Employees.tsx`
-- `src/pages/Payroll.tsx`
-- `src/pages/AuditLogs.tsx`
+## 5. Implementation Order
 
-### Modified Files (5)
-- `src/components/layout/AppSidebar.tsx` -- complete restructure with expandable sub-menus
-- `src/App.tsx` -- new routes + redirects
-- `src/pages/Sales.tsx` -- rename + add invoice conversion
-- `src/pages/Inventory.tsx` -- add Stock Movements tab
-- `src/pages/Reports.tsx` -- add Finance Reports tab
+1. Database migration -- 4 new tables + RLS + seed data
+2. Edge function -- `hikvision-sync` with test/sync operations
+3. Attendance page overhaul -- Add 4 new tabs with full CRUD
+4. Deploy and test edge function
 
-### Deleted Files
-- `src/pages/Staff.tsx` -- replaced by Employees.tsx
-- `src/pages/Customers.tsx` -- already just a redirect
+## Network Considerations
 
-### No New Dependencies
-- Uses existing shadcn/ui, recharts, lucide-react components
+The Hikvision device is on a private network (10.0.1.116). For the cloud-based sync to reach it:
+- Option A: Port forward the device to a public IP (configure that IP in the device settings)
+- Option B: Use a VPN that makes the device accessible
+- Option C: Access the ERP from the same local network (browser-based sync)
+
+The system stores connection details per device, so it works with any accessible IP/hostname.
 
