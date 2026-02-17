@@ -490,6 +490,182 @@ export type Database = {
           },
         ]
       }
+      hikvision_attendance_logs: {
+        Row: {
+          created_at: string
+          device_id: string | null
+          device_ip: string | null
+          device_name: string | null
+          employee_code: string | null
+          employee_id: string | null
+          employee_name: string | null
+          event_time: string
+          event_type: string | null
+          id: string
+          raw_data: Json | null
+        }
+        Insert: {
+          created_at?: string
+          device_id?: string | null
+          device_ip?: string | null
+          device_name?: string | null
+          employee_code?: string | null
+          employee_id?: string | null
+          employee_name?: string | null
+          event_time: string
+          event_type?: string | null
+          id?: string
+          raw_data?: Json | null
+        }
+        Update: {
+          created_at?: string
+          device_id?: string | null
+          device_ip?: string | null
+          device_name?: string | null
+          employee_code?: string | null
+          employee_id?: string | null
+          employee_name?: string | null
+          event_time?: string
+          event_type?: string | null
+          id?: string
+          raw_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hikvision_attendance_logs_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "hikvision_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hikvision_attendance_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hikvision_devices: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          ip_address: string
+          last_sync_at: string | null
+          name: string
+          password: string | null
+          port: number
+          status: string
+          username: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ip_address: string
+          last_sync_at?: string | null
+          name: string
+          password?: string | null
+          port?: number
+          status?: string
+          username?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ip_address?: string
+          last_sync_at?: string | null
+          name?: string
+          password?: string | null
+          port?: number
+          status?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      hikvision_employee_mapping: {
+        Row: {
+          created_at: string
+          device_employee_code: string
+          device_employee_name: string | null
+          device_id: string | null
+          erp_employee_id: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          device_employee_code: string
+          device_employee_name?: string | null
+          device_id?: string | null
+          erp_employee_id?: string | null
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          device_employee_code?: string
+          device_employee_name?: string | null
+          device_id?: string | null
+          erp_employee_id?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hikvision_employee_mapping_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "hikvision_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hikvision_employee_mapping_erp_employee_id_fkey"
+            columns: ["erp_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hikvision_sync_log: {
+        Row: {
+          action: string
+          created_at: string
+          device_id: string | null
+          error_message: string | null
+          id: string
+          records_synced: number | null
+          status: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          device_id?: string | null
+          error_message?: string | null
+          id?: string
+          records_synced?: number | null
+          status?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          device_id?: string | null
+          error_message?: string | null
+          id?: string
+          records_synced?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hikvision_sync_log_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "hikvision_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_items: {
         Row: {
           gst_percentage: number | null
