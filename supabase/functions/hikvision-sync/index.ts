@@ -78,7 +78,17 @@ serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { action, device_id, device_serial } = body;
+    const { action, device_id } = body;
+    // Support both device_serial in body and ip_address field (which stores serial)
+    let device_serial = body.device_serial;
+    if (!device_serial && device_id) {
+      const { data: dev } = await supabase
+        .from("hikvision_devices")
+        .select("ip_address")
+        .eq("id", device_id)
+        .single();
+      device_serial = dev?.ip_address;
+    }
 
     // ── ACTION: test ──
     if (action === "test") {
@@ -93,7 +103,7 @@ serve(async (req: Request) => {
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${accessToken}`,
-              "X-Device-Serial": device_serial,
+              "x-devserial": device_serial,
             },
             signal: AbortSignal.timeout(15000),
           }
@@ -214,7 +224,7 @@ serve(async (req: Request) => {
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${accessToken}`,
-              "X-Device-Serial": device_serial,
+              "x-devserial": device_serial,
             },
             body: JSON.stringify(searchBody),
             signal: AbortSignal.timeout(30000),
