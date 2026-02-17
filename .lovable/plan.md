@@ -1,195 +1,127 @@
 
 
-# Phase 8: Advanced Finance Module -- Daily Finance Control System
+# Phase 9: Settings Overhaul, Staff Management, and System Enhancements
 
-This phase introduces a full financial control system with income/expense tracking, account management, transfers, daily cash control, and audit logging -- all while keeping the existing `payments` table for POS/invoice payments.
-
----
-
-## 1. Database Schema
-
-### New Tables
-
-**`finance_accounts`** -- Bank, Cash, UPI, and Gateway accounts
-
-| Column | Type | Default |
-|--------|------|---------|
-| id | UUID PK | gen_random_uuid() |
-| name | TEXT NOT NULL | |
-| type | TEXT NOT NULL | 'cash' (cash/bank/upi/gateway) |
-| account_number | TEXT | |
-| bank_name | TEXT | |
-| opening_balance | NUMERIC | 0 |
-| current_balance | NUMERIC | 0 |
-| status | TEXT | 'active' |
-| created_by | UUID | |
-| created_at | TIMESTAMPTZ | now() |
-| updated_at | TIMESTAMPTZ | now() |
-
-**`finance_categories`** -- Income and Expense categories
-
-| Column | Type | Default |
-|--------|------|---------|
-| id | UUID PK | gen_random_uuid() |
-| name | TEXT NOT NULL | |
-| type | TEXT NOT NULL | (income/expense) |
-| status | TEXT | 'active' |
-| created_at | TIMESTAMPTZ | now() |
-
-Seed with default categories: POS Sales, Repair Income, Service Income, Other Income, Salary, Rent, Purchase, Utilities, Maintenance, Misc Expense.
-
-**`finance_transactions`** -- All income, expense, and transfer entries
-
-| Column | Type | Default |
-|--------|------|---------|
-| id | UUID PK | gen_random_uuid() |
-| transaction_id | TEXT | auto-generated (FIN-NNNNN) |
-| type | TEXT NOT NULL | (income/expense/transfer) |
-| date | DATE | CURRENT_DATE |
-| amount | NUMERIC NOT NULL | |
-| payment_mode | TEXT | (cash/bank/upi/card/gateway) |
-| account_id | UUID FK finance_accounts | |
-| to_account_id | UUID FK finance_accounts | (for transfers) |
-| category_id | UUID FK finance_categories | |
-| customer_id | UUID FK customers | nullable |
-| reference | TEXT | (invoice/job sheet number) |
-| description | TEXT | |
-| attachment_url | TEXT | |
-| balance_after | NUMERIC | |
-| created_by | UUID | |
-| staff_name | TEXT | (denormalized for audit) |
-| created_at | TIMESTAMPTZ | now() |
-
-**`finance_audit_log`** -- Immutable audit trail for all finance actions
-
-| Column | Type | Default |
-|--------|------|---------|
-| id | UUID PK | gen_random_uuid() |
-| action | TEXT NOT NULL | |
-| entity_type | TEXT | (transaction/account/category) |
-| entity_id | UUID | |
-| details | TEXT | |
-| staff_name | TEXT | |
-| user_id | UUID | |
-| user_role | TEXT | |
-| ip_address | TEXT | |
-| created_at | TIMESTAMPTZ | now() |
-
-**`daily_cash_control`** -- Daily opening/closing cash tracking
-
-| Column | Type | Default |
-|--------|------|---------|
-| id | UUID PK | gen_random_uuid() |
-| date | DATE UNIQUE | |
-| opening_cash | NUMERIC | 0 |
-| closing_cash | NUMERIC | |
-| difference | NUMERIC | |
-| staff_name | TEXT | |
-| created_by | UUID | |
-| created_at | TIMESTAMPTZ | now() |
-
-### Triggers
-
-- `generate_finance_transaction_id()`: auto-generates `FIN-00001` format
-- `update_account_balance_on_transaction()`: on INSERT to `finance_transactions`, adjusts `finance_accounts.current_balance` (add for income, subtract for expense, both for transfer)
-- `log_finance_action()`: on INSERT to `finance_transactions`, auto-creates audit log entry
-
-### RLS Policies
-
-- Admin: full access on all finance tables
-- Staff: SELECT, INSERT on transactions, accounts, categories; SELECT on audit log
-- Audit log: INSERT only, no UPDATE/DELETE for anyone
+This phase consolidates Templates into Settings, adds comprehensive configuration tabs, enhances Staff Directory with Add/Edit capabilities, and fixes the Technician Dashboard to show only assigned data.
 
 ---
 
-## 2. Frontend Pages
+## 1. Move Templates into Settings
 
-### New Page: `src/pages/Finance.tsx`
-A tabbed finance hub with sub-tabs:
+Remove the standalone `/templates` route and page. Instead, add a "Templates" tab inside the Settings page. The existing Templates component logic will be embedded as a sub-tab within Settings.
 
-**Tab: Dashboard**
-- KPI cards: Cash Balance, Bank Balance, Today Income, Today Expense, Monthly Income, Monthly Expense, Net Balance
-- Charts: Daily cash flow (7 days), Income vs Expense bar chart, Category breakdown pie chart
-
-**Tab: Income**
-- Table of income entries with search, date filter
-- Slide-over form to create income entry with all fields (date, amount, payment mode, account, category, customer, reference, description, attachment)
-- Staff name auto-captured from logged-in user profile
-
-**Tab: Expenses**
-- Same layout as Income but for expense entries
-- Vendor field instead of customer
-
-**Tab: Transfers**
-- Table of transfer records
-- Slide-over form: From Account, To Account, Amount, Date, Description
-
-**Tab: Accounts**
-- Table of all accounts with current balances
-- Slide-over form to create/edit accounts
-
-**Tab: Categories**
-- Two-column layout: Income categories and Expense categories
-- Inline add with type toggle
-
-**Tab: Ledger**
-- Full chronological transaction list with running balance
-- Columns: Date, Transaction ID, Type, Category, Account, Amount, Staff, Reference, Balance
-- Search, filter by type/account/date range, export (CSV)
-
-**Tab: Cash Control**
-- Daily opening/closing cash entry form
-- History table showing daily records with variance
-
-**Tab: Audit Log**
-- Read-only table of all finance audit entries
-- Filter by action type, date range
+**Changes:**
+- Remove `Templates` from sidebar navigation (SYSTEM category will only have "Settings")
+- Remove `/templates` route from `App.tsx`
+- Move the Templates UI into a new tab within `Settings.tsx`
 
 ---
 
-## 3. Sidebar Update
+## 2. Enhanced Settings Page -- New Tabs
 
-Replace the single "Payments" item in the OPERATIONS category with "Finance" pointing to `/finance`. The old `/payments` route will redirect to `/finance`.
+The Settings page will be restructured with these tabs (admin-only tabs marked):
 
+| Tab | Content | Access |
+|-----|---------|--------|
+| Profile | Existing profile + password form | All users |
+| Users | Existing user/role management | Admin only |
+| Business | Enhanced: company info, logo upload, address, timezone | Admin only |
+| GST | GST number, GSTIN, HSN/SAC defaults, tax rates (CGST/SGST/IGST) | Admin only |
+| Email/SMTP | SMTP host, port, username, password, from name, from email, test button | Admin only |
+| SMS | API URL, API key, sender ID, DLT entity ID, test button | Admin only |
+| WhatsApp | WhatsApp Business API URL, API key, phone number ID | Admin only |
+| Hikvision | Device IP, username, password, sync settings for facial access | Admin only |
+| Templates | Merged from existing Templates page | Admin only |
+
+### Database Changes
+Add columns to `business_settings`:
+- `timezone` TEXT default 'Asia/Kolkata'
+- `gst_state_code` TEXT
+- `gst_type` TEXT (regular/composition)
+- `default_cgst_rate` NUMERIC default 9
+- `default_sgst_rate` NUMERIC default 9
+- `default_igst_rate` NUMERIC default 18
+- `hsn_default` TEXT
+- `whatsapp_api_url` TEXT
+- `whatsapp_api_key` TEXT
+- `whatsapp_phone_id` TEXT
+
+The existing `integrations` JSONB column already stores SMS/SMTP/Hikvision credentials -- these will now have dedicated UI sections within Settings instead of the generic "Integrations" tab.
+
+---
+
+## 3. Staff Directory Enhancement -- Add/Edit Staff
+
+Currently Staff page is read-only. Add:
+- **"Add Staff" button** (Admin only) -- opens a slide-over form
+- **"Edit" button** on each staff card (Admin only)
+- **Staff creation form fields:**
+  - Full Name (required)
+  - Email (required -- used to create auth account)
+  - Phone
+  - Role selection (Admin/Staff/Technician)
+  - Password (for new accounts)
+- Staff creation will use a backend function to create the auth user and assign the role
+- Edit allows changing name, phone, and role
+
+### New Edge Function: `manage-staff`
+Creates a new user via Supabase Admin API (service role key), sets their profile, and assigns a role. This is needed because client-side cannot create users for other people.
+
+---
+
+## 4. Technician Dashboard Fix
+
+Currently the Technician Dashboard shows "My Repairs" but an admin user visiting `/technicians` sees their own data (which is empty since admins aren't assigned repairs). 
+
+**Fix:**
+- For admin/staff users visiting `/technicians`, show a **Staff Directory of Technicians** with their assigned jobs count
+- For technician-role users, show the existing "My Repairs" dashboard with their assigned jobs
+- This way admins see an overview of all technicians and their workload
+
+---
+
+## 5. Sidebar Navigation Update
+
+Remove Templates from SYSTEM category. Merge Technicians and Staff into a single "Team" page or keep them separate but ensure the routing logic is clear.
+
+Updated sidebar:
 ```
-OPERATIONS
-  Attendance
-  Finance        <-- replaces "Payments"
-  Reports
+SYSTEM
+  Settings       (includes Templates, Business, GST, Integrations)
 ```
 
----
-
-## 4. Route Changes in App.tsx
-
-- Add `/finance` route pointing to `Finance.tsx`
-- Keep `/payments` as a redirect to `/finance` for backward compatibility
-
----
-
-## 5. Integration with Existing Data
-
-- The existing `payments` table remains untouched for POS and invoice payment records
-- The Finance Dashboard KPIs will aggregate data from both `finance_transactions` AND `payments` tables to give a complete picture
-- When a POS sale or invoice payment is recorded, staff can optionally create a corresponding finance income entry to keep the finance ledger in sync
+The TEAM category stays as-is:
+```
+TEAM
+  Technicians    (admin sees overview, technician sees own repairs)
+  Staff          (admin sees directory with add/edit)
+```
 
 ---
 
 ## Technical Summary
 
 ### Database Migration
-- Create 5 new tables: `finance_accounts`, `finance_categories`, `finance_transactions`, `finance_audit_log`, `daily_cash_control`
-- Create 3 triggers for auto-numbering, balance updates, and audit logging
-- Seed default categories
-- RLS policies for admin/staff access
+- Add columns to `business_settings`: `timezone`, `gst_state_code`, `gst_type`, `default_cgst_rate`, `default_sgst_rate`, `default_igst_rate`, `hsn_default`, `whatsapp_api_url`, `whatsapp_api_key`, `whatsapp_phone_id`
 
-### New Files
-- `src/pages/Finance.tsx` -- main finance module with all tabs
+### New Edge Function
+- `supabase/functions/manage-staff/index.ts` -- creates/updates staff users via admin API
 
-### Modified Files
-- `src/App.tsx` -- add `/finance` route
-- `src/components/layout/AppSidebar.tsx` -- replace Payments with Finance in OPERATIONS
+### Files to Delete
+- None (Templates page kept but route removed; code merged into Settings)
 
-### No New Dependencies
-- Uses existing UI components (Tabs, Sheet, Table, Charts from recharts)
+### Files to Modify
+- `src/pages/Settings.tsx` -- major rewrite with 9 tabs, merged Templates, logo upload, GST settings, integration sections
+- `src/pages/Staff.tsx` -- add "Add Staff" and "Edit" slide-over forms
+- `src/pages/TechnicianDashboard.tsx` -- role-aware: admin sees technician overview, technician sees own repairs
+- `src/App.tsx` -- remove `/templates` route (redirect to `/settings`)
+- `src/components/layout/AppSidebar.tsx` -- remove Templates from SYSTEM
+
+### Implementation Order
+1. Database migration (new columns on business_settings)
+2. Edge function for staff management
+3. Settings page overhaul with all tabs
+4. Staff page enhancement with add/edit
+5. Technician dashboard role-aware logic
+6. Sidebar and routing cleanup
 
