@@ -59,7 +59,6 @@ const adminStaffNav: NavCategory[] = [
   {
     label: "SYSTEM",
     items: [
-      { title: "Templates", url: "/templates", icon: FileText },
       { title: "Settings", url: "/settings", icon: Settings },
     ],
   },

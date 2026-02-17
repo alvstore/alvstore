@@ -60,13 +60,23 @@ export type Database = {
           company_name: string | null
           company_phone: string | null
           created_at: string
+          default_cgst_rate: number | null
+          default_igst_rate: number | null
+          default_sgst_rate: number | null
           gst_number: string | null
+          gst_state_code: string | null
+          gst_type: string | null
+          hsn_default: string | null
           id: string
           integrations: Json | null
           invoice_prefix: string | null
           logo_url: string | null
           quotation_prefix: string | null
+          timezone: string | null
           updated_at: string
+          whatsapp_api_key: string | null
+          whatsapp_api_url: string | null
+          whatsapp_phone_id: string | null
         }
         Insert: {
           company_address?: string | null
@@ -74,13 +84,23 @@ export type Database = {
           company_name?: string | null
           company_phone?: string | null
           created_at?: string
+          default_cgst_rate?: number | null
+          default_igst_rate?: number | null
+          default_sgst_rate?: number | null
           gst_number?: string | null
+          gst_state_code?: string | null
+          gst_type?: string | null
+          hsn_default?: string | null
           id?: string
           integrations?: Json | null
           invoice_prefix?: string | null
           logo_url?: string | null
           quotation_prefix?: string | null
+          timezone?: string | null
           updated_at?: string
+          whatsapp_api_key?: string | null
+          whatsapp_api_url?: string | null
+          whatsapp_phone_id?: string | null
         }
         Update: {
           company_address?: string | null
@@ -88,13 +108,23 @@ export type Database = {
           company_name?: string | null
           company_phone?: string | null
           created_at?: string
+          default_cgst_rate?: number | null
+          default_igst_rate?: number | null
+          default_sgst_rate?: number | null
           gst_number?: string | null
+          gst_state_code?: string | null
+          gst_type?: string | null
+          hsn_default?: string | null
           id?: string
           integrations?: Json | null
           invoice_prefix?: string | null
           logo_url?: string | null
           quotation_prefix?: string | null
+          timezone?: string | null
           updated_at?: string
+          whatsapp_api_key?: string | null
+          whatsapp_api_url?: string | null
+          whatsapp_phone_id?: string | null
         }
         Relationships: []
       }
