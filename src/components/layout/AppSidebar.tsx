@@ -45,7 +45,7 @@ const adminStaffNav: NavCategory[] = [
     label: "OPERATIONS",
     items: [
       { title: "Attendance", url: "/attendance", icon: Clock },
-      { title: "Payments", url: "/payments", icon: CreditCard },
+      { title: "Finance", url: "/finance", icon: CreditCard },
       { title: "Reports", url: "/reports", icon: BarChart3 },
     ],
   },

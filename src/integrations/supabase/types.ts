@@ -149,6 +149,39 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_cash_control: {
+        Row: {
+          closing_cash: number | null
+          created_at: string
+          created_by: string | null
+          date: string
+          difference: number | null
+          id: string
+          opening_cash: number
+          staff_name: string | null
+        }
+        Insert: {
+          closing_cash?: number | null
+          created_at?: string
+          created_by?: string | null
+          date: string
+          difference?: number | null
+          id?: string
+          opening_cash?: number
+          staff_name?: string | null
+        }
+        Update: {
+          closing_cash?: number | null
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          difference?: number | null
+          id?: string
+          opening_cash?: number
+          staff_name?: string | null
+        }
+        Relationships: []
+      }
       device_brands: {
         Row: {
           created_at: string
@@ -184,6 +217,200 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      finance_accounts: {
+        Row: {
+          account_number: string | null
+          bank_name: string | null
+          created_at: string
+          created_by: string | null
+          current_balance: number
+          id: string
+          name: string
+          opening_balance: number
+          status: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          account_number?: string | null
+          bank_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_balance?: number
+          id?: string
+          name: string
+          opening_balance?: number
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          account_number?: string | null
+          bank_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_balance?: number
+          id?: string
+          name?: string
+          opening_balance?: number
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      finance_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          details: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          ip_address: string | null
+          staff_name: string | null
+          user_id: string | null
+          user_role: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          staff_name?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: string | null
+          staff_name?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Relationships: []
+      }
+      finance_categories: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          status: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          status?: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          status?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      finance_transactions: {
+        Row: {
+          account_id: string | null
+          amount: number
+          attachment_url: string | null
+          balance_after: number | null
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          date: string
+          description: string | null
+          id: string
+          payment_mode: string | null
+          reference: string | null
+          staff_name: string | null
+          to_account_id: string | null
+          transaction_id: string
+          type: string
+        }
+        Insert: {
+          account_id?: string | null
+          amount: number
+          attachment_url?: string | null
+          balance_after?: number | null
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          date?: string
+          description?: string | null
+          id?: string
+          payment_mode?: string | null
+          reference?: string | null
+          staff_name?: string | null
+          to_account_id?: string | null
+          transaction_id?: string
+          type: string
+        }
+        Update: {
+          account_id?: string | null
+          amount?: number
+          attachment_url?: string | null
+          balance_after?: number | null
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          date?: string
+          description?: string | null
+          id?: string
+          payment_mode?: string | null
+          reference?: string | null
+          staff_name?: string | null
+          to_account_id?: string | null
+          transaction_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "finance_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "finance_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_transactions_to_account_id_fkey"
+            columns: ["to_account_id"]
+            isOneToOne: false
+            referencedRelation: "finance_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_sheet_audit_log: {
         Row: {

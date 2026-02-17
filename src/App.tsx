@@ -24,6 +24,7 @@ import TechnicianDashboard from "./pages/TechnicianDashboard";
 import Settings from "./pages/Settings";
 import POS from "./pages/POS";
 import Payments from "./pages/Payments";
+import Finance from "./pages/Finance";
 import Attendance from "./pages/Attendance";
 import Staff from "./pages/Staff";
 import Customers from "./pages/Customers";
@@ -66,7 +67,8 @@ const App = () => (
               <Route path="/repairs/new" element={<JobSheetCreate />} />
               <Route path="/repairs/:id" element={<JobSheetDetail />} />
               <Route path="/attendance" element={<Attendance />} />
-              <Route path="/payments" element={<Payments />} />
+              <Route path="/finance" element={<Finance />} />
+              <Route path="/payments" element={<Finance />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/technicians" element={<TechnicianDashboard />} />
