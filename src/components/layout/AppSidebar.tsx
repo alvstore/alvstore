@@ -1,7 +1,10 @@
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Users, ShoppingCart, Monitor, Package,
-  Wrench, Clock, CreditCard, BarChart3, UserCheck,
-  UserCog, FileText, Settings, ChevronLeft, ChevronRight, Home,
+  Wrench, Clock, CreditCard, BarChart3, FileText, Settings,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
+  Target, ClipboardList, Receipt, ArrowRightLeft, UserCog,
+  Wallet, Shield,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,49 +19,67 @@ interface NavItem {
 interface NavCategory {
   label: string;
   items: NavItem[];
+  children?: NavItem[];
 }
 
 const adminStaffNav: NavCategory[] = [
   {
     label: "MAIN",
-    items: [
-      { title: "Dashboard", url: "/", icon: LayoutDashboard },
-    ],
+    items: [{ title: "Dashboard", url: "/", icon: LayoutDashboard }],
   },
   {
-    label: "BUSINESS",
+    label: "CRM",
     items: [
-      { title: "CRM", url: "/crm", icon: Users },
-      { title: "Sales", url: "/sales", icon: ShoppingCart },
-      { title: "POS", url: "/pos", icon: Monitor },
-      { title: "Inventory", url: "/inventory", icon: Package },
-    ],
-  },
-  {
-    label: "SERVICE",
-    items: [
-      { title: "Repair Management", url: "/repairs", icon: Wrench },
+      { title: "Leads", url: "/leads", icon: Target },
       { title: "Customers", url: "/customers", icon: Users },
     ],
   },
   {
-    label: "OPERATIONS",
+    label: "SALES",
     items: [
-      { title: "Attendance", url: "/attendance", icon: Clock },
-      { title: "Finance", url: "/finance", icon: CreditCard },
-      { title: "Reports", url: "/reports", icon: BarChart3 },
+      { title: "Quotations", url: "/sales", icon: ShoppingCart },
+      { title: "Invoices", url: "/invoices", icon: Receipt },
     ],
   },
   {
-    label: "TEAM",
+    label: "POS",
+    items: [{ title: "POS Terminal", url: "/pos", icon: Monitor }],
+  },
+  {
+    label: "INVENTORY",
     items: [
-      { title: "Technicians", url: "/technicians", icon: UserCheck },
-      { title: "Staff", url: "/staff", icon: UserCog },
+      { title: "Products", url: "/inventory", icon: Package },
+      { title: "Stock Movements", url: "/inventory?tab=movements", icon: ArrowRightLeft },
     ],
+  },
+  {
+    label: "REPAIR",
+    items: [{ title: "Repair Management", url: "/repairs", icon: Wrench }],
+  },
+  {
+    label: "FINANCE",
+    items: [{ title: "Finance", url: "/finance", icon: CreditCard }],
+  },
+  {
+    label: "HRM",
+    items: [
+      { title: "Employees", url: "/employees", icon: UserCog },
+      { title: "Attendance", url: "/attendance", icon: Clock },
+      { title: "Payroll", url: "/payroll", icon: Wallet },
+    ],
+  },
+  {
+    label: "TASKS",
+    items: [{ title: "Task Management", url: "/tasks", icon: ClipboardList }],
+  },
+  {
+    label: "REPORTS",
+    items: [{ title: "Reports", url: "/reports", icon: BarChart3 }],
   },
   {
     label: "SYSTEM",
     items: [
+      { title: "Audit Logs", url: "/audit-logs", icon: Shield },
       { title: "Settings", url: "/settings", icon: Settings },
     ],
   },
@@ -74,6 +95,7 @@ const customerNav: NavCategory[] = [
 const technicianNav: NavCategory[] = [
   { label: "MAIN", items: [
     { title: "My Repairs", url: "/technicians", icon: Wrench },
+    { title: "My Tasks", url: "/tasks", icon: ClipboardList },
     { title: "Settings", url: "/settings", icon: Settings },
   ]},
 ];
@@ -85,12 +107,33 @@ interface AppSidebarProps {
 
 export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const { hasRole } = useAuth();
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const navCategories = hasRole("customer")
     ? customerNav
     : hasRole("technician") && !hasRole("admin") && !hasRole("staff")
     ? technicianNav
     : adminStaffNav;
+
+  // Initialize expanded state from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("sidebar-expanded");
+      if (saved) setExpandedCategories(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  const toggleCategory = (label: string) => {
+    setExpandedCategories(prev => {
+      const next = { ...prev, [label]: !prev[label] };
+      localStorage.setItem("sidebar-expanded", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const isCategoryExpanded = (label: string) => {
+    return expandedCategories[label] !== false; // default open
+  };
 
   return (
     <aside
@@ -112,31 +155,48 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       </div>
 
       {/* Nav Items */}
-      <nav className="flex-1 overflow-y-auto scrollbar-thin py-3 px-2 space-y-1">
-        {navCategories.map((category) => (
-          <div key={category.label}>
-            {!collapsed && (
-              <p className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-widest text-sidebar-foreground/40 uppercase">
-                {category.label}
-              </p>
-            )}
-            {collapsed && <div className="h-3" />}
-            <div className="space-y-0.5">
-              {category.items.map((item) => (
-                <NavLink
-                  key={item.url}
-                  to={item.url}
-                  end={item.url === "/"}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  activeClassName="bg-sidebar-primary/15 text-sidebar-primary font-medium"
+      <nav className="flex-1 overflow-y-auto scrollbar-thin py-3 px-2 space-y-0.5">
+        {navCategories.map((category) => {
+          const hasMultipleItems = category.items.length > 1;
+          const expanded = isCategoryExpanded(category.label);
+
+          return (
+            <div key={category.label}>
+              {!collapsed && hasMultipleItems ? (
+                <button
+                  onClick={() => toggleCategory(category.label)}
+                  className="w-full flex items-center justify-between px-3 pt-4 pb-1 text-[10px] font-semibold tracking-widest text-sidebar-foreground/40 uppercase hover:text-sidebar-foreground/60 transition-colors"
                 >
-                  <item.icon className="h-4.5 w-4.5 shrink-0" />
-                  {!collapsed && <span>{item.title}</span>}
-                </NavLink>
-              ))}
+                  <span>{category.label}</span>
+                  {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+              ) : !collapsed ? (
+                <p className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-widest text-sidebar-foreground/40 uppercase">
+                  {category.label}
+                </p>
+              ) : (
+                <div className="h-3" />
+              )}
+
+              {(collapsed || !hasMultipleItems || expanded) && (
+                <div className="space-y-0.5">
+                  {category.items.map((item) => (
+                    <NavLink
+                      key={item.url}
+                      to={item.url}
+                      end={item.url === "/"}
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      activeClassName="bg-sidebar-primary/15 text-sidebar-primary font-medium"
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Collapse toggle */}
