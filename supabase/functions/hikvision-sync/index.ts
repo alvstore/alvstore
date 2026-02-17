@@ -83,7 +83,11 @@ serve(async (req: Request) => {
           );
         }
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Connection failed";
+        const rawMsg = e instanceof Error ? e.message : "Connection failed";
+        const isTimeout = rawMsg.includes("timed out") || rawMsg.includes("TimeoutError");
+        const errMsg = isTimeout
+          ? "Connection timed out. The device at " + ip_address + " is not reachable from the cloud. Ensure the device is accessible via a public IP or port forwarding."
+          : rawMsg;
         await supabase.from("hikvision_sync_log").insert({
           device_id,
           action: "test_connection",
@@ -91,7 +95,7 @@ serve(async (req: Request) => {
           error_message: errMsg,
         });
         return new Response(
-          JSON.stringify({ success: false, status: "failed", error: errMsg }),
+          JSON.stringify({ success: false, status: "unreachable", error: errMsg }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -231,7 +235,11 @@ serve(async (req: Request) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Sync failed";
+        const rawMsg = e instanceof Error ? e.message : "Sync failed";
+        const isTimeout = rawMsg.includes("timed out") || rawMsg.includes("TimeoutError");
+        const errMsg = isTimeout
+          ? "Connection timed out. The device at " + ip_address + " is not reachable from the cloud. Ensure the device is accessible via a public IP or port forwarding."
+          : rawMsg;
         await supabase.from("hikvision_sync_log").insert({
           device_id,
           action: "sync_failed",
@@ -240,7 +248,7 @@ serve(async (req: Request) => {
         });
         return new Response(
           JSON.stringify({ success: false, error: errMsg }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
