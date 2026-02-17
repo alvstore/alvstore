@@ -7,6 +7,41 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Hik-Partner Pro Cloud API
+const HPP_BASE_URL = "https://api.hik-partner.com";
+
+interface TokenResponse {
+  data?: { accessToken: string; expireTime: number; areaDomain: string };
+  errorCode: string;
+}
+
+// Cache token in memory (valid for 7 days, we refresh every call for simplicity in edge functions)
+async function getHppToken(): Promise<{ accessToken: string; areaDomain: string }> {
+  const appKey = Deno.env.get("HIK_PARTNER_APP_KEY");
+  const secretKey = Deno.env.get("HIK_PARTNER_SECRET_KEY");
+
+  if (!appKey || !secretKey) {
+    throw new Error("HIK_PARTNER_APP_KEY and HIK_PARTNER_SECRET_KEY must be configured");
+  }
+
+  const resp = await fetch(`${HPP_BASE_URL}/api/hpcgw/v1/token/get`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ appKey, secretKey }),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Token request failed: HTTP ${resp.status}`);
+  }
+
+  const result: TokenResponse = await resp.json();
+  if (result.errorCode !== "0" || !result.data?.accessToken) {
+    throw new Error(`Token error: ${result.errorCode}`);
+  }
+
+  return { accessToken: result.data.accessToken, areaDomain: result.data.areaDomain };
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -43,23 +78,29 @@ serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { action, device_id, ip_address, port, username, password } = body;
+    const { action, device_id, device_serial } = body;
 
-    const deviceUrl = `http://${ip_address}:${port || 80}`;
-    const authString = btoa(`${username || "admin"}:${password || ""}`);
-
+    // ── ACTION: test ──
     if (action === "test") {
-      // Test connection via /ISAPI/System/deviceInfo
       try {
-        const resp = await fetch(`${deviceUrl}/ISAPI/System/deviceInfo`, {
-          method: "GET",
-          headers: { Authorization: `Basic ${authString}` },
-          signal: AbortSignal.timeout(10000),
-        });
+        const { accessToken, areaDomain } = await getHppToken();
+
+        // Use device info via transparent ISAPI proxy
+        const resp = await fetch(
+          `${areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/System/deviceInfo`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+              "X-Device-Serial": device_serial,
+            },
+            signal: AbortSignal.timeout(15000),
+          }
+        );
 
         if (resp.ok) {
           const text = await resp.text();
-          // Log success
           await supabase.from("hikvision_sync_log").insert({
             device_id,
             action: "test_connection",
@@ -75,19 +116,15 @@ serve(async (req: Request) => {
             device_id,
             action: "test_connection",
             status: "error",
-            error_message: `HTTP ${resp.status}: ${errorText.substring(0, 200)}`,
+            error_message: `HTTP ${resp.status}: ${errorText.substring(0, 500)}`,
           });
           return new Response(
-            JSON.stringify({ success: false, status: "failed", error: `HTTP ${resp.status}` }),
+            JSON.stringify({ success: false, status: "failed", error: `HTTP ${resp.status}: ${errorText.substring(0, 200)}` }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
       } catch (e) {
-        const rawMsg = e instanceof Error ? e.message : "Connection failed";
-        const isTimeout = rawMsg.includes("timed out") || rawMsg.includes("TimeoutError");
-        const errMsg = isTimeout
-          ? "Connection timed out. The device at " + ip_address + " is not reachable from the cloud. Ensure the device is accessible via a public IP or port forwarding."
-          : rawMsg;
+        const errMsg = e instanceof Error ? e.message : "Connection failed";
         await supabase.from("hikvision_sync_log").insert({
           device_id,
           action: "test_connection",
@@ -95,14 +132,49 @@ serve(async (req: Request) => {
           error_message: errMsg,
         });
         return new Response(
-          JSON.stringify({ success: false, status: "unreachable", error: errMsg }),
+          JSON.stringify({ success: false, status: "error", error: errMsg }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
 
+    // ── ACTION: list-devices ──
+    if (action === "list-devices") {
+      try {
+        const { accessToken, areaDomain } = await getHppToken();
+        const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ page: 1, pageSize: 100 }),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        const result = await resp.json();
+        if (result.errorCode !== "0") {
+          return new Response(
+            JSON.stringify({ success: false, error: `API error: ${result.errorCode}` }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, devices: result.data?.rows || [] }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : "Failed to list devices";
+        return new Response(
+          JSON.stringify({ success: false, error: errMsg }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // ── ACTION: sync ──
     if (action === "sync") {
-      // Log sync start
       await supabase.from("hikvision_sync_log").insert({
         device_id,
         action: "sync_started",
@@ -110,6 +182,8 @@ serve(async (req: Request) => {
       });
 
       try {
+        const { accessToken, areaDomain } = await getHppToken();
+
         // Get last sync time for this device
         const { data: device } = await supabase
           .from("hikvision_devices")
@@ -117,6 +191,7 @@ serve(async (req: Request) => {
           .eq("id", device_id)
           .single();
 
+        // Use transparent ISAPI proxy to search access control events
         const searchBody: Record<string, unknown> = {
           AcsEventCond: {
             searchID: crypto.randomUUID(),
@@ -127,19 +202,19 @@ serve(async (req: Request) => {
           },
         };
 
-        // If we have a last sync time, only fetch events after that
         if (device?.last_sync_at) {
-          searchBody.AcsEventCond.startTime = device.last_sync_at;
+          (searchBody.AcsEventCond as Record<string, unknown>).startTime = device.last_sync_at;
         }
-        searchBody.AcsEventCond.endTime = new Date().toISOString();
+        (searchBody.AcsEventCond as Record<string, unknown>).endTime = new Date().toISOString();
 
         const resp = await fetch(
-          `${deviceUrl}/ISAPI/AccessControl/AcsEvent?format=json`,
+          `${areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/AccessControl/AcsEvent?format=json`,
           {
             method: "POST",
             headers: {
-              Authorization: `Basic ${authString}`,
               "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+              "X-Device-Serial": device_serial,
             },
             body: JSON.stringify(searchBody),
             signal: AbortSignal.timeout(30000),
@@ -148,7 +223,7 @@ serve(async (req: Request) => {
 
         if (!resp.ok) {
           const errorText = await resp.text();
-          throw new Error(`Device returned HTTP ${resp.status}: ${errorText.substring(0, 200)}`);
+          throw new Error(`Device returned HTTP ${resp.status}: ${errorText.substring(0, 500)}`);
         }
 
         const data = await resp.json();
@@ -204,7 +279,7 @@ serve(async (req: Request) => {
                 employee_code: employeeCode,
                 employee_name: employeeName,
                 employee_id: mapping?.erp_employee_id || null,
-                device_ip: ip_address,
+                device_ip: device_serial,
                 device_name: device?.name || "",
                 event_time: eventTime,
                 event_type: eventType,
@@ -235,11 +310,7 @@ serve(async (req: Request) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } catch (e) {
-        const rawMsg = e instanceof Error ? e.message : "Sync failed";
-        const isTimeout = rawMsg.includes("timed out") || rawMsg.includes("TimeoutError");
-        const errMsg = isTimeout
-          ? "Connection timed out. The device at " + ip_address + " is not reachable from the cloud. Ensure the device is accessible via a public IP or port forwarding."
-          : rawMsg;
+        const errMsg = e instanceof Error ? e.message : "Sync failed";
         await supabase.from("hikvision_sync_log").insert({
           device_id,
           action: "sync_failed",
@@ -253,8 +324,37 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── ACTION: subscribe-events ──
+    if (action === "subscribe-events") {
+      try {
+        const { accessToken, areaDomain } = await getHppToken();
+        
+        // Subscribe to alarm/event messages
+        const resp = await fetch(`${areaDomain}/api/hpcgw/v1/mq/subscribe`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ operationType: "subscribe" }),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        const result = await resp.json();
+        return new Response(
+          JSON.stringify({ success: result.errorCode === "0", data: result }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ success: false, error: e instanceof Error ? e.message : "Failed" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     return new Response(
-      JSON.stringify({ error: "Invalid action. Use 'test' or 'sync'." }),
+      JSON.stringify({ error: "Invalid action. Use 'test', 'sync', 'list-devices', or 'subscribe-events'." }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
