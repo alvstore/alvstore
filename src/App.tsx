@@ -28,7 +28,7 @@ import Finance from "./pages/Finance";
 import Attendance from "./pages/Attendance";
 import Staff from "./pages/Staff";
 import Customers from "./pages/Customers";
-import Templates from "./pages/Templates";
+// Templates merged into Settings
 import Reports from "./pages/Reports";
 import CustomerPortal from "./pages/CustomerPortal";
 import NotFound from "./pages/NotFound";
@@ -73,7 +73,7 @@ const App = () => (
               <Route path="/customers" element={<Customers />} />
               <Route path="/technicians" element={<TechnicianDashboard />} />
               <Route path="/staff" element={<Staff />} />
-              <Route path="/templates" element={<Templates />} />
+              <Route path="/templates" element={<Settings />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/portal" element={<CustomerPortal />} />
             </Route>
