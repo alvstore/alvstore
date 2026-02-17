@@ -17,7 +17,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Clock, LogIn, LogOut, Calendar, Wifi, WifiOff, RefreshCw, Plus, TestTube, Pencil, Trash2, Link,
+  Clock, LogIn, LogOut, Calendar, RefreshCw, Plus, TestTube, Pencil, Trash2, Link, Cloud, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -37,7 +37,7 @@ interface AttendanceRecord {
 interface HikDevice {
   id: string;
   name: string;
-  ip_address: string;
+  ip_address: string; // used as device serial number now
   port: number;
   username: string;
   password: string;
@@ -93,7 +93,7 @@ export default function Attendance() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
-        <p className="text-muted-foreground">Track employee attendance & manage Hikvision devices</p>
+        <p className="text-muted-foreground">Track employee attendance & manage Hikvision devices via Hik-Partner Pro Cloud</p>
       </div>
 
       <Tabs defaultValue="attendance">
@@ -257,7 +257,7 @@ function ManualAttendanceTab() {
 }
 
 // ══════════════════════════════════════
-// TAB 2: Devices
+// TAB 2: Devices (Hik-Partner Pro Cloud)
 // ══════════════════════════════════════
 function DevicesTab() {
   const [devices, setDevices] = useState<HikDevice[]>([]);
@@ -266,7 +266,8 @@ function DevicesTab() {
   const [editDevice, setEditDevice] = useState<HikDevice | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", ip_address: "", port: "80", username: "admin", password: "" });
+  const [fetchingCloud, setFetchingCloud] = useState(false);
+  const [form, setForm] = useState({ name: "", ip_address: "", port: "80" });
 
   const fetchDevices = async () => {
     setLoading(true);
@@ -279,19 +280,19 @@ function DevicesTab() {
 
   const openAdd = () => {
     setEditDevice(null);
-    setForm({ name: "", ip_address: "", port: "80", username: "admin", password: "" });
+    setForm({ name: "", ip_address: "", port: "80" });
     setSheetOpen(true);
   };
 
   const openEdit = (d: HikDevice) => {
     setEditDevice(d);
-    setForm({ name: d.name, ip_address: d.ip_address, port: d.port.toString(), username: d.username || "admin", password: d.password || "" });
+    setForm({ name: d.name, ip_address: d.ip_address, port: d.port.toString() });
     setSheetOpen(true);
   };
 
   const save = async () => {
-    const payload = { name: form.name, ip_address: form.ip_address, port: parseInt(form.port) || 80, username: form.username, password: form.password };
-    if (!payload.name || !payload.ip_address) { toast.error("Name and IP are required"); return; }
+    const payload = { name: form.name, ip_address: form.ip_address, port: parseInt(form.port) || 80 };
+    if (!payload.name || !payload.ip_address) { toast.error("Name and Device Serial are required"); return; }
 
     if (editDevice) {
       const { error } = await supabase.from("hikvision_devices").update(payload).eq("id", editDevice.id);
@@ -310,14 +311,51 @@ function DevicesTab() {
     if (error) toast.error(error.message); else { toast.success("Deleted"); fetchDevices(); }
   };
 
+  const fetchCloudDevices = async () => {
+    setFetchingCloud(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+        body: { action: "list-devices" },
+      });
+      if (error) throw error;
+      if (data?.success && data.devices) {
+        toast.success(`Found ${data.devices.length} devices on Hik-Partner Pro`);
+        // Auto-import devices that don't exist locally
+        let imported = 0;
+        for (const cd of data.devices) {
+          const serial = cd.deviceSerial || cd.serial;
+          if (!serial) continue;
+          const exists = devices.find(d => d.ip_address === serial);
+          if (!exists) {
+            await supabase.from("hikvision_devices").insert({
+              name: cd.deviceName || cd.name || serial,
+              ip_address: serial,
+              port: 80,
+            });
+            imported++;
+          }
+        }
+        if (imported > 0) {
+          toast.success(`Imported ${imported} new devices`);
+          fetchDevices();
+        }
+      } else {
+        toast.error("Failed: " + (data?.error || "Unknown error"));
+      }
+    } catch (e: any) {
+      toast.error("Error: " + (e.message || "Unknown"));
+    }
+    setFetchingCloud(false);
+  };
+
   const testConnection = async (d: HikDevice) => {
     setTestingId(d.id);
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action: "test", device_id: d.id, ip_address: d.ip_address, port: d.port, username: d.username, password: d.password },
+        body: { action: "test", device_id: d.id, device_serial: d.ip_address },
       });
       if (error) throw error;
-      if (data?.success) toast.success("✅ Connected to " + d.name);
+      if (data?.success) toast.success("✅ Connected to " + d.name + " via Hik-Partner Pro Cloud");
       else toast.error("❌ Connection failed: " + (data?.error || "Unknown error"));
     } catch (e: any) {
       toast.error("Connection error: " + (e.message || "Unknown"));
@@ -329,7 +367,7 @@ function DevicesTab() {
     setSyncingId(d.id);
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action: "sync", device_id: d.id, ip_address: d.ip_address, port: d.port, username: d.username, password: d.password },
+        body: { action: "sync", device_id: d.id, device_serial: d.ip_address },
       });
       if (error) throw error;
       if (data?.success) toast.success(`Synced ${data.records_synced} records from ${d.name}`);
@@ -343,9 +381,28 @@ function DevicesTab() {
 
   return (
     <div className="space-y-4">
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="p-4 flex items-start gap-3">
+          <Cloud className="h-5 w-5 text-primary mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-primary">Hik-Partner Pro Cloud Integration</p>
+            <p className="text-muted-foreground mt-1">
+              Devices are accessed via the Hik-Partner Pro Cloud API. Add devices by their serial number,
+              or import them automatically from your Hik-Partner Pro account.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Hikvision Devices</h3>
-        <Button onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Add Device</Button>
+        <h3 className="text-lg font-semibold">Registered Devices</h3>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchCloudDevices} disabled={fetchingCloud}>
+            {fetchingCloud ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            Import from Cloud
+          </Button>
+          <Button onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Add Device</Button>
+        </div>
       </div>
 
       <div className="rounded-lg border bg-card">
@@ -354,17 +411,16 @@ function DevicesTab() {
             <TableRow>
               <TableHead>Status</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>IP Address</TableHead>
-              <TableHead>Port</TableHead>
+              <TableHead>Device Serial</TableHead>
               <TableHead>Last Sync</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : devices.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No devices configured</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No devices configured. Import from cloud or add manually.</TableCell></TableRow>
             ) : devices.map(d => (
               <TableRow key={d.id}>
                 <TableCell>
@@ -376,16 +432,15 @@ function DevicesTab() {
                 </TableCell>
                 <TableCell className="font-medium">{d.name}</TableCell>
                 <TableCell className="font-mono text-sm">{d.ip_address}</TableCell>
-                <TableCell>{d.port}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {d.last_sync_at ? format(new Date(d.last_sync_at), "dd MMM yyyy hh:mm a") : "Never"}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
-                    <Button size="sm" variant="outline" onClick={() => testConnection(d)} disabled={testingId === d.id}>
+                    <Button size="sm" variant="outline" onClick={() => testConnection(d)} disabled={testingId === d.id} title="Test Connection">
                       {testingId === d.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => syncDevice(d)} disabled={syncingId === d.id}>
+                    <Button size="sm" variant="outline" onClick={() => syncDevice(d)} disabled={syncingId === d.id} title="Sync Events">
                       {syncingId === d.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => openEdit(d)}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -403,10 +458,11 @@ function DevicesTab() {
           <SheetHeader><SheetTitle>{editDevice ? "Edit Device" : "Add Device"}</SheetTitle></SheetHeader>
           <div className="space-y-4 mt-6">
             <div><Label>Device Name *</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Office Controller" /></div>
-            <div><Label>IP Address *</Label><Input value={form.ip_address} onChange={e => setForm(p => ({ ...p, ip_address: e.target.value }))} placeholder="10.0.1.116" /></div>
-            <div><Label>Port</Label><Input type="number" value={form.port} onChange={e => setForm(p => ({ ...p, port: e.target.value }))} /></div>
-            <div><Label>Username</Label><Input value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value }))} /></div>
-            <div><Label>Password</Label><Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} /></div>
+            <div>
+              <Label>Device Serial Number *</Label>
+              <Input value={form.ip_address} onChange={e => setForm(p => ({ ...p, ip_address: e.target.value }))} placeholder="e.g. Q01XXXXXX" />
+              <p className="text-xs text-muted-foreground mt-1">The serial number from your Hik-Partner Pro account</p>
+            </div>
             <Button onClick={save} className="w-full">{editDevice ? "Update Device" : "Add Device"}</Button>
           </div>
         </SheetContent>
@@ -524,7 +580,6 @@ function EmployeeMappingTab() {
     let mapped = 0;
     for (const m of mappings) {
       if (m.erp_employee_id) continue;
-      // Try to find employee by matching name
       const match = employees.find(e =>
         e.name.toLowerCase() === (m.device_employee_name || "").toLowerCase()
       );
