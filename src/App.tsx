@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
@@ -23,15 +23,20 @@ import PublicQuotation from "./pages/PublicQuotation";
 import TechnicianDashboard from "./pages/TechnicianDashboard";
 import Settings from "./pages/Settings";
 import POS from "./pages/POS";
-import Payments from "./pages/Payments";
 import Finance from "./pages/Finance";
 import Attendance from "./pages/Attendance";
-import Staff from "./pages/Staff";
 import Customers from "./pages/Customers";
-// Templates merged into Settings
 import Reports from "./pages/Reports";
 import CustomerPortal from "./pages/CustomerPortal";
 import NotFound from "./pages/NotFound";
+
+// New Phase 10 pages
+import Leads from "./pages/Leads";
+import Invoices from "./pages/Invoices";
+import Tasks from "./pages/Tasks";
+import Employees from "./pages/Employees";
+import Payroll from "./pages/Payroll";
+import AuditLogs from "./pages/AuditLogs";
 
 const queryClient = new QueryClient();
 
@@ -60,7 +65,9 @@ const App = () => (
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/crm" element={<CRM />} />
+              <Route path="/leads" element={<Leads />} />
               <Route path="/sales" element={<Sales />} />
+              <Route path="/invoices" element={<Invoices />} />
               <Route path="/pos" element={<POS />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/repairs" element={<JobSheets />} />
@@ -72,9 +79,13 @@ const App = () => (
               <Route path="/reports" element={<Reports />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/technicians" element={<TechnicianDashboard />} />
-              <Route path="/staff" element={<Staff />} />
-              <Route path="/templates" element={<Settings />} />
+              <Route path="/employees" element={<Employees />} />
+              <Route path="/payroll" element={<Payroll />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/audit-logs" element={<AuditLogs />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/templates" element={<Navigate to="/settings" replace />} />
+              <Route path="/staff" element={<Navigate to="/employees" replace />} />
               <Route path="/portal" element={<CustomerPortal />} />
             </Route>
 
