@@ -14,10 +14,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Clock, LogIn, LogOut, Calendar, RefreshCw, Plus, TestTube, Pencil, Trash2, Link, Cloud, Download, Users, Building2, Camera, Zap, Info,
+  Clock, LogIn, LogOut, Calendar, RefreshCw, Plus, TestTube, Pencil, Trash2, Link, Cloud, Download, Users, Building2, Camera, Zap, Info, MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -32,6 +33,7 @@ interface HikDevice {
   id: string; name: string; ip_address: string; port: number; username: string;
   password: string; status: string; last_sync_at: string | null; created_at: string;
   device_model?: string; device_version?: string; device_serial?: string;
+  site_id?: string; site_name?: string; zone?: string;
 }
 
 interface HikLog {
@@ -210,6 +212,11 @@ function ManualAttendanceTab() {
 // ══════════════════════════════════════
 // TAB 2: Devices (Enhanced)
 // ══════════════════════════════════════
+interface CloudDevice {
+  deviceSerial: string; deviceName: string; deviceModel?: string;
+  isOnline?: string; _siteId?: string; _siteName?: string;
+}
+
 function DevicesTab() {
   const [devices, setDevices] = useState<HikDevice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,10 +224,17 @@ function DevicesTab() {
   const [editDevice, setEditDevice] = useState<HikDevice | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [fetchingCloud, setFetchingCloud] = useState(false);
   const [fullSyncingId, setFullSyncingId] = useState<string | null>(null);
   const [fetchingInfoId, setFetchingInfoId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", ip_address: "", port: "80" });
+  const [form, setForm] = useState({ name: "", ip_address: "", port: "80", site_id: "", site_name: "", zone: "" });
+
+  // Import from Cloud state
+  const [importSheetOpen, setImportSheetOpen] = useState(false);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudSites, setCloudSites] = useState<Array<{ siteId: string; siteName: string; devices: CloudDevice[] }>>([]);
+  const [selectedSerials, setSelectedSerials] = useState<Set<string>>(new Set());
+  const [zoneAssignments, setZoneAssignments] = useState<Record<string, string>>({});
+  const [importing, setImporting] = useState(false);
 
   const fetchDevices = async () => {
     setLoading(true);
@@ -231,11 +245,19 @@ function DevicesTab() {
 
   useEffect(() => { fetchDevices(); }, []);
 
-  const openAdd = () => { setEditDevice(null); setForm({ name: "", ip_address: "", port: "80" }); setSheetOpen(true); };
-  const openEdit = (d: HikDevice) => { setEditDevice(d); setForm({ name: d.name, ip_address: d.ip_address, port: d.port.toString() }); setSheetOpen(true); };
+  const openAdd = () => {
+    setEditDevice(null);
+    setForm({ name: "", ip_address: "", port: "80", site_id: "", site_name: "", zone: "" });
+    setSheetOpen(true);
+  };
+  const openEdit = (d: HikDevice) => {
+    setEditDevice(d);
+    setForm({ name: d.name, ip_address: d.ip_address, port: d.port.toString(), site_id: (d as any).site_id || "", site_name: (d as any).site_name || "", zone: (d as any).zone || "" });
+    setSheetOpen(true);
+  };
 
   const save = async () => {
-    const payload = { name: form.name, ip_address: form.ip_address, port: parseInt(form.port) || 80 };
+    const payload: any = { name: form.name, ip_address: form.ip_address, port: parseInt(form.port) || 80, site_id: form.site_id || null, site_name: form.site_name || null, zone: form.zone || null };
     if (!payload.name || !payload.ip_address) { toast.error("Name and Device Serial are required"); return; }
     if (editDevice) {
       const { error } = await supabase.from("hikvision_devices").update(payload).eq("id", editDevice.id);
@@ -253,27 +275,72 @@ function DevicesTab() {
     if (error) toast.error(error.message); else { toast.success("Deleted"); fetchDevices(); }
   };
 
-  const fetchCloudDevices = async () => {
-    setFetchingCloud(true);
+  // ── Import from Cloud Flow ──
+  const openImportSheet = async () => {
+    setImportSheetOpen(true);
+    setCloudLoading(true);
+    setCloudSites([]);
+    setSelectedSerials(new Set());
+    setZoneAssignments({});
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "list-devices" } });
       if (error) throw error;
       if (data?.success && data.devices) {
-        toast.success(`Found ${data.devices.length} devices on Hik-Partner Pro`);
-        let imported = 0;
-        for (const cd of data.devices) {
-          const serial = cd.deviceSerial || cd.serial;
-          if (!serial) continue;
-          const exists = devices.find(d => d.ip_address === serial);
-          if (!exists) {
-            await supabase.from("hikvision_devices").insert({ name: cd.deviceName || cd.name || serial, ip_address: serial, port: 80 });
-            imported++;
-          }
+        // Group devices by site
+        const siteMap = new Map<string, { siteId: string; siteName: string; devices: CloudDevice[] }>();
+        for (const d of data.devices) {
+          const siteId = d._siteId || "unknown";
+          const siteName = d._siteName || "Unknown Site";
+          if (!siteMap.has(siteId)) siteMap.set(siteId, { siteId, siteName, devices: [] });
+          siteMap.get(siteId)!.devices.push(d);
         }
-        if (imported > 0) { toast.success(`Imported ${imported} new devices`); fetchDevices(); }
-      } else { toast.error("Failed: " + (data?.error || "Unknown error")); }
-    } catch (e: any) { toast.error("Error: " + (e.message || "Unknown")); }
-    setFetchingCloud(false);
+        setCloudSites(Array.from(siteMap.values()));
+      } else {
+        toast.error(data?.error || "Failed to fetch cloud devices");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Error fetching cloud devices");
+    }
+    setCloudLoading(false);
+  };
+
+  const toggleSerial = (serial: string) => {
+    setSelectedSerials(prev => {
+      const next = new Set(prev);
+      if (next.has(serial)) next.delete(serial); else next.add(serial);
+      return next;
+    });
+  };
+
+  const isAlreadyImported = (serial: string) => devices.some(d => d.ip_address === serial || d.device_serial === serial);
+
+  const importSelected = async () => {
+    if (selectedSerials.size === 0) { toast.error("Select at least one device"); return; }
+    setImporting(true);
+    let imported = 0;
+    for (const site of cloudSites) {
+      for (const cd of site.devices) {
+        const serial = cd.deviceSerial;
+        if (!selectedSerials.has(serial)) continue;
+        if (isAlreadyImported(serial)) continue;
+        const { error } = await supabase.from("hikvision_devices").insert({
+          name: cd.deviceName || serial,
+          ip_address: serial,
+          device_serial: serial,
+          device_model: cd.deviceModel || null,
+          port: 80,
+          site_id: site.siteId,
+          site_name: site.siteName,
+          zone: zoneAssignments[serial] || null,
+          status: cd.isOnline === "1" ? "active" : "inactive",
+        } as any);
+        if (!error) imported++;
+      }
+    }
+    toast.success(`Imported ${imported} devices`);
+    setImportSheetOpen(false);
+    fetchDevices();
+    setImporting(false);
   };
 
   const testConnection = async (d: HikDevice) => {
@@ -325,7 +392,7 @@ function DevicesTab() {
           <Cloud className="h-5 w-5 text-primary mt-0.5" />
           <div className="text-sm">
             <p className="font-medium text-primary">Hik-Partner Pro Cloud Integration</p>
-            <p className="text-muted-foreground mt-1">Devices are accessed via the Hik-Partner Pro Cloud API. Use Full Sync to sync device info, employees, photos, departments, and attendance in one go.</p>
+            <p className="text-muted-foreground mt-1">Devices are accessed via the Hik-Partner Pro Cloud API. Use "Import from Cloud" to discover and add devices from your account.</p>
           </div>
         </CardContent>
       </Card>
@@ -333,8 +400,8 @@ function DevicesTab() {
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Registered Devices</h3>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchCloudDevices} disabled={fetchingCloud}>
-            {fetchingCloud ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}Import from Cloud
+          <Button variant="outline" onClick={openImportSheet}>
+            <Download className="h-4 w-4 mr-2" />Import from Cloud
           </Button>
           <Button onClick={openAdd}><Plus className="h-4 w-4 mr-2" />Add Device</Button>
         </div>
@@ -344,14 +411,15 @@ function DevicesTab() {
         <Table>
           <TableHeader><TableRow>
             <TableHead>Status</TableHead><TableHead>Name</TableHead><TableHead>Serial</TableHead>
-            <TableHead>Model</TableHead><TableHead>Firmware</TableHead><TableHead>Last Sync</TableHead>
+            <TableHead>Model</TableHead><TableHead>Site</TableHead><TableHead>Zone</TableHead>
+            <TableHead>Last Sync</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow></TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : devices.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No devices. Import from cloud or add manually.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No devices. Import from cloud or add manually.</TableCell></TableRow>
             ) : devices.map(d => (
               <TableRow key={d.id}>
                 <TableCell>
@@ -363,7 +431,12 @@ function DevicesTab() {
                 <TableCell className="font-medium">{d.name}</TableCell>
                 <TableCell className="font-mono text-sm">{d.device_serial || d.ip_address}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{d.device_model || "—"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{d.device_version || "—"}</TableCell>
+                <TableCell className="text-sm" title={(d as any).site_id || ""}>
+                  {(d as any).site_name || <span className="text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {(d as any).zone || <span className="text-muted-foreground">—</span>}
+                </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {d.last_sync_at ? format(new Date(d.last_sync_at), "dd MMM hh:mm a") : "Never"}
                 </TableCell>
@@ -391,6 +464,7 @@ function DevicesTab() {
         </Table>
       </div>
 
+      {/* Add/Edit Device Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent>
           <SheetHeader><SheetTitle>{editDevice ? "Edit Device" : "Add Device"}</SheetTitle></SheetHeader>
@@ -401,7 +475,88 @@ function DevicesTab() {
               <Input value={form.ip_address} onChange={e => setForm(p => ({ ...p, ip_address: e.target.value }))} placeholder="e.g. Q01XXXXXX" />
               <p className="text-xs text-muted-foreground mt-1">The serial number from your Hik-Partner Pro account</p>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Site ID</Label><Input value={form.site_id} onChange={e => setForm(p => ({ ...p, site_id: e.target.value }))} placeholder="Site ID" /></div>
+              <div><Label>Site Name</Label><Input value={form.site_name} onChange={e => setForm(p => ({ ...p, site_name: e.target.value }))} placeholder="Site name" /></div>
+            </div>
+            <div>
+              <Label>Zone</Label>
+              <Input value={form.zone} onChange={e => setForm(p => ({ ...p, zone: e.target.value }))} placeholder="e.g. Main Entrance, Floor 2" />
+              <p className="text-xs text-muted-foreground mt-1">Location within the site for easy identification</p>
+            </div>
             <Button onClick={save} className="w-full">{editDevice ? "Update Device" : "Add Device"}</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Import from Cloud Sheet */}
+      <Sheet open={importSheetOpen} onOpenChange={setImportSheetOpen}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Import Devices from Cloud</SheetTitle>
+            <SheetDescription>Select devices from your Hik-Partner Pro account to add to ERP</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            {cloudLoading ? (
+              <div className="flex items-center justify-center py-12 gap-3">
+                <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+                <span className="text-muted-foreground">Fetching sites and devices...</span>
+              </div>
+            ) : cloudSites.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No devices found. Check your Hik-Partner Pro credentials in Settings.</p>
+            ) : (
+              <>
+                {cloudSites.map(site => (
+                  <div key={site.siteId} className="space-y-2">
+                    <div className="flex items-center gap-2 py-2 border-b">
+                      <Building2 className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">{site.siteName}</span>
+                      <span className="text-xs text-muted-foreground font-mono">({site.siteId.slice(0, 12)}...)</span>
+                    </div>
+                    {site.devices.map(cd => {
+                      const serial = cd.deviceSerial;
+                      const already = isAlreadyImported(serial);
+                      const selected = selectedSerials.has(serial);
+                      return (
+                        <div key={serial} className={`flex items-start gap-3 p-3 rounded-lg border ${already ? "bg-muted/50 opacity-60" : selected ? "border-primary bg-primary/5" : ""}`}>
+                          <Checkbox
+                            checked={selected}
+                            disabled={already}
+                            onCheckedChange={() => toggleSerial(serial)}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm">{cd.deviceName || serial}</span>
+                              <span className={`h-2 w-2 rounded-full ${cd.isOnline === "1" ? "bg-green-500" : "bg-red-500"}`} />
+                            </div>
+                            <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
+                              <span className="font-mono">{serial}</span>
+                              {cd.deviceModel && <span>{cd.deviceModel}</span>}
+                            </div>
+                            {already && <Badge variant="outline" className="mt-1 text-xs">Already imported</Badge>}
+                            {selected && !already && (
+                              <div className="mt-2">
+                                <Input
+                                  placeholder="Zone (e.g. Main Entrance)"
+                                  value={zoneAssignments[serial] || ""}
+                                  onChange={e => setZoneAssignments(prev => ({ ...prev, [serial]: e.target.value }))}
+                                  className="h-8 text-xs"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                <Button onClick={importSelected} disabled={importing || selectedSerials.size === 0} className="w-full">
+                  {importing ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                  Import {selectedSerials.size} Selected Device{selectedSerials.size !== 1 ? "s" : ""}
+                </Button>
+              </>
+            )}
           </div>
         </SheetContent>
       </Sheet>

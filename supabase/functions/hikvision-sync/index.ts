@@ -626,6 +626,8 @@ serve(async (req: Request) => {
               device_model: d.deviceModel || null,
               ip_address: d.deviceSerial,
               status: d.isOnline === "1" ? "active" : "inactive",
+              site_id: d._siteId || null,
+              site_name: d._siteName || null,
             }, { onConflict: "device_serial" });
             if (!error) imported++;
           }
