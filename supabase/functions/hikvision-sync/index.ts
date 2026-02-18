@@ -490,7 +490,7 @@ serve(async (req: Request) => {
         const found = await findDeviceInCloud(areaDomain, accessToken, device_serial, sites);
 
         if (found) {
-          const isOnline = found.isOnline === "1";
+          const isOnline = String(found.deviceOnlineStatus) === "1";
           await logSync(supabase, device_id, "test_connection", "success", "device_info");
           return jsonResp({
             success: true,
@@ -571,7 +571,7 @@ serve(async (req: Request) => {
               device_serial: d.deviceSerial,
               device_model: d.deviceModel || null,
               ip_address: d.deviceSerial,
-              status: d.isOnline === "1" ? "active" : "inactive",
+              status: String(d.deviceOnlineStatus) === "1" ? "active" : "inactive",
               site_id: d._siteId || null,
               site_name: d._siteName || null,
             }, { onConflict: "device_serial" });
@@ -605,6 +605,7 @@ serve(async (req: Request) => {
             device_model: found.deviceModel || null,
             device_version: found.deviceVersion || null,
             device_serial: found.deviceSerial,
+            status: String(found.deviceOnlineStatus) === "1" ? "active" : "inactive",
             last_sync_at: new Date().toISOString(),
           }).eq("id", device_id);
         }
