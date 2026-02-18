@@ -169,6 +169,7 @@ export type Database = {
       }
       chat_conversations: {
         Row: {
+          channel: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -177,8 +178,10 @@ export type Database = {
           participant_ids: string[]
           title: string | null
           type: string
+          whatsapp_phone: string | null
         }
         Insert: {
+          channel?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -187,8 +190,10 @@ export type Database = {
           participant_ids?: string[]
           title?: string | null
           type?: string
+          whatsapp_phone?: string | null
         }
         Update: {
+          channel?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -197,33 +202,43 @@ export type Database = {
           participant_ids?: string[]
           title?: string | null
           type?: string
+          whatsapp_phone?: string | null
         }
         Relationships: []
       }
       chat_messages: {
         Row: {
+          channel: string | null
           content: string
           conversation_id: string
           created_at: string
+          delivery_status: string | null
           id: string
           read_at: string | null
           sender_id: string | null
+          whatsapp_message_id: string | null
         }
         Insert: {
+          channel?: string | null
           content: string
           conversation_id: string
           created_at?: string
+          delivery_status?: string | null
           id?: string
           read_at?: string | null
           sender_id?: string | null
+          whatsapp_message_id?: string | null
         }
         Update: {
+          channel?: string | null
           content?: string
           conversation_id?: string
           created_at?: string
+          delivery_status?: string | null
           id?: string
           read_at?: string | null
           sender_id?: string | null
+          whatsapp_message_id?: string | null
         }
         Relationships: [
           {
@@ -288,34 +303,61 @@ export type Database = {
       }
       daily_cash_control: {
         Row: {
+          closed_at: string | null
+          closed_by: string | null
           closing_cash: number | null
           created_at: string
           created_by: string | null
           date: string
+          denominations: Json | null
           difference: number | null
+          expected_closing: number | null
           id: string
+          manual_expense: number | null
+          manual_income: number | null
+          notes: string | null
           opening_cash: number
+          pos_total: number | null
           staff_name: string | null
+          status: string | null
         }
         Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
           closing_cash?: number | null
           created_at?: string
           created_by?: string | null
           date: string
+          denominations?: Json | null
           difference?: number | null
+          expected_closing?: number | null
           id?: string
+          manual_expense?: number | null
+          manual_income?: number | null
+          notes?: string | null
           opening_cash?: number
+          pos_total?: number | null
           staff_name?: string | null
+          status?: string | null
         }
         Update: {
+          closed_at?: string | null
+          closed_by?: string | null
           closing_cash?: number | null
           created_at?: string
           created_by?: string | null
           date?: string
+          denominations?: Json | null
           difference?: number | null
+          expected_closing?: number | null
           id?: string
+          manual_expense?: number | null
+          manual_income?: number | null
+          notes?: string | null
           opening_cash?: number
+          pos_total?: number | null
           staff_name?: string | null
+          status?: string | null
         }
         Relationships: []
       }
@@ -1106,6 +1148,7 @@ export type Database = {
       }
       job_sheets: {
         Row: {
+          actual_cost: number | null
           apple_id: string | null
           apple_id_password: string | null
           approval_ip: string | null
@@ -1119,6 +1162,10 @@ export type Database = {
           device_color: string | null
           device_lock_code: string | null
           device_model: string | null
+          device_received_at: string | null
+          device_received_by: string | null
+          device_sent_at: string | null
+          device_sent_by: string | null
           device_type: string
           estimated_completion: string | null
           estimated_cost: number | null
@@ -1139,9 +1186,13 @@ export type Database = {
           staff_notes: string | null
           status: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity: string | null
+          technician_payment: number | null
+          technician_payment_date: string | null
+          technician_payment_status: string | null
           updated_at: string
         }
         Insert: {
+          actual_cost?: number | null
           apple_id?: string | null
           apple_id_password?: string | null
           approval_ip?: string | null
@@ -1155,6 +1206,10 @@ export type Database = {
           device_color?: string | null
           device_lock_code?: string | null
           device_model?: string | null
+          device_received_at?: string | null
+          device_received_by?: string | null
+          device_sent_at?: string | null
+          device_sent_by?: string | null
           device_type: string
           estimated_completion?: string | null
           estimated_cost?: number | null
@@ -1175,9 +1230,13 @@ export type Database = {
           staff_notes?: string | null
           status?: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity?: string | null
+          technician_payment?: number | null
+          technician_payment_date?: string | null
+          technician_payment_status?: string | null
           updated_at?: string
         }
         Update: {
+          actual_cost?: number | null
           apple_id?: string | null
           apple_id_password?: string | null
           approval_ip?: string | null
@@ -1191,6 +1250,10 @@ export type Database = {
           device_color?: string | null
           device_lock_code?: string | null
           device_model?: string | null
+          device_received_at?: string | null
+          device_received_by?: string | null
+          device_sent_at?: string | null
+          device_sent_by?: string | null
           device_type?: string
           estimated_completion?: string | null
           estimated_cost?: number | null
@@ -1211,6 +1274,9 @@ export type Database = {
           staff_notes?: string | null
           status?: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity?: string | null
+          technician_payment?: number | null
+          technician_payment_date?: string | null
+          technician_payment_status?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1275,6 +1341,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          link: string | null
+          message: string
+          read: boolean | null
+          title: string
+          type: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          link?: string | null
+          message: string
+          read?: boolean | null
+          title: string
+          type?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          link?: string | null
+          message?: string
+          read?: boolean | null
+          title?: string
+          type?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       payments: {
         Row: {

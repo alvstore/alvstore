@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -15,7 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
@@ -27,31 +28,123 @@ interface ChecklistItem {
   autoSet?: boolean;
 }
 
-const POWER_DEPENDENT_CATEGORIES = ["Display", "Audio", "Camera", "Network", "Hardware"];
+// Device-specific checklists
+const DEVICE_CHECKLISTS: Record<string, ChecklistItem[]> = {
+  Mobile: [
+    { category: "Power", item: "Device turns ON", value: "" },
+    { category: "Power", item: "Device turns OFF", value: "" },
+    { category: "Display", item: "Display working", value: "" },
+    { category: "Display", item: "Touch working", value: "" },
+    { category: "Display", item: "Display damaged / scratches", value: "" },
+    { category: "Audio", item: "Earpiece speaker working", value: "" },
+    { category: "Audio", item: "Loudspeaker working", value: "" },
+    { category: "Audio", item: "Microphone working", value: "" },
+    { category: "Camera", item: "Front camera working", value: "" },
+    { category: "Camera", item: "Rear camera working", value: "" },
+    { category: "Camera", item: "Flash working", value: "" },
+    { category: "Network", item: "WiFi working", value: "" },
+    { category: "Network", item: "Cellular signal working", value: "" },
+    { category: "Network", item: "Bluetooth working", value: "" },
+    { category: "Hardware", item: "Volume buttons working", value: "" },
+    { category: "Hardware", item: "Power button working", value: "" },
+    { category: "Hardware", item: "Charging port working", value: "" },
+    { category: "Hardware", item: "Fingerprint sensor working", value: "" },
+    { category: "Hardware", item: "Face ID / Face unlock working", value: "" },
+    { category: "Hardware", item: "Vibration motor working", value: "" },
+    { category: "Accessories", item: "Charger received", value: "" },
+    { category: "Accessories", item: "Cable received", value: "" },
+    { category: "Accessories", item: "Cover / Case received", value: "" },
+    { category: "Accessories", item: "SIM card received", value: "" },
+    { category: "Accessories", item: "Memory card received", value: "" },
+  ],
+  Laptop: [
+    { category: "Power", item: "Device turns ON", value: "" },
+    { category: "Power", item: "Battery charges", value: "" },
+    { category: "Power", item: "Battery health acceptable", value: "" },
+    { category: "Display", item: "Display working", value: "" },
+    { category: "Display", item: "Display hinge intact", value: "" },
+    { category: "Display", item: "Display damaged / scratches", value: "" },
+    { category: "Input", item: "Keyboard working (all keys)", value: "" },
+    { category: "Input", item: "Trackpad working", value: "" },
+    { category: "Input", item: "Trackpad buttons working", value: "" },
+    { category: "Audio", item: "Speaker working", value: "" },
+    { category: "Audio", item: "Microphone working", value: "" },
+    { category: "Audio", item: "Headphone jack working", value: "" },
+    { category: "Camera", item: "Webcam working", value: "" },
+    { category: "Network", item: "WiFi working", value: "" },
+    { category: "Network", item: "Ethernet port working", value: "" },
+    { category: "Network", item: "Bluetooth working", value: "" },
+    { category: "Ports", item: "USB ports working", value: "" },
+    { category: "Ports", item: "HDMI / Display port working", value: "" },
+    { category: "Ports", item: "Charging port working", value: "" },
+    { category: "Ports", item: "SD card slot working", value: "" },
+    { category: "Cooling", item: "Fan noise normal", value: "" },
+    { category: "Cooling", item: "No overheating", value: "" },
+    { category: "Accessories", item: "Charger / Adapter received", value: "" },
+    { category: "Accessories", item: "Laptop bag received", value: "" },
+    { category: "Accessories", item: "Mouse received", value: "" },
+  ],
+  Tablet: [
+    { category: "Power", item: "Device turns ON", value: "" },
+    { category: "Power", item: "Device turns OFF", value: "" },
+    { category: "Power", item: "Battery charges", value: "" },
+    { category: "Display", item: "Display working", value: "" },
+    { category: "Display", item: "Touch working", value: "" },
+    { category: "Display", item: "Display damaged / scratches", value: "" },
+    { category: "Audio", item: "Speaker working", value: "" },
+    { category: "Audio", item: "Microphone working", value: "" },
+    { category: "Camera", item: "Front camera working", value: "" },
+    { category: "Camera", item: "Rear camera working", value: "" },
+    { category: "Network", item: "WiFi working", value: "" },
+    { category: "Network", item: "Cellular signal working", value: "" },
+    { category: "Network", item: "Bluetooth working", value: "" },
+    { category: "Hardware", item: "Volume buttons working", value: "" },
+    { category: "Hardware", item: "Power button working", value: "" },
+    { category: "Hardware", item: "Charging port working", value: "" },
+    { category: "Hardware", item: "Stylus / Pen support working", value: "" },
+    { category: "Accessories", item: "Charger received", value: "" },
+    { category: "Accessories", item: "Cable received", value: "" },
+    { category: "Accessories", item: "Cover / Case received", value: "" },
+    { category: "Accessories", item: "Stylus / Pen received", value: "" },
+    { category: "Accessories", item: "SIM card received", value: "" },
+  ],
+  Desktop: [
+    { category: "Power", item: "Device turns ON", value: "" },
+    { category: "Power", item: "Device turns OFF", value: "" },
+    { category: "Power", item: "PSU fan working", value: "" },
+    { category: "Display", item: "Monitor output working", value: "" },
+    { category: "Display", item: "Monitor included (physical damage)", value: "" },
+    { category: "Input", item: "Keyboard working", value: "" },
+    { category: "Input", item: "Mouse working", value: "" },
+    { category: "Audio", item: "Speaker / Audio output working", value: "" },
+    { category: "Network", item: "Ethernet port working", value: "" },
+    { category: "Network", item: "WiFi adapter working", value: "" },
+    { category: "Ports", item: "USB ports working", value: "" },
+    { category: "Ports", item: "HDMI / VGA / DP ports working", value: "" },
+    { category: "Ports", item: "Audio jack working", value: "" },
+    { category: "Cooling", item: "CPU fan working", value: "" },
+    { category: "Cooling", item: "Case fan working", value: "" },
+    { category: "Cooling", item: "No overheating", value: "" },
+    { category: "Accessories", item: "Power cable received", value: "" },
+    { category: "Accessories", item: "Keyboard received", value: "" },
+    { category: "Accessories", item: "Mouse received", value: "" },
+    { category: "Accessories", item: "Monitor received", value: "" },
+  ],
+};
 
-const DEFAULT_CHECKLIST: ChecklistItem[] = [
-  { category: "Power", item: "Device turns ON", value: "" },
-  { category: "Power", item: "Device turns OFF", value: "" },
-  { category: "Display", item: "Display working", value: "" },
-  { category: "Display", item: "Touch working", value: "" },
-  { category: "Display", item: "Display damaged", value: "" },
-  { category: "Audio", item: "Speaker working", value: "" },
-  { category: "Audio", item: "Microphone working", value: "" },
-  { category: "Camera", item: "Front camera working", value: "" },
-  { category: "Camera", item: "Rear camera working", value: "" },
-  { category: "Network", item: "WiFi working", value: "" },
-  { category: "Network", item: "Cellular signal working", value: "" },
-  { category: "Network", item: "Bluetooth working", value: "" },
-  { category: "Hardware", item: "Buttons working", value: "" },
-  { category: "Hardware", item: "Charging port working", value: "" },
-  { category: "Hardware", item: "Fingerprint working", value: "" },
-  { category: "Hardware", item: "Face ID working", value: "" },
-  { category: "Accessories", item: "Charger received", value: "" },
-  { category: "Accessories", item: "Cable received", value: "" },
-  { category: "Accessories", item: "Cover received", value: "" },
-  { category: "Accessories", item: "SIM received", value: "" },
-  { category: "Accessories", item: "Memory card received", value: "" },
-];
+// Categories that depend on "Device turns ON"
+const POWER_DEPENDENT_CATEGORIES = ["Display", "Audio", "Camera", "Network", "Hardware", "Input", "Ports", "Cooling"];
+
+function getChecklistForDevice(deviceType: string): ChecklistItem[] {
+  // Try exact match first, then partial match
+  if (DEVICE_CHECKLISTS[deviceType]) return DEVICE_CHECKLISTS[deviceType].map(c => ({ ...c }));
+  const lower = deviceType.toLowerCase();
+  if (lower.includes("laptop") || lower.includes("notebook")) return DEVICE_CHECKLISTS.Laptop.map(c => ({ ...c }));
+  if (lower.includes("tablet") || lower.includes("ipad")) return DEVICE_CHECKLISTS.Tablet.map(c => ({ ...c }));
+  if (lower.includes("desktop") || lower.includes("pc") || lower.includes("computer")) return DEVICE_CHECKLISTS.Desktop.map(c => ({ ...c }));
+  // Default to Mobile
+  return DEVICE_CHECKLISTS.Mobile.map(c => ({ ...c }));
+}
 
 export default function JobSheetCreate() {
   const navigate = useNavigate();
@@ -60,7 +153,7 @@ export default function JobSheetCreate() {
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<{ id: string; name: string }[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(DEFAULT_CHECKLIST.map(c => ({ ...c })));
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(getChecklistForDevice("Mobile"));
   const [issueTags, setIssueTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
   const [imageFiles, setImageFiles] = useState<{ type: string; file: File }[]>([]);
@@ -68,9 +161,7 @@ export default function JobSheetCreate() {
   const [deviceIsOff, setDeviceIsOff] = useState(false);
   const [showApplePassword, setShowApplePassword] = useState(false);
   const [showGooglePassword, setShowGooglePassword] = useState(false);
-  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
-    Power: true, Display: true, Audio: true, Camera: true, Network: true, Hardware: true, Accessories: true,
-  });
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
 
   const [form, setForm] = useState({
     customer_id: "",
@@ -107,12 +198,25 @@ export default function JobSheetCreate() {
     });
   }, []);
 
+  // When device type changes, reload checklist
+  useEffect(() => {
+    const type = form.device_type === "__other__" ? form.custom_type : form.device_type;
+    if (!type) return;
+    const newChecklist = getChecklistForDevice(type);
+    setChecklist(newChecklist);
+    setDeviceIsOff(false);
+    // Open all categories by default
+    const cats = [...new Set(newChecklist.map(c => c.category))];
+    const openMap: Record<string, boolean> = {};
+    cats.forEach(c => { openMap[c] = true; });
+    setOpenCategories(openMap);
+  }, [form.device_type, form.custom_type]);
+
   const updateField = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
   const updateChecklist = useCallback((index: number, value: "yes" | "no" | "na") => {
     setChecklist(prev => {
       const updated = prev.map((c, i) => i === index ? { ...c, value, autoSet: false } : c);
-      // Smart logic: if "Device turns ON" is set to "No", auto-set dependent items to N/A
       const powerOnItem = updated.find(c => c.item === "Device turns ON");
       if (powerOnItem && powerOnItem.value === "no") {
         setDeviceIsOff(true);
@@ -235,8 +339,14 @@ export default function JobSheetCreate() {
   const getCategoryProgress = (cat: string) => {
     const items = checklist.filter(c => c.category === cat);
     const completed = items.filter(c => c.value !== "").length;
-    return { completed, total: items.length };
+    return { completed, total: items.length, percent: items.length > 0 ? Math.round((completed / items.length) * 100) : 0 };
   };
+
+  const overallProgress = (() => {
+    const total = checklist.length;
+    const completed = checklist.filter(c => c.value !== "").length;
+    return { completed, total, percent: total > 0 ? Math.round((completed / total) * 100) : 0 };
+  })();
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -395,9 +505,18 @@ export default function JobSheetCreate() {
       {/* Pre-Repair Checklist */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Pre-Repair Checklist *</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Pre-Repair Checklist *</CardTitle>
+            <div className="flex items-center gap-2">
+              {overallProgress.percent === 100 && <CheckCircle2 className="h-4 w-4 text-success" />}
+              <Badge variant={overallProgress.percent === 100 ? "default" : "secondary"}>
+                {overallProgress.completed}/{overallProgress.total}
+              </Badge>
+            </div>
+          </div>
+          <Progress value={overallProgress.percent} className="h-2 mt-2" />
           {deviceIsOff && (
-            <div className="flex items-center gap-2 text-xs text-warning mt-1">
+            <div className="flex items-center gap-2 text-xs text-warning mt-2">
               <AlertTriangle className="h-3.5 w-3.5" />
               <span>Device is OFF — dependent checks auto-set to N/A. You can override manually.</span>
             </div>
@@ -406,11 +525,10 @@ export default function JobSheetCreate() {
         <CardContent className="space-y-2">
           {categories.map(cat => {
             const progress = getCategoryProgress(cat);
-            const isComplete = progress.completed === progress.total;
             return (
               <Collapsible
                 key={cat}
-                open={openCategories[cat]}
+                open={openCategories[cat] ?? true}
                 onOpenChange={(open) => setOpenCategories(prev => ({ ...prev, [cat]: open }))}
               >
                 <CollapsibleTrigger asChild>
@@ -419,36 +537,76 @@ export default function JobSheetCreate() {
                       <ChevronDown className={`h-4 w-4 transition-transform ${openCategories[cat] ? "" : "-rotate-90"}`} />
                       <span className="font-medium">{cat}</span>
                     </div>
-                    <Badge variant={isComplete ? "default" : "secondary"} className={`text-xs ${!isComplete && progress.completed < progress.total ? "bg-warning/15 text-warning border-warning/30" : ""}`}>
-                      {progress.completed}/{progress.total}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Progress value={progress.percent} className="h-1.5 w-16" />
+                      <Badge variant={progress.percent === 100 ? "default" : "secondary"} className={`text-xs min-w-[40px] justify-center ${progress.percent > 0 && progress.percent < 100 ? "bg-warning/15 text-warning border-warning/30" : ""}`}>
+                        {progress.completed}/{progress.total}
+                      </Badge>
+                    </div>
                   </button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="px-3 pt-2 pb-1 space-y-2">
-                  {checklist.map((item, idx) => item.category !== cat ? null : (
-                    <div key={idx} className="flex items-center justify-between gap-2 text-sm">
-                      <div className="flex-1 flex items-center gap-2">
-                        <span>{item.item}</span>
-                        {item.autoSet && (
-                          <span className="text-[10px] text-warning bg-warning/10 px-1.5 py-0.5 rounded">Auto: Device OFF</span>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        {(["yes", "no", "na"] as const).map(v => (
-                          <Button
-                            key={v}
-                            type="button"
-                            variant={item.value === v ? "default" : "outline"}
-                            size="sm"
-                            className="h-7 px-2.5 text-xs"
-                            onClick={() => updateChecklist(idx, v)}
-                          >
-                            {v === "na" ? "N/A" : v === "yes" ? "Yes" : "No"}
-                          </Button>
+                <CollapsibleContent className="mt-1">
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/30">
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Item</th>
+                          <th className="text-center px-2 py-2 font-medium text-muted-foreground text-xs w-[140px]">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {checklist.map((item, idx) => item.category !== cat ? null : (
+                          <tr key={idx} className="border-t border-border/50">
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span>{item.item}</span>
+                                {item.autoSet && (
+                                  <span className="text-[9px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">Auto</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2">
+                              <div className="flex gap-1 justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => updateChecklist(idx, "yes")}
+                                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                                    item.value === "yes"
+                                      ? "bg-success text-success-foreground"
+                                      : "bg-muted text-muted-foreground hover:bg-success/20 hover:text-success"
+                                  }`}
+                                >
+                                  Yes
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateChecklist(idx, "no")}
+                                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                                    item.value === "no"
+                                      ? "bg-destructive text-destructive-foreground"
+                                      : "bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                                  }`}
+                                >
+                                  No
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateChecklist(idx, "na")}
+                                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                                    item.value === "na"
+                                      ? "bg-muted-foreground text-background"
+                                      : "bg-muted text-muted-foreground hover:bg-muted-foreground/20"
+                                  }`}
+                                >
+                                  N/A
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
                         ))}
-                      </div>
-                    </div>
-                  ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </CollapsibleContent>
               </Collapsible>
             );

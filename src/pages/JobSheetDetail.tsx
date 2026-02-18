@@ -3,18 +3,24 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import {
   ArrowLeft, Copy, Loader2, User, Smartphone, ClipboardCheck,
   History, Shield, Upload, CheckCircle, Circle, Clock,
-  FileText, Wrench, Package, Eye, Truck,
+  FileText, Wrench, Package, Eye, Truck, IndianRupee, ArrowRightLeft, Printer,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createNotification } from "@/lib/notifications";
 
 const JOB_STATUSES = [
   "created", "pending_approval", "approved", "rejected", "assigned",
@@ -66,6 +72,10 @@ export default function JobSheetDetail() {
   const [postChecklist, setPostChecklist] = useState<{ item: string; value: string }[]>(
     POST_REPAIR_ITEMS.map(item => ({ item, value: "" }))
   );
+  // Cost & payment
+  const [techPaySheetOpen, setTechPaySheetOpen] = useState(false);
+  const [techPayForm, setTechPayForm] = useState({ amount: "", method: "cash", notes: "" });
+  const [actualCost, setActualCost] = useState("");
 
   const isAdminStaff = hasRole("admin") || hasRole("staff");
 
@@ -80,6 +90,7 @@ export default function JobSheetDetail() {
     setJob(jobRes.data);
     setImages(imgRes.data || []);
     setAuditLog(logRes.data || []);
+    setActualCost(jobRes.data.actual_cost?.toString() || "");
 
     if (jobRes.data.post_repair_checklist && (jobRes.data.post_repair_checklist as any[]).length > 0) {
       setPostChecklist(jobRes.data.post_repair_checklist as any);
@@ -112,6 +123,9 @@ export default function JobSheetDetail() {
         job_sheet_id: id!, action: "technician_assigned",
         details: `Technician assigned`, user_id: user?.id, user_role: hasRole("admin") ? "admin" : "staff",
       });
+      // Notify technician
+      const techName = technicians.find(t => t.user_id === techId)?.full_name || "Technician";
+      await createNotification(techId, "New Job Assigned", `Job ${job?.job_number} has been assigned to you`, "repair", `/repairs/${id}`);
       toast.success("Technician assigned"); fetchAll();
     }
   };
@@ -156,6 +170,72 @@ export default function JobSheetDetail() {
     toast.success("Photos uploaded"); fetchAll();
   };
 
+  // Device movement actions
+  const sendToTechnician = async () => {
+    if (!id) return;
+    const { error } = await supabase.from("job_sheets").update({
+      device_sent_at: new Date().toISOString(),
+      device_sent_by: user?.id,
+    } as any).eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      await supabase.from("job_sheet_audit_log").insert({
+        job_sheet_id: id, action: "device_sent_to_technician",
+        details: "Device sent to technician for repair", user_id: user?.id,
+      });
+      toast.success("Device sent to technician recorded"); fetchAll();
+    }
+  };
+
+  const receiveFromTechnician = async () => {
+    if (!id) return;
+    const { error } = await supabase.from("job_sheets").update({
+      device_received_at: new Date().toISOString(),
+      device_received_by: user?.id,
+    } as any).eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      await supabase.from("job_sheet_audit_log").insert({
+        job_sheet_id: id, action: "device_received_from_technician",
+        details: "Device received back from technician", user_id: user?.id,
+      });
+      toast.success("Device received recorded"); fetchAll();
+    }
+  };
+
+  const saveActualCost = async () => {
+    if (!id) return;
+    const cost = parseFloat(actualCost) || 0;
+    const { error } = await supabase.from("job_sheets").update({ actual_cost: cost } as any).eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Actual cost saved"); fetchAll(); }
+  };
+
+  const recordTechnicianPayment = async () => {
+    if (!id || !job) return;
+    const amount = parseFloat(techPayForm.amount) || 0;
+    if (amount <= 0) { toast.error("Enter valid amount"); return; }
+    // Update job_sheets
+    const { error: jobErr } = await supabase.from("job_sheets").update({
+      technician_payment: amount,
+      technician_payment_status: "paid",
+      technician_payment_date: new Date().toISOString(),
+    } as any).eq("id", id);
+    if (jobErr) { toast.error(jobErr.message); return; }
+
+    await supabase.from("job_sheet_audit_log").insert({
+      job_sheet_id: id, action: "technician_payment_recorded",
+      details: `Technician paid ₹${amount} via ${techPayForm.method}. ${techPayForm.notes || ""}`.trim(),
+      user_id: user?.id,
+    });
+
+    toast.success("Technician payment recorded");
+    setTechPaySheetOpen(false);
+    fetchAll();
+  };
+
+  const handlePrint = () => window.print();
+
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!job) return null;
 
@@ -163,7 +243,6 @@ export default function JobSheetDetail() {
   const checklistCategories = [...new Set(checklist.map((c: any) => c.category))];
   const techName = technicians.find(t => t.user_id === job.assigned_technician_id)?.full_name;
 
-  // Timeline logic
   const currentStatusIndex = TIMELINE_STEPS.findIndex(s => s.key === job.status);
   const isRejected = job.status === "rejected";
 
@@ -184,9 +263,14 @@ export default function JobSheetDetail() {
           </div>
           <p className="text-muted-foreground">{job.customers?.name}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={copyPublicLink}>
-          <Copy className="h-3 w-3 mr-1.5" /> Public Link
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer className="h-3 w-3 mr-1.5" /> Print
+          </Button>
+          <Button variant="outline" size="sm" onClick={copyPublicLink}>
+            <Copy className="h-3 w-3 mr-1.5" /> Public Link
+          </Button>
+        </div>
       </div>
 
       {/* Repair Progress Timeline */}
@@ -214,11 +298,9 @@ export default function JobSheetDetail() {
 
                 return (
                   <div key={step.key} className="flex gap-4 relative">
-                    {/* Connector line */}
                     {idx < TIMELINE_STEPS.length - 1 && (
                       <div className={`absolute left-4 top-9 w-0.5 h-[calc(100%-12px)] ${isCompleted ? "bg-primary" : "bg-border"}`} />
                     )}
-                    {/* Icon */}
                     <div className={`relative z-10 flex items-center justify-center w-8 h-8 rounded-full shrink-0 transition-all ${
                       isCompleted ? "bg-primary text-primary-foreground" :
                       isCurrent ? "bg-primary/20 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background" :
@@ -226,7 +308,6 @@ export default function JobSheetDetail() {
                     }`}>
                       {isCompleted ? <CheckCircle className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
                     </div>
-                    {/* Content */}
                     <div className={`pb-6 ${isFuture ? "opacity-40" : ""}`}>
                       <p className={`text-sm font-medium ${isCurrent ? "text-primary" : ""}`}>{step.label}</p>
                       {logEntry && (
@@ -270,7 +351,7 @@ export default function JobSheetDetail() {
           <p><span className="text-muted-foreground">IMEI:</span> {job.imei_number || "—"}</p>
           <p><span className="text-muted-foreground">Color:</span> {job.device_color || "—"}</p>
           <p><span className="text-muted-foreground">Storage:</span> {job.storage_capacity || "—"}</p>
-          <p><span className="text-muted-foreground">Lock Code:</span> {job.device_lock_code || "—"}</p>
+          <p><span className="text-muted-foreground">Lock Code:</span> {isAdminStaff ? (job.device_lock_code || "—") : "••••"}</p>
         </CardContent>
       </Card>
 
@@ -311,15 +392,25 @@ export default function JobSheetDetail() {
           {checklistCategories.map(cat => (
             <div key={cat as string}>
               <p className="text-xs font-medium text-muted-foreground mb-1">{cat as string}</p>
-              <div className="space-y-1">
-                {checklist.filter((c: any) => c.category === cat).map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-sm">
-                    <span>{item.item}</span>
-                    <Badge variant={item.value === "yes" ? "default" : item.value === "no" ? "destructive" : "secondary"} className="text-xs">
-                      {item.value === "na" ? "N/A" : item.value}
-                    </Badge>
-                  </div>
-                ))}
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {checklist.filter((c: any) => c.category === cat).map((item: any, idx: number) => (
+                      <tr key={idx} className="border-t first:border-t-0 border-border/50">
+                        <td className="px-3 py-1.5">{item.item}</td>
+                        <td className="px-3 py-1.5 text-right">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                            item.value === "yes" ? "bg-success/15 text-success" :
+                            item.value === "no" ? "bg-destructive/15 text-destructive" :
+                            "bg-muted text-muted-foreground"
+                          }`}>
+                            {item.value === "na" ? "N/A" : item.value}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           ))}
@@ -339,6 +430,89 @@ export default function JobSheetDetail() {
           <p><span className="text-muted-foreground">Staff Notes:</span> {job.staff_notes || "—"}</p>
           <p><span className="text-muted-foreground">Est. Cost:</span> {job.estimated_cost ? `₹${job.estimated_cost}` : "—"}</p>
           <p><span className="text-muted-foreground">Est. Completion:</span> {job.estimated_completion || "—"}</p>
+        </CardContent>
+      </Card>
+
+      {/* Cost & Payment Card */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2"><IndianRupee className="h-4 w-4" /> Cost & Payment Tracking</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Estimated Cost</p>
+              <p className="text-lg font-bold">{job.estimated_cost ? `₹${Number(job.estimated_cost).toLocaleString()}` : "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Actual Cost</p>
+              <p className="text-lg font-bold">{job.actual_cost ? `₹${Number(job.actual_cost).toLocaleString()}` : "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Technician Payment</p>
+              <p className="text-lg font-bold">{job.technician_payment ? `₹${Number(job.technician_payment).toLocaleString()}` : "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Payment Status</p>
+              <Badge variant={job.technician_payment_status === "paid" ? "default" : "secondary"} className="capitalize">
+                {job.technician_payment_status || "pending"}
+              </Badge>
+            </div>
+          </div>
+          {(isAdminStaff || hasRole("technician")) && (
+            <>
+              <Separator />
+              <div className="flex flex-wrap gap-3 items-end">
+                {(isAdminStaff || hasRole("technician")) && (
+                  <div className="flex gap-2 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Actual Cost (₹)</Label>
+                      <Input type="number" className="w-32" value={actualCost} onChange={e => setActualCost(e.target.value)} />
+                    </div>
+                    <Button size="sm" variant="outline" onClick={saveActualCost}>Save</Button>
+                  </div>
+                )}
+                {isAdminStaff && job.technician_payment_status !== "paid" && (
+                  <Button size="sm" onClick={() => { setTechPayForm({ amount: "", method: "cash", notes: "" }); setTechPaySheetOpen(true); }}>
+                    <IndianRupee className="h-3 w-3 mr-1" /> Record Tech Payment
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Device Movement Card */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2"><ArrowRightLeft className="h-4 w-4" /> Device Movement</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+              <p className="text-xs font-medium text-muted-foreground">Sent to Technician</p>
+              <p className="font-medium">{job.device_sent_at ? new Date(job.device_sent_at).toLocaleString("en-IN") : "Not yet"}</p>
+            </div>
+            <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+              <p className="text-xs font-medium text-muted-foreground">Received from Technician</p>
+              <p className="font-medium">{job.device_received_at ? new Date(job.device_received_at).toLocaleString("en-IN") : "Not yet"}</p>
+            </div>
+          </div>
+          {isAdminStaff && (
+            <div className="flex gap-2">
+              {!job.device_sent_at && job.assigned_technician_id && (
+                <Button size="sm" variant="outline" onClick={sendToTechnician}>
+                  <Truck className="h-3 w-3 mr-1.5" /> Send to Technician
+                </Button>
+              )}
+              {job.device_sent_at && !job.device_received_at && (
+                <Button size="sm" variant="outline" onClick={receiveFromTechnician}>
+                  <Truck className="h-3 w-3 mr-1.5" /> Receive Device
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -429,6 +603,35 @@ export default function JobSheetDetail() {
           )}
         </CardContent>
       </Card>
+
+      {/* Technician Payment Sheet */}
+      <Sheet open={techPaySheetOpen} onOpenChange={setTechPaySheetOpen}>
+        <SheetContent>
+          <SheetHeader><SheetTitle>Record Technician Payment</SheetTitle></SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div className="space-y-1.5">
+              <Label>Amount (₹)</Label>
+              <Input type="number" value={techPayForm.amount} onChange={e => setTechPayForm(p => ({ ...p, amount: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Payment Method</Label>
+              <Select value={techPayForm.method} onValueChange={v => setTechPayForm(p => ({ ...p, method: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="bank">Bank Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes</Label>
+              <Input value={techPayForm.notes} onChange={e => setTechPayForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes" />
+            </div>
+            <Button className="w-full" onClick={recordTechnicianPayment}>Record Payment</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
