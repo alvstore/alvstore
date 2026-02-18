@@ -5,19 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Eye, Copy, ShoppingCart, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Search, ShoppingCart, Copy, Eye, FileText, TrendingUp, Clock, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { StatusBadge } from "@/components/documents/StatusBadge";
+import { ItemsTable, type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
+import { TotalsPanel, calculateTotals } from "@/components/documents/TotalsPanel";
+import { ActionButtons } from "@/components/documents/ActionButtons";
+import { DocumentPreview } from "@/components/documents/DocumentPreview";
+import { CustomerCard } from "@/components/documents/CustomerCard";
 
 interface Quotation {
   id: string;
@@ -32,39 +33,18 @@ interface Quotation {
   public_token: string;
   customer_id: string | null;
   created_at: string;
-  customers?: { name: string } | null;
+  discount_type: string | null;
+  discount_value: number | null;
+  gst_inclusive: boolean | null;
+  view_count: number | null;
+  converted_invoice_id: string | null;
+  signature_data: string | null;
+  signature_name: string | null;
+  customers?: { name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null } | null;
 }
 
-interface QuotationItem {
-  id?: string;
-  product_id: string | null;
-  product_name: string;
-  quantity: number;
-  unit_price: number;
-  gst_percentage: number;
-  total: number;
-  notes: string;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  selling_price: number;
-  gst_percentage: number;
-}
-
-interface Customer {
-  id: string;
-  name: string;
-}
-
-const statusColors: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  sent: "bg-info/10 text-info",
-  accepted: "bg-success/10 text-success",
-  rejected: "bg-destructive/10 text-destructive",
-  expired: "bg-warning/10 text-warning",
-};
+interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; }
+interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; }
 
 export default function Sales() {
   const { user } = useAuth();
@@ -73,123 +53,172 @@ export default function Sales() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [detailSheet, setDetailSheet] = useState<Quotation | null>(null);
+  const [detailItems, setDetailItems] = useState<DocumentItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewQuotation, setPreviewQuotation] = useState<Quotation | null>(null);
+  const [previewItems, setPreviewItems] = useState<DocumentItem[]>([]);
 
-  // Form
+  // Form state
   const [formCustomerId, setFormCustomerId] = useState("");
   const [formNotes, setFormNotes] = useState("");
   const [formTerms, setFormTerms] = useState("");
   const [formValidUntil, setFormValidUntil] = useState("");
-  const [formItems, setFormItems] = useState<QuotationItem[]>([]);
+  const [formItems, setFormItems] = useState<DocumentItem[]>([]);
+  const [formGstInclusive, setFormGstInclusive] = useState(false);
+  const [formDiscountType, setFormDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [formDiscountValue, setFormDiscountValue] = useState(0);
 
   const fetchQuotations = async () => {
     setLoading(true);
-    let query = supabase.from("quotations").select("*, customers(name)").order("created_at", { ascending: false });
+    let query = supabase.from("quotations").select("*, customers(name, email, phone, address, gst_number)").order("created_at", { ascending: false });
     if (statusFilter !== "all") query = query.eq("status", statusFilter as any);
     if (search) query = query.ilike("quotation_number", `%${search}%`);
     const { data, error } = await query;
     if (error) toast.error(error.message);
-    else setQuotations(data || []);
+    else setQuotations((data as any) || []);
     setLoading(false);
   };
 
-  const fetchMeta = async () => {
-    const [custRes, prodRes] = await Promise.all([
-      supabase.from("customers").select("id, name").order("name"),
-      supabase.from("products").select("id, name, selling_price, gst_percentage").order("name"),
-    ]);
-    setCustomers(custRes.data || []);
-    setProducts(prodRes.data || []);
-  };
-
   useEffect(() => { fetchQuotations(); }, [search, statusFilter]);
-  useEffect(() => { fetchMeta(); }, []);
+  useEffect(() => {
+    Promise.all([
+      supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
+      supabase.from("products").select("id, name, description, selling_price, gst_percentage").order("name"),
+    ]).then(([c, p]) => { setCustomers(c.data || []); setProducts(p.data || []); });
+  }, []);
+
+  // KPI calculations
+  const totalQuotations = quotations.length;
+  const acceptedCount = quotations.filter(q => q.status === "accepted").length;
+  const pendingCount = quotations.filter(q => q.status === "sent" || q.status === "draft").length;
+  const totalValue = quotations.reduce((sum, q) => sum + (q.total || 0), 0);
 
   const openNew = () => {
-    setFormCustomerId("");
-    setFormNotes("");
-    setFormTerms("1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
-    setFormValidUntil("");
-    setFormItems([]);
+    setFormCustomerId(""); setFormNotes(""); setFormTerms("1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
+    setFormValidUntil(""); setFormItems([]); setFormGstInclusive(false);
+    setFormDiscountType("percentage"); setFormDiscountValue(0);
     setSheetOpen(true);
   };
-
-  const addItem = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-    const qty = 1;
-    const unitPrice = product.selling_price;
-    const gst = product.gst_percentage;
-    const total = qty * unitPrice;
-    setFormItems(prev => [...prev, {
-      product_id: product.id, product_name: product.name,
-      quantity: qty, unit_price: unitPrice, gst_percentage: gst, total, notes: "",
-    }]);
-  };
-
-  const updateItem = (idx: number, field: string, value: any) => {
-    setFormItems(prev => prev.map((item, i) => {
-      if (i !== idx) return item;
-      const updated = { ...item, [field]: value };
-      if (field === "quantity" || field === "unit_price") {
-        updated.total = (updated.quantity || 0) * (updated.unit_price || 0);
-      }
-      return updated;
-    }));
-  };
-
-  const removeItem = (idx: number) => setFormItems(prev => prev.filter((_, i) => i !== idx));
-
-  const calcSubtotal = () => formItems.reduce((sum, i) => sum + i.total, 0);
-  const calcGst = () => formItems.reduce((sum, i) => sum + (i.total * i.gst_percentage / 100), 0);
 
   const handleSave = async () => {
     if (!formCustomerId) { toast.error("Select a customer"); return; }
     if (formItems.length === 0) { toast.error("Add at least one item"); return; }
 
-    const subtotal = calcSubtotal();
-    const gstAmount = calcGst();
-    const total = subtotal + gstAmount;
+    const totals = calculateTotals(formItems, formGstInclusive, formDiscountType, formDiscountValue);
 
     const { data: q, error: qErr } = await supabase.from("quotations").insert({
-      quotation_number: "",
-      customer_id: formCustomerId,
-      subtotal, gst_amount: gstAmount, total,
-      notes: formNotes || null, terms: formTerms || null,
-      valid_until: formValidUntil || null,
-      created_by: user?.id,
+      quotation_number: "", customer_id: formCustomerId,
+      subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount, total: totals.grandTotal,
+      notes: formNotes || null, terms: formTerms || null, valid_until: formValidUntil || null,
+      discount_type: formDiscountType, discount_value: formDiscountValue,
+      gst_inclusive: formGstInclusive, created_by: user?.id,
     }).select().single();
 
     if (qErr) { toast.error(qErr.message); return; }
 
     const items = formItems.map(i => ({
-      quotation_id: q.id, product_id: i.product_id,
-      product_name: i.product_name, quantity: i.quantity,
-      unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
+      quotation_id: q.id, product_id: i.product_id, product_name: i.product_name,
+      quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
+      total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
+      discount_type: i.discount_type, discount_value: i.discount_value,
     }));
 
     const { error: iErr } = await supabase.from("quotation_items").insert(items);
     if (iErr) toast.error(iErr.message);
-    else toast.success("Quotation created");
+    else toast.success("Quotation created — " + q.quotation_number);
     setSheetOpen(false);
     fetchQuotations();
   };
 
-  const copyPublicLink = (token: string) => {
-    const url = `${window.location.origin}/sales/public/${token}`;
-    navigator.clipboard.writeText(url);
-    toast.success("Public link copied to clipboard");
+  const openDetail = async (q: Quotation) => {
+    setDetailSheet(q);
+    const { data } = await supabase.from("quotation_items").select("*").eq("quotation_id", q.id);
+    const mapped: DocumentItem[] = (data || []).map((i: any) => ({
+      id: i.id, product_id: i.product_id, product_name: i.product_name,
+      description: i.description || "", hsn_code: i.hsn_code || "",
+      quantity: i.quantity, unit_price: i.unit_price,
+      discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
+      gst_percentage: i.gst_percentage || 18, gst_enabled: true,
+      total: i.total,
+    }));
+    setDetailItems(mapped);
   };
+
+  const openPreview = (q: Quotation, items: DocumentItem[]) => {
+    setPreviewQuotation(q);
+    setPreviewItems(items);
+    setPreviewOpen(true);
+  };
+
+  const copyPublicLink = (token: string) => {
+    navigator.clipboard.writeText(`${window.location.origin}/sales/public/${token}`);
+    toast.success("Link copied");
+  };
+
+  const convertToInvoice = async (q: Quotation) => {
+    if (!q.customer_id) { toast.error("No customer on quotation"); return; }
+    const { data: items } = await supabase.from("quotation_items").select("*").eq("quotation_id", q.id);
+
+    const { data: inv, error: invErr } = await supabase.from("invoices").insert({
+      customer_id: q.customer_id, subtotal: q.subtotal, gst_amount: q.gst_amount, total: q.total,
+      notes: q.notes, quotation_id: q.id, discount_type: q.discount_type, discount_value: q.discount_value,
+      gst_inclusive: q.gst_inclusive, created_by: user?.id,
+    }).select().single();
+
+    if (invErr) { toast.error(invErr.message); return; }
+
+    if (items && items.length > 0) {
+      const invItems = items.map((i: any) => ({
+        invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
+        description: i.description, hsn_code: i.hsn_code, discount_type: i.discount_type, discount_value: i.discount_value,
+      }));
+      await supabase.from("invoice_items").insert(invItems);
+    }
+
+    await supabase.from("quotations").update({ converted_invoice_id: inv.id, status: "accepted" as any }).eq("id", q.id);
+    toast.success("Converted to Invoice — " + inv.invoice_number);
+    setDetailSheet(null);
+    fetchQuotations();
+  };
+
+  const selectedCustomer = formCustomerId ? customers.find(c => c.id === formCustomerId) : null;
+  const detailCustomer = detailSheet?.customers;
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Sales & Quotations</h1>
-          <p className="text-muted-foreground">Create and manage quotations</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Sales & Quotations</h1>
+          <p className="text-sm text-muted-foreground">Create, manage and convert quotations</p>
         </div>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> New Quotation</Button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Total Quotations", value: totalQuotations, icon: FileText, color: "text-primary" },
+          { label: "Accepted", value: acceptedCount, icon: CheckCircle, color: "text-success" },
+          { label: "Pending", value: pendingCount, icon: Clock, color: "text-warning" },
+          { label: "Total Value", value: `₹${totalValue.toLocaleString("en-IN")}`, icon: TrendingUp, color: "text-accent" },
+        ].map(kpi => (
+          <Card key={kpi.label} className="border-border">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-lg bg-muted flex items-center justify-center ${kpi.color}`}>
+                <kpi.icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                <p className="text-lg font-bold text-foreground">{kpi.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Filters */}
@@ -205,60 +234,48 @@ export default function Sales() {
         </Tabs>
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by number..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+          <Input placeholder="Search quotations..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border bg-card">
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Number</TableHead>
-              <TableHead className="hidden sm:table-cell">Customer</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="hidden md:table-cell">Date</TableHead>
-              <TableHead className="w-28">Actions</TableHead>
+            <TableRow className="bg-muted/30">
+              <TableHead className="text-xs">Number</TableHead>
+              <TableHead className="hidden sm:table-cell text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Status</TableHead>
+              <TableHead className="text-right text-xs">Total</TableHead>
+              <TableHead className="hidden md:table-cell text-xs">Date</TableHead>
+              <TableHead className="hidden lg:table-cell text-xs text-center">Views</TableHead>
+              <TableHead className="w-32 text-xs">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : quotations.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                <ShoppingCart className="h-10 w-10 mx-auto mb-2 opacity-30" />No quotations yet
+              <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                <ShoppingCart className="h-10 w-10 mx-auto mb-2 opacity-30" />No quotations found
               </TableCell></TableRow>
             ) : quotations.map(q => (
-              <TableRow key={q.id}>
-                <TableCell className="font-medium">{q.quotation_number}</TableCell>
-                <TableCell className="hidden sm:table-cell">{q.customers?.name || "—"}</TableCell>
-                <TableCell>
-                  <Badge className={statusColors[q.status] || ""}>{q.status}</Badge>
-                </TableCell>
-                <TableCell className="text-right font-medium">₹{q.total}</TableCell>
-                <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
+              <TableRow key={q.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openDetail(q)}>
+                <TableCell className="font-medium text-sm">{q.quotation_number}</TableCell>
+                <TableCell className="hidden sm:table-cell text-sm">{q.customers?.name || "—"}</TableCell>
+                <TableCell><StatusBadge status={q.status} /></TableCell>
+                <TableCell className="text-right font-semibold text-sm">₹{(q.total || 0).toLocaleString("en-IN")}</TableCell>
+                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                   {new Date(q.created_at).toLocaleDateString("en-IN")}
                 </TableCell>
-                <TableCell>
+                <TableCell className="hidden lg:table-cell text-center text-xs text-muted-foreground">{q.view_count || 0}</TableCell>
+                <TableCell onClick={e => e.stopPropagation()}>
                   <div className="flex gap-1 items-center">
-                    <Select value={q.status} onValueChange={async (v) => {
-                      const { error } = await supabase.from("quotations").update({ status: v as any }).eq("id", q.id);
-                      if (error) toast.error(error.message);
-                      else { toast.success("Status updated"); fetchQuotations(); }
-                    }}>
-                      <SelectTrigger className="h-7 w-[100px] text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {["draft", "sent", "accepted", "rejected", "expired"].map(s => (
-                          <SelectItem key={s} value={s} className="capitalize text-xs">{s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button variant="ghost" size="icon" onClick={() => copyPublicLink(q.public_token)} title="Copy link">
-                      <Copy className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyPublicLink(q.public_token)} title="Copy link">
+                      <Copy className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" asChild title="View">
-                      <a href={`/sales/public/${q.public_token}`} target="_blank"><Eye className="h-4 w-4" /></a>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="View public">
+                      <a href={`/sales/public/${q.public_token}`} target="_blank"><Eye className="h-3.5 w-3.5" /></a>
                     </Button>
                   </div>
                 </TableCell>
@@ -268,79 +285,168 @@ export default function Sales() {
         </Table>
       </div>
 
-      {/* Create Quotation Sheet */}
+      {/* Create Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="overflow-y-auto sm:max-w-lg">
+        <SheetContent className="overflow-y-auto sm:max-w-xl w-full">
           <SheetHeader>
             <SheetTitle>New Quotation</SheetTitle>
-            <SheetDescription>Create a new quotation for your customer</SheetDescription>
+            <SheetDescription>Create a professional quotation</SheetDescription>
           </SheetHeader>
           <div className="space-y-5 mt-6">
             <div className="space-y-1.5">
-              <Label>Customer *</Label>
+              <Label className="text-xs font-medium">Customer *</Label>
               <Select value={formCustomerId} onValueChange={setFormCustomerId}>
                 <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                <SelectContent>
-                  {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
+                <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Valid Until</Label>
-              <Input type="date" value={formValidUntil} onChange={e => setFormValidUntil(e.target.value)} />
-            </div>
+            {selectedCustomer && (
+              <CustomerCard name={selectedCustomer.name} email={selectedCustomer.email} phone={selectedCustomer.phone} address={selectedCustomer.address} gstNumber={selectedCustomer.gst_number} compact />
+            )}
 
-            {/* Items */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Items</Label>
-                <Select onValueChange={addItem}>
-                  <SelectTrigger className="w-[200px] h-8 text-xs"><SelectValue placeholder="+ Add product" /></SelectTrigger>
-                  <SelectContent>
-                    {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} — ₹{p.selling_price}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Valid Until</Label>
+                <Input type="date" value={formValidUntil} onChange={e => setFormValidUntil(e.target.value)} />
               </div>
-              {formItems.length === 0 && <p className="text-sm text-muted-foreground">No items added yet.</p>}
-              {formItems.map((item, idx) => (
-                <div key={idx} className="rounded-lg border p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">{item.product_name}</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeItem(idx)}><Trash2 className="h-3 w-3" /></Button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div><Label className="text-xs">Qty</Label>
-                      <Input type="number" min="1" className="h-8 text-sm" value={item.quantity} onChange={e => updateItem(idx, "quantity", parseInt(e.target.value) || 0)} /></div>
-                    <div><Label className="text-xs">Price</Label>
-                      <Input type="number" className="h-8 text-sm" value={item.unit_price} onChange={e => updateItem(idx, "unit_price", parseFloat(e.target.value) || 0)} /></div>
-                    <div><Label className="text-xs">GST %</Label>
-                      <Input type="number" className="h-8 text-sm" value={item.gst_percentage} onChange={e => updateItem(idx, "gst_percentage", parseFloat(e.target.value) || 0)} /></div>
-                  </div>
-                  <p className="text-xs text-right text-muted-foreground">Line total: ₹{item.total.toFixed(2)}</p>
-                </div>
-              ))}
-              {formItems.length > 0 && (
-                <div className="text-right space-y-1 text-sm border-t pt-3">
-                  <p>Subtotal: ₹{calcSubtotal().toFixed(2)}</p>
-                  <p>GST: ₹{calcGst().toFixed(2)}</p>
-                  <p className="font-bold text-base">Total: ₹{(calcSubtotal() + calcGst()).toFixed(2)}</p>
-                </div>
-              )}
+              <div className="flex items-end gap-2 pb-0.5">
+                <Switch checked={formGstInclusive} onCheckedChange={setFormGstInclusive} />
+                <Label className="text-xs">GST Inclusive</Label>
+              </div>
             </div>
 
+            <ItemsTable items={formItems} onItemsChange={setFormItems} products={products} />
+
+            {formItems.length > 0 && (
+              <TotalsPanel
+                items={formItems} gstInclusive={formGstInclusive}
+                globalDiscountType={formDiscountType} globalDiscountValue={formDiscountValue}
+                onGstInclusiveChange={setFormGstInclusive}
+                onGlobalDiscountTypeChange={setFormDiscountType}
+                onGlobalDiscountValueChange={setFormDiscountValue}
+              />
+            )}
+
             <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} />
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} placeholder="Internal notes..." />
             </div>
             <div className="space-y-1.5">
-              <Label>Terms & Conditions</Label>
+              <Label className="text-xs font-medium">Terms & Conditions</Label>
               <Textarea value={formTerms} onChange={e => setFormTerms(e.target.value)} rows={3} />
             </div>
             <Button className="w-full" onClick={handleSave}>Create Quotation</Button>
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Detail Sheet */}
+      <Sheet open={!!detailSheet} onOpenChange={v => !v && setDetailSheet(null)}>
+        <SheetContent className="overflow-y-auto sm:max-w-xl w-full">
+          {detailSheet && (
+            <>
+              <SheetHeader>
+                <div className="flex items-center justify-between">
+                  <SheetTitle>{detailSheet.quotation_number}</SheetTitle>
+                  <StatusBadge status={detailSheet.status} />
+                </div>
+                <SheetDescription>
+                  Created {new Date(detailSheet.created_at).toLocaleDateString("en-IN")}
+                  {detailSheet.view_count ? ` · ${detailSheet.view_count} views` : ""}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="space-y-5 mt-6">
+                {detailCustomer && (
+                  <div className="rounded-lg border border-border p-3 bg-muted/20">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Customer</p>
+                    <CustomerCard name={detailCustomer.name} email={detailCustomer.email} phone={detailCustomer.phone} address={detailCustomer.address} gstNumber={detailCustomer.gst_number} compact />
+                  </div>
+                )}
+
+                <ItemsTable items={detailItems} onItemsChange={() => {}} products={[]} readOnly />
+
+                <TotalsPanel
+                  items={detailItems} gstInclusive={detailSheet.gst_inclusive || false}
+                  globalDiscountType={(detailSheet.discount_type as any) || "percentage"}
+                  globalDiscountValue={detailSheet.discount_value || 0}
+                  readOnly
+                />
+
+                {detailSheet.notes && (
+                  <div><p className="text-xs font-semibold mb-1">Notes</p><p className="text-xs text-muted-foreground whitespace-pre-line">{detailSheet.notes}</p></div>
+                )}
+                {detailSheet.terms && (
+                  <div><p className="text-xs font-semibold mb-1">Terms</p><p className="text-xs text-muted-foreground whitespace-pre-line">{detailSheet.terms}</p></div>
+                )}
+
+                {detailSheet.signature_data && (
+                  <div className="rounded-lg border border-border p-3 text-center">
+                    <img src={detailSheet.signature_data} alt="Signature" className="h-14 mx-auto" />
+                    {detailSheet.signature_name && <p className="text-sm font-medium mt-1">{detailSheet.signature_name}</p>}
+                  </div>
+                )}
+
+                {/* Status change */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs shrink-0">Status:</Label>
+                  <Select value={detailSheet.status} onValueChange={async v => {
+                    const { error } = await supabase.from("quotations").update({ status: v as any }).eq("id", detailSheet.id);
+                    if (error) toast.error(error.message);
+                    else { toast.success("Status updated"); setDetailSheet({ ...detailSheet, status: v }); fetchQuotations(); }
+                  }}>
+                    <SelectTrigger className="h-8 w-[120px] text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["draft", "sent", "accepted", "rejected", "expired"].map(s => (
+                        <SelectItem key={s} value={s} className="capitalize text-xs">{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <ActionButtons
+                  onPreview={() => openPreview(detailSheet, detailItems)}
+                  onDownload={() => window.print()}
+                  onCopyLink={() => copyPublicLink(detailSheet.public_token)}
+                  onSendEmail={() => toast.info("Email integration coming soon")}
+                  onSendWhatsApp={() => toast.info("WhatsApp integration coming soon")}
+                  showConvert={detailSheet.status === "accepted" && !detailSheet.converted_invoice_id}
+                  onConvertToInvoice={() => convertToInvoice(detailSheet)}
+                  compact
+                />
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Preview */}
+      {previewQuotation && (
+        <DocumentPreview
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          type="quotation"
+          number={previewQuotation.quotation_number}
+          status={previewQuotation.status}
+          customer={previewQuotation.customers ? {
+            name: previewQuotation.customers.name,
+            email: previewQuotation.customers.email,
+            phone: previewQuotation.customers.phone,
+            address: previewQuotation.customers.address,
+            gstNumber: previewQuotation.customers.gst_number,
+          } : null}
+          items={previewItems}
+          gstInclusive={previewQuotation.gst_inclusive || false}
+          globalDiscountType={(previewQuotation.discount_type as any) || "percentage"}
+          globalDiscountValue={previewQuotation.discount_value || 0}
+          notes={previewQuotation.notes}
+          terms={previewQuotation.terms}
+          validUntil={previewQuotation.valid_until}
+          createdAt={previewQuotation.created_at}
+          signatureData={previewQuotation.signature_data}
+          signatureName={previewQuotation.signature_name}
+        />
+      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ import CRM from "./pages/CRM";
 import Inventory from "./pages/Inventory";
 import Sales from "./pages/Sales";
 import PublicQuotation from "./pages/PublicQuotation";
+import PublicInvoice from "./pages/PublicInvoice";
 import TechnicianDashboard from "./pages/TechnicianDashboard";
 import Settings from "./pages/Settings";
 import POS from "./pages/POS";
@@ -55,6 +56,7 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/sales/public/:token" element={<PublicQuotation />} />
             <Route path="/job/public/:token" element={<PublicJobSheet />} />
+            <Route path="/invoice/public/:token" element={<PublicInvoice />} />
             {/* Protected routes with layout */}
             <Route
               element={
