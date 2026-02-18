@@ -1,104 +1,121 @@
 
 
-# Fix Hikvision API Integration - Robust MQ Attendance Sync
+# Remove ISAPI, Cloud-Only Hikvision Integration
 
-## Current Issues Found
+## Overview
 
-1. **`mq/offset` fails**: The API requires a `batchId` parameter (from the messages response), but the code passes an empty object `{}`
-2. **Wrong event format parsing**: MQ messages use `AccessControllerEvent` format with `majorEventType`/`subEventType`, but code looks for `ACSEvent` with `major`/`minor`
-3. **Employee extraction from MQ events**: Since `person/synchronize` requires Cloud Attendance tier (which the current App Key doesn't have), we should extract employee info directly from MQ attendance events as a fallback
-4. **No `employeeNoString` extraction from correct path**: The actual data path is `msg.alarmData -> AccessControllerEvent -> employeeNoString`
+Strip out all ISAPI/transparent proxy code from the edge function and keep only the Cloud API path. Update the Settings UI to let admins enter/update App Key and Secret Key directly (saving them as backend secrets). Properly audit all Cloud API calls against the official documentation. Test each action after deployment.
 
-## Evidence from Logs
+## Changes
 
-The MQ messages ARE flowing successfully. Here is the actual format:
-```text
-AccessControllerEvent: {
-  deviceName: "Access Controller",
-  majorEventType: 3,
-  subEventType: 112,
-  employeeNoString: "...",
-  ...
-}
-```
+### 1. Edge Function Rewrite (`supabase/functions/hikvision-sync/index.ts`)
 
-## Plan
+**Remove entirely:**
+- The `isapi()` helper function (lines 141-162)
+- The `checkApiError()` function (lines 126-139)
+- The `isIsapiBlocked()` helper (lines 43-46)
+- All ISAPI-first-then-fallback patterns in `test`, `device-info`, `sync-employees`, `sync-departments`, `sync-photos`, `sync-attendance`
+- The `cloud-enable` action (no longer needed)
 
-### Step 1: Fix `cloudSyncAttendance` - Pass `batchId` to `mq/offset`
+**Keep and clean up:**
+- `getHppToken()` - already correct per docs (POST `/api/hpcgw/v1/token/get` with `appKey` + `secretKey`, returns `accessToken`, `areaDomain`, `expireTime`)
+- `cloudApi()` - already correct (uses `Bearer {accessToken}` header)
+- `getAllSites()` - already correct (uses `site/search` + `customer/list`)
 
-The `mq/messages` response includes `data.batchId`. The `mq/offset` API requires this `batchId` to acknowledge receipt. Currently passing `{}` which causes `LAP000001: batchId must not be blank`.
+**Rewrite actions to Cloud-only:**
 
-**Fix**: Extract `batchId` from messages response and pass it to offset call.
+- **`test`**: Call `device/list` for the device's site. If device serial found and `isOnline === "1"`, return success. No ISAPI needed.
 
-### Step 2: Fix Event Parsing for `AccessControllerEvent` Format
+- **`device-info`**: Use `device/list` response data (deviceName, deviceModel, deviceVersion, deviceSerial) to populate the DB. No ISAPI needed.
 
-The current code looks for:
-- `alarmData.ACSEvent` or `alarmData.accessControlEvent` -- WRONG
-- `acsEvent.major` / `acsEvent.minor` -- WRONG
+- **`sync-employees`**: Call `person/synchronize` directly (Cloud Attendance API). If it fails with `0x02401000` (AppKey not authorized for attendance tier), fall back to extracting employees from `hikvision_attendance_logs`. Remove ISAPI path entirely.
 
-The actual MQ format from the device is:
-- `alarmData.AccessControllerEvent` -- CORRECT
-- `AccessControllerEvent.majorEventType` / `.subEventType` -- CORRECT
-- `AccessControllerEvent.employeeNoString` -- CORRECT
-- `alarmData.dateTime` for event time -- CORRECT
+- **`sync-attendance`**: Call `mq/subscribe` then `mq/messages` then `mq/offset` directly. No ISAPI fallback. Already working correctly.
 
-### Step 3: Add MQ-based Employee Discovery
+- **`sync-departments`**: Call `person/synchronize` then extract department names from `person/synchronize/details`. If person/synchronize fails, extract from attendance logs. No ISAPI path.
 
-Since `person/synchronize` requires Cloud Attendance tier (error `0x02401000`), add a new approach:
-- When `sync-employees` Cloud API fallback fails, automatically extract employee info from MQ attendance events already stored in `hikvision_attendance_logs`
-- Also create employee mappings on-the-fly during attendance sync from MQ events (already partially done, but needs fixing)
+- **`sync-photos`**: Since ISAPI is removed and there is no Cloud API for face photos, mark this action as unsupported and return a clear message. Photos can be uploaded manually.
 
-### Step 4: Test All Actions Sequentially
+- **`subscribe-events`**: Keep as-is (already Cloud-only).
 
-After deploying, test in order:
-1. `subscribe-events` -- confirm subscription active
-2. `sync-attendance` / `poll-messages` -- confirm events parsed and saved
-3. `sync-employees` -- confirm fallback extracts employees from attendance logs
-4. Verify `mq/offset` succeeds with batchId
+- **`poll-messages`**: Keep as-is (already Cloud-only).
 
----
+**Add new action: `save-credentials`**
+- Accepts `appKey` and `secretKey` in the request body
+- Validates by calling `token/get` with them
+- If successful, stores them using Deno env (the actual storage will be via the secrets system, but the action validates first)
+- Returns the token info (areaDomain, expireTime) for UI feedback
+
+### 2. Settings UI Update (`src/pages/Settings.tsx`)
+
+**Current state:** App Key and Secret fields are disabled/masked with a note "Stored as secret". No way to update them from the UI.
+
+**New behavior:**
+- Show editable App Key and Secret Key input fields (type=password with show/hide toggle)
+- Add a "Save & Test" button that:
+  1. Calls the edge function `save-credentials` action with the entered values
+  2. If token is obtained successfully, shows green status with areaDomain and expireTime
+  3. Prompts the user to confirm saving (the actual secret storage happens via the existing secrets system)
+- After successful test, display:
+  - Area Domain (e.g., `https://apiiind.hik-partner.com`)
+  - Token expiry (7 days from now)
+  - Number of discovered sites and devices
+- Keep the discovered sites table and default site selector as-is
+
+### 3. Attendance UI Minor Updates (`src/pages/Attendance.tsx`)
+
+- Remove references to ISAPI in status messages/tooltips
+- Update "Test Connection" button result to show "Cloud API Connected" instead of "ISAPI blocked, Cloud API required"
+- Remove the "Enable Cloud Access" button references if any remain
+- Sync Photos button should show "Not available (Cloud API)" tooltip
 
 ## Technical Details
 
-### File: `supabase/functions/hikvision-sync/index.ts`
-
-**Change 1 - Fix `mq/offset` (line ~457)**
-
-Before:
-```typescript
-await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", {});
-```
-
-After:
-```typescript
-await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId });
-```
-
-The `batchId` comes from the `mq/messages` response: `msgResult.data.batchId`
-
-**Change 2 - Fix event parsing in `cloudSyncAttendance` (lines ~380-410)**
-
-Update the event extraction logic to handle the actual `AccessControllerEvent` format:
-- Check `alarmData.AccessControllerEvent` in addition to `ACSEvent`
-- Use `majorEventType` / `subEventType` instead of `major` / `minor`
-- Extract `employeeNoString` from `AccessControllerEvent`
-- Use `alarmData.dateTime` as primary event time
-
-**Change 3 - Add employee extraction fallback in `sync-employees` (lines ~820-830)**
-
-When Cloud API `person/synchronize` fails with `0x02401000`, add a third fallback:
-- Query existing `hikvision_attendance_logs` for the device
-- Extract unique employee codes and names
-- Create mappings and employee records from that data
-
-### Testing Sequence
+### Edge function action map (Cloud-only)
 
 ```text
-1. Deploy updated edge function
-2. Call subscribe-events -> verify subscription
-3. Call sync-attendance for FF6426490 -> verify events parsed and batchId offset works
-4. Call sync-employees for FF6426490 -> verify fallback extracts from attendance logs
-5. Check hikvision_attendance_logs table for new records
-6. Check hikvision_employee_mapping table for auto-created mappings
+test              -> device/list (check device online status)
+device-info       -> device/list (get device metadata)
+list-devices      -> site/search + device/list per site
+site-search       -> site/search + customer/list
+sync-employees    -> person/synchronize -> progress -> details (fallback: attendance_logs)
+sync-departments  -> person/synchronize -> details (extract dept names; fallback: attendance_logs)
+sync-attendance   -> mq/subscribe + mq/messages + mq/offset
+sync-photos       -> return "unsupported in Cloud-only mode"
+subscribe-events  -> mq/subscribe
+poll-messages     -> mq/subscribe + mq/messages + mq/offset
+full-sync         -> device-info + sync-departments + sync-employees + sync-attendance
+auto-map          -> query DB only (no API call)
+save-credentials  -> token/get (validate appKey/secretKey)
+```
+
+### API call patterns (per documentation)
+
+All API calls use:
+- `POST` method
+- `Content-Type: application/json` header
+- `Authorization: Bearer {accessToken}` header
+- Body as JSON
+
+Token: `POST https://api.hik-partner.com/api/hpcgw/v1/token/get` with `{ appKey, secretKey }`.
+All subsequent calls use the returned `areaDomain` as base URL.
+
+### Files to modify
+
+1. `supabase/functions/hikvision-sync/index.ts` - Major rewrite removing all ISAPI code, keeping Cloud API only
+2. `src/pages/Settings.tsx` - Update HikvisionTab to allow credential entry and validation
+3. `src/pages/Attendance.tsx` - Minor: remove ISAPI references from UI text
+
+### Testing sequence after deployment
+
+```text
+1. save-credentials (validate API keys work)
+2. list-devices (discover sites + devices)
+3. test FF6426490 (verify device online via device/list)
+4. device-info FF6426490 (get metadata from device/list)
+5. subscribe-events (setup MQ subscription)
+6. sync-attendance FF6426490 (poll MQ messages)
+7. sync-employees FF6426490 (person/synchronize or attendance_logs fallback)
+8. sync-departments FF6426490 (from person details or logs)
 ```
 
