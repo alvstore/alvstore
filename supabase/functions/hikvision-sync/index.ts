@@ -380,10 +380,6 @@ async function cloudSyncAttendance(
 
       for (const msg of messages) {
         try {
-          // Filter for our device's ACS events
-          const msgDeviceSerial = msg.deviceSerial || "";
-          if (deviceSerial && msgDeviceSerial && msgDeviceSerial !== deviceSerial) continue;
-
           // Parse alarmData JSON string
           let alarmData: any = {};
           if (typeof msg.alarmData === "string") {
@@ -392,24 +388,41 @@ async function cloudSyncAttendance(
             alarmData = msg.alarmData || {};
           }
 
-          // Check if this is an ACS event
-          const acsEvent = alarmData.ACSEvent || alarmData.accessControlEvent || {};
+          // Filter for our device's events (deviceSerial can be at msg level or in alarmData)
+          const msgDeviceSerial = msg.deviceSerial || alarmData.deviceSerial || "";
+          if (deviceSerial && msgDeviceSerial && msgDeviceSerial !== deviceSerial) continue;
+
+          // Check if this is an AccessControllerEvent (actual MQ format)
+          const acsEvent = alarmData.AccessControllerEvent || alarmData.ACSEvent || alarmData.accessControlEvent || {};
           const eventType = alarmData.eventType || msg.formatType || "";
 
-          // Skip non-ACS events
-          if (!eventType.toLowerCase().includes("acs") && !acsEvent.employeeNoString && !acsEvent.name) continue;
+          console.log(`[cloudSyncAttendance] Event: type=${eventType}, majorEventType=${acsEvent.majorEventType}, subEventType=${acsEvent.subEventType}, employeeNoString=${acsEvent.employeeNoString}, deviceSerial=${msgDeviceSerial}`);
+
+          // Skip non-access-control events
+          const isAccessEvent = eventType === "AccessControllerEvent" || 
+            eventType.toLowerCase().includes("acs") || 
+            eventType.toLowerCase().includes("accesscontroller") ||
+            acsEvent.employeeNoString || acsEvent.name;
+          if (!isAccessEvent) continue;
 
           const employeeCode = acsEvent.employeeNoString || acsEvent.employeeNo?.toString() || "";
-          const employeeName = acsEvent.name || "";
-          const eventTime = alarmData.triggerTime || acsEvent.time || acsEvent.dateTime || msg.alarmTime;
+          const employeeName = acsEvent.name || acsEvent.deviceName || "";
+          const eventTime = alarmData.dateTime || alarmData.triggerTime || acsEvent.time || acsEvent.dateTime || msg.alarmTime;
 
-          if (!eventTime || !employeeCode) continue;
+          if (!eventTime || !employeeCode) {
+            console.log(`[cloudSyncAttendance] Skipping event: eventTime=${eventTime}, employeeCode=${employeeCode}`);
+            continue;
+          }
 
           let accessType = "access";
-          const major = acsEvent.major;
-          const minor = acsEvent.minor;
+          // AccessControllerEvent uses majorEventType/subEventType
+          const major = acsEvent.majorEventType ?? acsEvent.major;
+          const minor = acsEvent.subEventType ?? acsEvent.minor;
+          // majorEventType 5 = access event; subEventType 75/76 = checkin/checkout
           if (major === 5 && minor === 75) accessType = "checkin";
           else if (major === 5 && minor === 76) accessType = "checkout";
+          // majorEventType 3 = alarm event (e.g. subEventType 112 = face recognition success)
+          else if (major === 3) accessType = "access";
           else {
             const cardType = acsEvent.cardType || acsEvent.currentEvent?.cardType;
             if (cardType === 1) accessType = "checkin";
@@ -452,12 +465,17 @@ async function cloudSyncAttendance(
         }
       }
 
-      // Step 3: Confirm receipt (offset)
-      try {
-        await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", {});
-        console.log("[cloudSyncAttendance] Messages confirmed (offset)");
-      } catch (offsetErr) {
-        console.warn(`[cloudSyncAttendance] Offset failed: ${offsetErr instanceof Error ? offsetErr.message : "unknown"}`);
+      // Step 3: Confirm receipt (offset) - must pass batchId from messages response
+      const batchId = msgResult.data?.batchId;
+      if (batchId) {
+        try {
+          await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId });
+          console.log(`[cloudSyncAttendance] Messages confirmed (offset batchId: ${batchId})`);
+        } catch (offsetErr) {
+          console.warn(`[cloudSyncAttendance] Offset failed: ${offsetErr instanceof Error ? offsetErr.message : "unknown"}`);
+        }
+      } else {
+        console.warn("[cloudSyncAttendance] No batchId in messages response, skipping offset");
       }
     } catch (pollErr) {
       console.warn(`[cloudSyncAttendance] Poll failed: ${pollErr instanceof Error ? pollErr.message : "unknown"}`);
@@ -821,9 +839,72 @@ serve(async (req: Request) => {
           console.log(`[sync-employees] ISAPI blocked (${(isapiErr as Error).message}), falling back to Cloud API...`);
           await logSync(supabase, device_id, "sync_employees_isapi_blocked", "info", "employee", 0, "Falling back to Cloud API");
           
-          const result = await cloudSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
-          await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", result.records_synced);
-          return jsonResp(result);
+          try {
+            const result = await cloudSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
+            await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", result.records_synced);
+            return jsonResp(result);
+          } catch (cloudErr) {
+            // *** FALLBACK 2: Extract employees from existing attendance logs ***
+            console.log(`[sync-employees] Cloud API also failed (${(cloudErr as Error).message}), falling back to attendance logs...`);
+            await logSync(supabase, device_id, "sync_employees_cloud_failed", "info", "employee", 0, `Cloud failed: ${(cloudErr as Error).message}. Trying attendance logs fallback.`);
+            
+            const { data: logs } = await supabase
+              .from("hikvision_attendance_logs")
+              .select("employee_code, employee_name")
+              .eq("device_id", device_id)
+              .not("employee_code", "is", null)
+              .not("employee_code", "eq", "");
+
+            const uniqueEmployees = new Map<string, string>();
+            for (const log of (logs || [])) {
+              if (log.employee_code && !uniqueEmployees.has(log.employee_code)) {
+                uniqueEmployees.set(log.employee_code, log.employee_name || `Employee ${log.employee_code}`);
+              }
+            }
+
+            console.log(`[sync-employees] Found ${uniqueEmployees.size} unique employees from attendance logs`);
+            let fallbackSynced = 0;
+
+            for (const [empCode, empName] of uniqueEmployees) {
+              await supabase.from("hikvision_employee_mapping").upsert({
+                device_employee_code: empCode,
+                device_employee_name: empName,
+                device_id: device_id,
+                synced_at: new Date().toISOString(),
+              }, { onConflict: "device_employee_code,device_id" });
+
+              const { data: existingEmp } = await supabase
+                .from("employees")
+                .select("id")
+                .eq("device_employee_code", empCode)
+                .maybeSingle();
+
+              if (!existingEmp && empName) {
+                const { data: newEmp } = await supabase.from("employees").insert({
+                  name: empName,
+                  device_employee_code: empCode,
+                  role: "staff",
+                  status: "active",
+                }).select("id").single();
+
+                if (newEmp) {
+                  await supabase.from("hikvision_employee_mapping")
+                    .update({ erp_employee_id: newEmp.id })
+                    .eq("device_employee_code", empCode)
+                    .eq("device_id", device_id);
+                }
+              } else if (existingEmp) {
+                await supabase.from("hikvision_employee_mapping")
+                  .update({ erp_employee_id: existingEmp.id })
+                  .eq("device_employee_code", empCode)
+                  .eq("device_id", device_id);
+              }
+              fallbackSynced++;
+            }
+
+            await logSync(supabase, device_id, "sync_employees_from_logs", "success", "employee", fallbackSynced);
+            return jsonResp({ success: true, records_synced: fallbackSynced, method: "attendance_logs_fallback" });
+          }
         }
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
