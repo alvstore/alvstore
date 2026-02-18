@@ -128,6 +128,45 @@ export type Database = {
         }
         Relationships: []
       }
+      calendar_events: {
+        Row: {
+          all_day: boolean | null
+          category: string | null
+          color: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          end_date: string | null
+          id: string
+          start_date: string
+          title: string
+        }
+        Insert: {
+          all_day?: boolean | null
+          category?: string | null
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          start_date: string
+          title: string
+        }
+        Update: {
+          all_day?: boolean | null
+          category?: string | null
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          start_date?: string
+          title?: string
+        }
+        Relationships: []
+      }
       chat_conversations: {
         Row: {
           created_at: string
