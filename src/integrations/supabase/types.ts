@@ -619,8 +619,11 @@ export type Database = {
           name: string
           password: string | null
           port: number
+          site_id: string | null
+          site_name: string | null
           status: string
           username: string | null
+          zone: string | null
         }
         Insert: {
           created_at?: string
@@ -634,8 +637,11 @@ export type Database = {
           name: string
           password?: string | null
           port?: number
+          site_id?: string | null
+          site_name?: string | null
           status?: string
           username?: string | null
+          zone?: string | null
         }
         Update: {
           created_at?: string
@@ -649,8 +655,11 @@ export type Database = {
           name?: string
           password?: string | null
           port?: number
+          site_id?: string | null
+          site_name?: string | null
           status?: string
           username?: string | null
+          zone?: string | null
         }
         Relationships: []
       }

@@ -20,6 +20,7 @@ import {
 import {
   User, Shield, Building2, Receipt, Mail, MessageSquare, Phone,
   Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File,
+  Cloud, TestTube, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -497,22 +498,124 @@ function WhatsAppTab() {
 // ─── Hikvision Tab ──────────────────────────────────────────────
 function HikvisionTab() {
   const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
+  const [testing, setTesting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<"idle" | "connected" | "error">("idle");
+  const [discoveredSites, setDiscoveredSites] = useState<Array<{ siteId: string; siteName: string; deviceCount: number; isCustomerSite?: boolean }>>([]);
+  const [totalDevices, setTotalDevices] = useState(0);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setConnectionStatus("idle");
+    try {
+      const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "list-devices" } });
+      if (error) throw error;
+      if (data?.success) {
+        setConnectionStatus("connected");
+        setDiscoveredSites(data.sites || []);
+        setTotalDevices(data.devices?.length || 0);
+        toast.success(`Connected — ${data.sites?.length || 0} sites, ${data.devices?.length || 0} devices found`);
+      } else {
+        setConnectionStatus("error");
+        toast.error(data?.error || "Connection failed");
+      }
+    } catch (e: any) {
+      setConnectionStatus("error");
+      toast.error(e.message || "Connection test failed");
+    }
+    setTesting(false);
+  };
+
+  const setDefaultSite = (siteId: string) => {
+    updateField("hik_default_site_id", siteId);
+    toast.info("Default site set. Click Save to persist.");
+  };
+
   return (
     <div className="grid gap-6 max-w-2xl">
-      <IntegrationFieldGroup
-        title="Hikvision Facial Access Device" description="Configure Hikvision biometric device for attendance and avatar sync"
-        fields={[
-          { key: "hik_device_ip", label: "Device IP Address", placeholder: "192.168.1.100" },
-          { key: "hik_port", label: "Port", placeholder: "80" },
-          { key: "hik_username", label: "Username", placeholder: "admin" },
-          { key: "hik_password", label: "Password", type: "password" },
-        ]}
-        integrations={integrations} updateField={updateField}
-      />
+      {/* Connection Status */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Sync Settings</CardTitle><CardDescription>Avatar and facial recognition sync options</CardDescription></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Cloud className="h-5 w-5" />
+            Hik-Partner Pro Cloud API
+          </CardTitle>
+          <CardDescription>Cloud API credentials are securely stored as backend secrets. Use "Test Connection" to verify.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className={`h-3 w-3 rounded-full ${connectionStatus === "connected" ? "bg-green-500" : connectionStatus === "error" ? "bg-red-500" : "bg-muted-foreground/30"}`} />
+            <span className="text-sm font-medium">
+              {connectionStatus === "connected" ? `Connected — ${discoveredSites.length} sites, ${totalDevices} devices` :
+               connectionStatus === "error" ? "Connection failed" : "Not tested yet"}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>App Key</Label>
+              <Input value="••••••••••••••••" disabled className="bg-muted" />
+              <p className="text-xs text-muted-foreground">Stored as HIK_PARTNER_APP_KEY secret</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>API Secret</Label>
+              <Input value="••••••••••••••••" disabled className="bg-muted" />
+              <p className="text-xs text-muted-foreground">Stored as HIK_PARTNER_SECRET_KEY secret</p>
+            </div>
+          </div>
+          <Button onClick={testConnection} disabled={testing} variant="outline">
+            {testing ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}
+            Test Connection
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Discovered Sites */}
+      {discoveredSites.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Discovered Sites</CardTitle>
+            <CardDescription>Sites found in your Hik-Partner Pro account. Click a site to set as default.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Site Name</TableHead>
+                  <TableHead>Site ID</TableHead>
+                  <TableHead>Devices</TableHead>
+                  <TableHead>Default</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {discoveredSites.map(s => (
+                  <TableRow key={s.siteId} className="cursor-pointer hover:bg-muted/50" onClick={() => setDefaultSite(s.siteId)}>
+                    <TableCell className="font-medium">{s.siteName}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{s.siteId}</TableCell>
+                    <TableCell>{s.deviceCount}</TableCell>
+                    <TableCell>
+                      {integrations["hik_default_site_id"] === s.siteId && (
+                        <Badge className="bg-primary/10 text-primary">Default</Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sync Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Sync Settings</CardTitle>
+          <CardDescription>Configure default site and sync behavior</CardDescription>
+        </CardHeader>
         <CardContent className="space-y-3">
-          <div className="space-y-1.5"><Label>Auto-Sync Interval (minutes)</Label><Input type="number" value={integrations["hik_sync_interval"] || "30"} onChange={e => updateField("hik_sync_interval", e.target.value)} /></div>
+          <div className="space-y-1.5">
+            <Label>Default Site ID</Label>
+            <Input value={integrations["hik_default_site_id"] || ""} onChange={e => updateField("hik_default_site_id", e.target.value)} placeholder="Enter or select from discovered sites above" />
+            <p className="text-xs text-muted-foreground">When set, device operations are filtered to this site</p>
+          </div>
           <div className="space-y-1.5">
             <Label>Sync Mode</Label>
             <Select value={integrations["hik_sync_mode"] || "manual"} onValueChange={v => updateField("hik_sync_mode", v)}>
@@ -523,10 +626,16 @@ function HikvisionTab() {
               </SelectContent>
             </Select>
           </div>
-          <p className="text-xs text-muted-foreground">Avatar photos from staff profiles will be synced to the Hikvision device for facial access registration.</p>
+          <div className="space-y-1.5">
+            <Label>Auto-Sync Interval (minutes)</Label>
+            <Input type="number" value={integrations["hik_sync_interval"] || "30"} onChange={e => updateField("hik_sync_interval", e.target.value)} />
+          </div>
         </CardContent>
       </Card>
-      <Button onClick={saveIntegrations} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Hikvision Settings</Button>
+
+      <Button onClick={saveIntegrations} disabled={saving}>
+        {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Hikvision Settings
+      </Button>
     </div>
   );
 }
