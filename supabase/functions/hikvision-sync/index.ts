@@ -14,9 +14,13 @@ interface TokenResponse {
   errorCode: string;
 }
 
-async function getHppToken(): Promise<{ accessToken: string; areaDomain: string }> {
-  const appKey = Deno.env.get("HIK_PARTNER_APP_KEY");
-  const secretKey = Deno.env.get("HIK_PARTNER_SECRET_KEY");
+// ═══════════════════════════════════════════════════════════════
+// Core helpers
+// ═══════════════════════════════════════════════════════════════
+
+async function getHppToken(appKeyOverride?: string, secretKeyOverride?: string): Promise<{ accessToken: string; areaDomain: string; expireTime: number }> {
+  const appKey = appKeyOverride || Deno.env.get("HIK_PARTNER_APP_KEY");
+  const secretKey = secretKeyOverride || Deno.env.get("HIK_PARTNER_SECRET_KEY");
   if (!appKey || !secretKey) throw new Error("HIK_PARTNER_APP_KEY and HIK_PARTNER_SECRET_KEY must be configured");
 
   console.log("[getHppToken] Requesting token...");
@@ -29,7 +33,7 @@ async function getHppToken(): Promise<{ accessToken: string; areaDomain: string 
   const result: TokenResponse = await resp.json();
   if (result.errorCode !== "0" || !result.data?.accessToken) throw new Error(`Token error: ${result.errorCode}`);
   console.log(`[getHppToken] Token acquired. areaDomain: ${result.data.areaDomain}`);
-  return { accessToken: result.data.accessToken, areaDomain: result.data.areaDomain };
+  return { accessToken: result.data.accessToken, areaDomain: result.data.areaDomain, expireTime: result.data.expireTime };
 }
 
 function jsonResp(data: unknown, status = 200) {
@@ -39,13 +43,6 @@ function jsonResp(data: unknown, status = 200) {
   });
 }
 
-// Check if error is ISAPI resource not open or device not belong
-function isIsapiBlocked(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error);
-  return msg.includes("LAP035001") || msg.includes("RESOURCE_NOT_OPEN") || msg.includes("LAP034000");
-}
-
-// Helper to call Hik-Partner Cloud APIs (non-ISAPI)
 async function cloudApi(areaDomain: string, accessToken: string, path: string, body: unknown): Promise<any> {
   console.log(`[cloudApi] POST ${path}`);
   const resp = await fetch(`${areaDomain}${path}`, {
@@ -62,27 +59,20 @@ async function cloudApi(areaDomain: string, accessToken: string, path: string, b
   return result;
 }
 
-// Discover ALL sites (installer sites + customer sites)
+// Discover ALL sites (installer + customer)
 async function getAllSites(areaDomain: string, accessToken: string): Promise<Array<{ id: string; siteName: string; shareType?: number; isCustomerSite?: boolean }>> {
   console.log("[getAllSites] Fetching installer sites via site/search...");
   const allSites: Array<{ id: string; siteName: string; shareType?: number; isCustomerSite?: boolean }> = [];
-  
+
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const resp = await fetch(`${areaDomain}/api/hpcgw/v1/site/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ page, pageSize: 100 }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const result = await resp.json();
-    console.log(`[getAllSites] site/search page ${page}: errorCode=${result.errorCode}, total=${result.data?.total || 0}`);
-    if (result.errorCode !== "0") break;
+    const result = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/site/search", { page, pageSize: 100 });
+    console.log(`[getAllSites] site/search page ${page}: total=${result.data?.total || 0}`);
     const rows = result.data?.rows || [];
     for (const site of rows) {
       const shareType = site.sharedInfo?.shareType;
-      console.log(`  - Installer Site: ${site.siteName} | ID: ${site.id} | shareType: ${shareType}`);
+      console.log(`  - Site: ${site.siteName} | ID: ${site.id} | shareType: ${shareType}`);
       allSites.push({ id: site.id, siteName: site.siteName, shareType, isCustomerSite: false });
     }
     const totalPage = result.data?.totalPage || 1;
@@ -90,25 +80,16 @@ async function getAllSites(areaDomain: string, accessToken: string): Promise<Arr
     page++;
   }
 
-  console.log("[getAllSites] Fetching customer sites for each installer site...");
+  // Fetch customer sites
+  console.log("[getAllSites] Fetching customer sites...");
   const installerSiteIds = allSites.map(s => s.id);
-  
   for (const siteId of installerSiteIds) {
     try {
-      const resp = await fetch(`${areaDomain}/api/hpcgw/v2/site/customer/list`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ siteId, page: 1, pageSize: 100 }),
-        signal: AbortSignal.timeout(15000),
-      });
-      const result = await resp.json();
-      console.log(`[getAllSites] customer/list for site ${siteId}: errorCode=${result.errorCode}, raw: ${JSON.stringify(result).substring(0, 500)}`);
-      
-      if (result.errorCode === "0" && result.data?.rows) {
+      const result = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v2/site/customer/list", { siteId, page: 1, pageSize: 100 });
+      if (result.data?.rows) {
         for (const customer of result.data.rows) {
           const custSiteId = customer.siteId || customer.id;
           const custSiteName = customer.siteName || customer.hcAccount || `Customer ${custSiteId}`;
-          console.log(`  - Customer: ${custSiteName} | siteId: ${custSiteId} | account: ${customer.hcAccount || "N/A"}`);
           if (custSiteId && !allSites.find(s => s.id === custSiteId)) {
             allSites.push({ id: custSiteId, siteName: custSiteName, isCustomerSite: true });
           }
@@ -119,46 +100,8 @@ async function getAllSites(areaDomain: string, accessToken: string): Promise<Arr
     }
   }
 
-  console.log(`[getAllSites] Total sites discovered: ${allSites.length} (installer + customer)`);
+  console.log(`[getAllSites] Total sites: ${allSites.length}`);
   return allSites;
-}
-
-function checkApiError(text: string): void {
-  try {
-    const parsed = JSON.parse(text);
-    if (parsed.errorCode && parsed.errorCode !== "0") {
-      throw new Error(`Hik API error ${parsed.errorCode}: ${parsed.errorMessage || parsed.message || "Unknown error"}`);
-    }
-    if (parsed.statusCode && parseInt(parsed.statusCode) >= 400) {
-      throw new Error(`ISAPI error ${parsed.statusCode}: ${parsed.statusString || parsed.subStatusCode || "Device error"}`);
-    }
-  } catch (e) {
-    if (e instanceof SyntaxError) return;
-    throw e;
-  }
-}
-
-async function isapi(areaDomain: string, accessToken: string, deviceSerial: string, path: string, method = "GET", body?: unknown) {
-  console.log(`[isapi] ${method} ${path} | device: ${deviceSerial}`);
-  const opts: RequestInit = {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      "x-devserial": deviceSerial,
-    },
-    signal: AbortSignal.timeout(30000),
-  };
-  if (body) opts.body = JSON.stringify(body);
-  const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/${path}`, opts);
-  
-  const cloned = resp.clone();
-  const text = await cloned.text();
-  console.log(`[isapi] Response status: ${resp.status} | body preview: ${text.substring(0, 300)}`);
-  checkApiError(text);
-  
-  if (!resp.ok) throw new Error(`ISAPI HTTP ${resp.status}: ${text.substring(0, 500)}`);
-  return resp;
 }
 
 async function getDeviceSerial(supabase: any, body: any): Promise<string> {
@@ -187,75 +130,71 @@ async function logSync(supabase: any, deviceId: string | null, action: string, s
   });
 }
 
+// Find device in cloud device/list across all sites
+async function findDeviceInCloud(areaDomain: string, accessToken: string, deviceSerial: string, sites: Array<{ id: string; siteName: string }>) {
+  for (const site of sites) {
+    try {
+      const result = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/device/list", { siteId: site.id, page: 1, pageSize: 100 });
+      const devices = result.data?.rows || [];
+      const found = devices.find((d: any) => d.deviceSerial === deviceSerial);
+      if (found) {
+        found._siteId = site.id;
+        found._siteName = site.siteName;
+        return found;
+      }
+    } catch { /* continue */ }
+  }
+  return null;
+}
+
 // ═══════════════════════════════════════════════════════════════
-// Cloud Attendance API: Sync persons from device to platform
+// Cloud API: Sync employees via person/synchronize
 // ═══════════════════════════════════════════════════════════════
 async function cloudSyncEmployees(
   areaDomain: string, accessToken: string, deviceSerial: string,
   deviceId: string, supabase: any
 ): Promise<{ success: boolean; records_synced: number; method: string }> {
-  console.log(`[cloudSyncEmployees] Starting Cloud API person sync for ${deviceSerial}`);
+  console.log(`[cloudSyncEmployees] Starting person/synchronize for ${deviceSerial}`);
 
-  // Step 1: Trigger person synchronize from device to platform
-  // Per API docs: POST /api/hpcgw/v1/person/synchronize
-  // Required: deviceSerial (String)
-  console.log("[cloudSyncEmployees] Step 1: Triggering person/synchronize...");
-  const syncResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize", {
-    deviceSerial,
-  });
-  
-  // Extract syncTaskID from response (needed for progress and details APIs)
+  // Step 1: Trigger person synchronize
+  const syncResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize", { deviceSerial });
   const syncTaskID = syncResult.data?.syncTaskID || syncResult.data?.taskId || "";
-  console.log(`[cloudSyncEmployees] Sync triggered. syncTaskID: ${syncTaskID}`);
+  console.log(`[cloudSyncEmployees] syncTaskID: ${syncTaskID}`);
 
   if (!syncTaskID) {
-    console.warn("[cloudSyncEmployees] No syncTaskID returned, will try without it");
+    console.warn("[cloudSyncEmployees] No syncTaskID returned");
   }
 
-  // Step 2: Poll progress until complete (max 60s)
-  // Per API docs: POST /api/hpcgw/v1/person/synchronize/progress
-  // Required: deviceSerial (String)
-  console.log("[cloudSyncEmployees] Step 2: Polling synchronize/progress...");
+  // Step 2: Poll progress
+  console.log("[cloudSyncEmployees] Polling progress...");
   let progress = 0;
   let attempts = 0;
-  const maxAttempts = 30;
-  while (progress < 100 && attempts < maxAttempts) {
+  while (progress < 100 && attempts < 30) {
     await new Promise(r => setTimeout(r, 2000));
     attempts++;
     try {
-      const progressResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/progress", {
-        deviceSerial,
-      });
+      const progressResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/progress", { deviceSerial });
       progress = progressResult.data?.progress ?? progressResult.data?.percent ?? 0;
-      console.log(`[cloudSyncEmployees] Progress: ${progress}% (attempt ${attempts}/${maxAttempts})`);
+      console.log(`[cloudSyncEmployees] Progress: ${progress}% (attempt ${attempts})`);
     } catch (e) {
       console.warn(`[cloudSyncEmployees] Progress check failed: ${e instanceof Error ? e.message : "unknown"}`);
       if (attempts > 5) break;
     }
   }
 
-  // Step 3: Get synced person details
-  // Per API docs: POST /api/hpcgw/v1/person/synchronize/details
-  // Required: syncTaskID (String), queryType (Integer - 0: all, 1: success, 2: failed)
-  console.log("[cloudSyncEmployees] Step 3: Fetching person/synchronize/details...");
+  // Step 3: Fetch details
+  console.log("[cloudSyncEmployees] Fetching details...");
   let totalSynced = 0;
   let page = 1;
   let hasMore = true;
 
   while (hasMore) {
     try {
-      const detailsBody: any = {
-        syncTaskID: syncTaskID,
-        queryType: 0, // 0 = query all results
-        page,
-        pageSize: 100,
-      };
-      // Also include deviceSerial as fallback
-      if (!syncTaskID) {
-        detailsBody.deviceSerial = deviceSerial;
-      }
-      const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", detailsBody);
+      const detailsBody: any = { queryType: 0, page, pageSize: 100 };
+      if (syncTaskID) detailsBody.syncTaskID = syncTaskID;
+      else detailsBody.deviceSerial = deviceSerial;
 
+      const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", detailsBody);
       const persons = detailsResult.data?.rows || detailsResult.data?.list || [];
       const total = detailsResult.data?.total || 0;
       console.log(`[cloudSyncEmployees] Page ${page}: ${persons.length} persons, total: ${total}`);
@@ -263,47 +202,32 @@ async function cloudSyncEmployees(
       for (const person of persons) {
         const employeeCode = person.employeeNo || person.personId || person.id || "";
         const employeeName = person.personName || person.name || "";
-        const cardNo = person.cardNo || "";
-
         if (!employeeCode) continue;
-        console.log(`[cloudSyncEmployees] Processing: ${employeeCode} - ${employeeName}`);
 
         await supabase.from("hikvision_employee_mapping").upsert({
           device_employee_code: employeeCode,
           device_employee_name: employeeName,
           device_id: deviceId,
-          card_number: cardNo || null,
+          card_number: person.cardNo || null,
           department_name: person.orgName || person.departmentName || null,
           synced_at: new Date().toISOString(),
         }, { onConflict: "device_employee_code,device_id" });
 
         const { data: existingEmp } = await supabase
-          .from("employees")
-          .select("id")
-          .eq("device_employee_code", employeeCode)
-          .maybeSingle();
+          .from("employees").select("id").eq("device_employee_code", employeeCode).maybeSingle();
 
         if (!existingEmp && employeeName) {
           const { data: newEmp } = await supabase.from("employees").insert({
-            name: employeeName,
-            device_employee_code: employeeCode,
-            role: "staff",
-            status: "active",
+            name: employeeName, device_employee_code: employeeCode, role: "staff", status: "active",
           }).select("id").single();
-
           if (newEmp) {
             await supabase.from("hikvision_employee_mapping")
-              .update({ erp_employee_id: newEmp.id })
-              .eq("device_employee_code", employeeCode)
-              .eq("device_id", deviceId);
+              .update({ erp_employee_id: newEmp.id }).eq("device_employee_code", employeeCode).eq("device_id", deviceId);
           }
         } else if (existingEmp) {
           await supabase.from("hikvision_employee_mapping")
-            .update({ erp_employee_id: existingEmp.id })
-            .eq("device_employee_code", employeeCode)
-            .eq("device_id", deviceId);
+            .update({ erp_employee_id: existingEmp.id }).eq("device_employee_code", employeeCode).eq("device_id", deviceId);
         }
-
         totalSynced++;
       }
 
@@ -316,71 +240,53 @@ async function cloudSyncEmployees(
     }
   }
 
-  console.log(`[cloudSyncEmployees] Completed. Total synced: ${totalSynced}`);
+  console.log(`[cloudSyncEmployees] Completed. Total: ${totalSynced}`);
   return { success: true, records_synced: totalSynced, method: "cloud_api" };
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Cloud Attendance API: Get attendance via MQ (message queue)
+// Cloud API: Attendance via MQ
 // ═══════════════════════════════════════════════════════════════
 async function cloudSyncAttendance(
   areaDomain: string, accessToken: string, deviceSerial: string,
   deviceId: string, supabase: any
 ): Promise<{ success: boolean; records_synced: number; method: string }> {
-  console.log(`[cloudSyncAttendance] Starting Cloud MQ attendance sync for ${deviceSerial}`);
+  console.log(`[cloudSyncAttendance] Starting MQ sync for ${deviceSerial}`);
 
-  // Step 1: Subscribe to ACSEvent (idempotent - safe to call multiple times)
-  // Per API docs: POST /api/hpcgw/v1/mq/subscribe
-  // Required: subType (Integer - 1: event alarm), subMode (String - "all" or "list")
-  console.log("[cloudSyncAttendance] Step 1: Subscribing to ACSEvent...");
+  // Step 1: Subscribe
   try {
-    await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/subscribe", {
-      subType: 1,       // 1 = event alarm subscription
-      subMode: "all",   // "all" = subscribe to all event types
-    });
+    await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/subscribe", { subType: 1, subMode: "all" });
     console.log("[cloudSyncAttendance] MQ subscription active");
   } catch (e) {
-    // Subscription might already exist, that's OK
     console.warn(`[cloudSyncAttendance] Subscribe warning: ${e instanceof Error ? e.message : "unknown"}`);
   }
 
-  // Step 2: Poll for messages (long polling, 20s timeout if no messages)
-  console.log("[cloudSyncAttendance] Step 2: Polling for MQ messages...");
+  // Step 2: Poll messages
   let totalSynced = 0;
   let pollAttempts = 0;
-  const maxPolls = 3; // Poll up to 3 times
+  const maxPolls = 3;
 
-  // Get existing mappings
-  const { data: mappings } = await supabase
-    .from("hikvision_employee_mapping")
-    .select("*")
-    .eq("device_id", deviceId);
+  const { data: mappings } = await supabase.from("hikvision_employee_mapping").select("*").eq("device_id", deviceId);
   const mappingMap = new Map((mappings || []).map((m: any) => [m.device_employee_code, m]));
 
-  // Get device info
-  const { data: device } = await supabase
-    .from("hikvision_devices")
-    .select("last_sync_at, name")
-    .eq("id", deviceId)
-    .single();
+  const { data: device } = await supabase.from("hikvision_devices").select("last_sync_at, name").eq("id", deviceId).single();
 
   while (pollAttempts < maxPolls) {
     pollAttempts++;
     try {
-      console.log(`[cloudSyncAttendance] Poll attempt ${pollAttempts}/${maxPolls}...`);
+      console.log(`[cloudSyncAttendance] Poll ${pollAttempts}/${maxPolls}...`);
       const msgResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/messages", {});
 
       const messages = msgResult.data?.list || msgResult.data?.rows || [];
       console.log(`[cloudSyncAttendance] Received ${messages.length} messages`);
 
       if (messages.length === 0) {
-        console.log("[cloudSyncAttendance] No more messages, stopping poll");
+        console.log("[cloudSyncAttendance] No more messages");
         break;
       }
 
       for (const msg of messages) {
         try {
-          // Parse alarmData JSON string
           let alarmData: any = {};
           if (typeof msg.alarmData === "string") {
             try { alarmData = JSON.parse(msg.alarmData); } catch { alarmData = {}; }
@@ -388,19 +294,15 @@ async function cloudSyncAttendance(
             alarmData = msg.alarmData || {};
           }
 
-          // Filter for our device's events (deviceSerial can be at msg level or in alarmData)
           const msgDeviceSerial = msg.deviceSerial || alarmData.deviceSerial || "";
           if (deviceSerial && msgDeviceSerial && msgDeviceSerial !== deviceSerial) continue;
 
-          // Check if this is an AccessControllerEvent (actual MQ format)
+          // Parse AccessControllerEvent format
           const acsEvent = alarmData.AccessControllerEvent || alarmData.ACSEvent || alarmData.accessControlEvent || {};
           const eventType = alarmData.eventType || msg.formatType || "";
 
-          console.log(`[cloudSyncAttendance] Event: type=${eventType}, majorEventType=${acsEvent.majorEventType}, subEventType=${acsEvent.subEventType}, employeeNoString=${acsEvent.employeeNoString}, deviceSerial=${msgDeviceSerial}`);
-
-          // Skip non-access-control events
-          const isAccessEvent = eventType === "AccessControllerEvent" || 
-            eventType.toLowerCase().includes("acs") || 
+          const isAccessEvent = eventType === "AccessControllerEvent" ||
+            eventType.toLowerCase().includes("acs") ||
             eventType.toLowerCase().includes("accesscontroller") ||
             acsEvent.employeeNoString || acsEvent.name;
           if (!isAccessEvent) continue;
@@ -409,19 +311,13 @@ async function cloudSyncAttendance(
           const employeeName = acsEvent.name || acsEvent.deviceName || "";
           const eventTime = alarmData.dateTime || alarmData.triggerTime || acsEvent.time || acsEvent.dateTime || msg.alarmTime;
 
-          if (!eventTime || !employeeCode) {
-            console.log(`[cloudSyncAttendance] Skipping event: eventTime=${eventTime}, employeeCode=${employeeCode}`);
-            continue;
-          }
+          if (!eventTime || !employeeCode) continue;
 
           let accessType = "access";
-          // AccessControllerEvent uses majorEventType/subEventType
           const major = acsEvent.majorEventType ?? acsEvent.major;
           const minor = acsEvent.subEventType ?? acsEvent.minor;
-          // majorEventType 5 = access event; subEventType 75/76 = checkin/checkout
           if (major === 5 && minor === 75) accessType = "checkin";
           else if (major === 5 && minor === 76) accessType = "checkout";
-          // majorEventType 3 = alarm event (e.g. subEventType 112 = face recognition success)
           else if (major === 3) accessType = "access";
           else {
             const cardType = acsEvent.cardType || acsEvent.currentEvent?.cardType;
@@ -429,6 +325,7 @@ async function cloudSyncAttendance(
             else if (cardType === 2) accessType = "checkout";
           }
 
+          // Auto-create mapping if needed
           let mapping = mappingMap.get(employeeCode);
           if (!mapping && employeeCode) {
             const { data: newMapping } = await supabase
@@ -439,8 +336,7 @@ async function cloudSyncAttendance(
                 device_id: deviceId,
                 synced_at: new Date().toISOString(),
               }, { onConflict: "device_employee_code,device_id" })
-              .select()
-              .single();
+              .select().single();
             mapping = newMapping;
             if (mapping) mappingMap.set(employeeCode, mapping);
           }
@@ -461,21 +357,19 @@ async function cloudSyncAttendance(
 
           if (!insertError) totalSynced++;
         } catch (evtErr) {
-          console.warn(`[cloudSyncAttendance] Event processing error: ${evtErr instanceof Error ? evtErr.message : "unknown"}`);
+          console.warn(`[cloudSyncAttendance] Event error: ${evtErr instanceof Error ? evtErr.message : "unknown"}`);
         }
       }
 
-      // Step 3: Confirm receipt (offset) - must pass batchId from messages response
+      // Step 3: Confirm with batchId
       const batchId = msgResult.data?.batchId;
       if (batchId) {
         try {
           await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId });
-          console.log(`[cloudSyncAttendance] Messages confirmed (offset batchId: ${batchId})`);
+          console.log(`[cloudSyncAttendance] Offset confirmed (batchId: ${batchId})`);
         } catch (offsetErr) {
           console.warn(`[cloudSyncAttendance] Offset failed: ${offsetErr instanceof Error ? offsetErr.message : "unknown"}`);
         }
-      } else {
-        console.warn("[cloudSyncAttendance] No batchId in messages response, skipping offset");
       }
     } catch (pollErr) {
       console.warn(`[cloudSyncAttendance] Poll failed: ${pollErr instanceof Error ? pollErr.message : "unknown"}`);
@@ -483,13 +377,66 @@ async function cloudSyncAttendance(
     }
   }
 
-  // Update last sync
   await supabase.from("hikvision_devices").update({ last_sync_at: new Date().toISOString() }).eq("id", deviceId);
-
-  console.log(`[cloudSyncAttendance] Completed. Total synced: ${totalSynced}`);
+  console.log(`[cloudSyncAttendance] Completed. Total: ${totalSynced}`);
   return { success: true, records_synced: totalSynced, method: "cloud_mq" };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Fallback: Extract employees from attendance logs
+// ═══════════════════════════════════════════════════════════════
+async function syncEmployeesFromLogs(deviceId: string, supabase: any): Promise<{ success: boolean; records_synced: number; method: string }> {
+  console.log("[syncEmployeesFromLogs] Extracting from attendance logs...");
+
+  const { data: logs } = await supabase
+    .from("hikvision_attendance_logs")
+    .select("employee_code, employee_name")
+    .eq("device_id", deviceId)
+    .not("employee_code", "is", null)
+    .not("employee_code", "eq", "");
+
+  const uniqueEmployees = new Map<string, string>();
+  for (const log of (logs || [])) {
+    if (log.employee_code && !uniqueEmployees.has(log.employee_code)) {
+      uniqueEmployees.set(log.employee_code, log.employee_name || `Employee ${log.employee_code}`);
+    }
+  }
+
+  console.log(`[syncEmployeesFromLogs] Found ${uniqueEmployees.size} unique employees`);
+  let synced = 0;
+
+  for (const [empCode, empName] of uniqueEmployees) {
+    await supabase.from("hikvision_employee_mapping").upsert({
+      device_employee_code: empCode,
+      device_employee_name: empName,
+      device_id: deviceId,
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "device_employee_code,device_id" });
+
+    const { data: existingEmp } = await supabase
+      .from("employees").select("id").eq("device_employee_code", empCode).maybeSingle();
+
+    if (!existingEmp && empName) {
+      const { data: newEmp } = await supabase.from("employees").insert({
+        name: empName, device_employee_code: empCode, role: "staff", status: "active",
+      }).select("id").single();
+      if (newEmp) {
+        await supabase.from("hikvision_employee_mapping")
+          .update({ erp_employee_id: newEmp.id }).eq("device_employee_code", empCode).eq("device_id", deviceId);
+      }
+    } else if (existingEmp) {
+      await supabase.from("hikvision_employee_mapping")
+        .update({ erp_employee_id: existingEmp.id }).eq("device_employee_code", empCode).eq("device_id", deviceId);
+    }
+    synced++;
+  }
+
+  return { success: true, records_synced: synced, method: "attendance_logs_fallback" };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main HTTP Handler
+// ═══════════════════════════════════════════════════════════════
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -514,51 +461,52 @@ serve(async (req: Request) => {
     console.log(`[main] Resolved device_serial: ${device_serial}`);
 
     // ═══════════════════════════════════════════════
-    // ACTION: test
+    // ACTION: save-credentials
     // ═══════════════════════════════════════════════
-    if (action === "test") {
+    if (action === "save-credentials") {
       try {
-        const { accessToken, areaDomain } = await getHppToken();
-        const resp = await isapi(areaDomain, accessToken, device_serial, "System/deviceInfo");
-        const text = await resp.text();
-        await logSync(supabase, device_id, "test_connection", "success", "device_info");
-        return jsonResp({ success: true, status: "connected", data: text, method: "isapi" });
+        const { appKey, secretKey } = body;
+        if (!appKey || !secretKey) return jsonResp({ success: false, error: "appKey and secretKey are required" }, 400);
+
+        const tokenInfo = await getHppToken(appKey, secretKey);
+        return jsonResp({
+          success: true,
+          areaDomain: tokenInfo.areaDomain,
+          expireTime: tokenInfo.expireTime,
+          message: "Credentials validated successfully. Token obtained.",
+        });
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Connection failed";
-        console.error(`[test] ISAPI test failed: ${errMsg}`);
-        
-        // If ISAPI blocked, try cloud-enable check
-        if (isIsapiBlocked(e)) {
-          console.log("[test] ISAPI blocked - device requires Cloud API mode");
-          await logSync(supabase, device_id, "test_connection", "success", "device_info", 0, "ISAPI blocked, Cloud API required");
-          return jsonResp({ success: true, status: "cloud_api_required", error: errMsg, method: "cloud_api", message: "Device requires Cloud Attendance APIs (ISAPI not enabled). Sync will use Cloud API automatically." });
-        }
-        
-        await logSync(supabase, device_id, "test_connection", "error", "device_info", 0, errMsg);
-        return jsonResp({ success: false, status: "error", error: errMsg });
+        return jsonResp({ success: false, error: e instanceof Error ? e.message : "Invalid credentials" });
       }
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: cloud-enable
+    // ACTION: test — Cloud device/list check
     // ═══════════════════════════════════════════════
-    if (action === "cloud-enable") {
+    if (action === "test") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
-        const enable = body.enable !== false; // default true
-        console.log(`[cloud-enable] ${enable ? "Enabling" : "Disabling"} cloud access for ${device_serial}...`);
-        
-        const result = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/device/cloud/enable", {
-          deviceSerial: device_serial,
-          cloudEnable: enable,
-        });
+        const sites = await getAllSites(areaDomain, accessToken);
+        const found = await findDeviceInCloud(areaDomain, accessToken, device_serial, sites);
 
-        await logSync(supabase, device_id, "cloud_enable", "success", "cloud_enable");
-        return jsonResp({ success: true, data: result, message: `Cloud access ${enable ? "enabled" : "disabled"} for ${device_serial}` });
+        if (found) {
+          const isOnline = found.isOnline === "1";
+          await logSync(supabase, device_id, "test_connection", "success", "device_info");
+          return jsonResp({
+            success: true,
+            status: isOnline ? "online" : "offline",
+            device: { deviceName: found.deviceName, deviceModel: found.deviceModel, isOnline },
+            method: "cloud_api",
+            message: `Device ${isOnline ? "online" : "offline"} via Cloud API`,
+          });
+        } else {
+          await logSync(supabase, device_id, "test_connection", "error", "device_info", 0, "Device not found in cloud");
+          return jsonResp({ success: false, error: `Device ${device_serial} not found in any site` });
+        }
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Failed";
-        console.error(`[cloud-enable] FAILED: ${errMsg}`);
-        await logSync(supabase, device_id, "cloud_enable", "error", "cloud_enable", 0, errMsg);
+        const errMsg = e instanceof Error ? e.message : "Connection failed";
+        console.error(`[test] FAILED: ${errMsg}`);
+        await logSync(supabase, device_id, "test_connection", "error", "device_info", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
     }
@@ -570,24 +518,9 @@ serve(async (req: Request) => {
       try {
         const { accessToken, areaDomain } = await getHppToken();
         const sites = await getAllSites(areaDomain, accessToken);
-        
-        const debugResults: any = {};
-        if (body.test_site_id) {
-          console.log(`[site-search] Testing device/list with siteId: ${body.test_site_id}`);
-          const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-            body: JSON.stringify({ siteId: body.test_site_id, page: 1, pageSize: 100 }),
-            signal: AbortSignal.timeout(15000),
-          });
-          debugResults.deviceListForSite = await resp.json();
-        }
-        
-        return jsonResp({ success: true, sites, debug: debugResults });
+        return jsonResp({ success: true, sites });
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Failed to search sites";
-        console.error(`[site-search] FAILED: ${errMsg}`);
-        return jsonResp({ success: false, error: errMsg });
+        return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
       }
     }
 
@@ -598,63 +531,38 @@ serve(async (req: Request) => {
       try {
         const { accessToken, areaDomain } = await getHppToken();
         const sites = await getAllSites(areaDomain, accessToken);
-        
+
         const allDevices: any[] = [];
         const siteResults: Array<{ siteId: string; siteName: string; deviceCount: number }> = [];
-        
+
         for (const site of sites) {
           try {
-            console.log(`[list-devices] Fetching devices for site: ${site.siteName} (${site.id})`);
-            const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-              body: JSON.stringify({ siteId: site.id, page: 1, pageSize: 100 }),
-              signal: AbortSignal.timeout(15000),
-            });
-            const result = await resp.json();
-            
-            if (result.errorCode !== "0") {
-              console.warn(`[list-devices] Site ${site.siteName} error: ${result.errorCode}`);
-              continue;
-            }
-            
+            console.log(`[list-devices] Fetching devices for site: ${site.siteName}`);
+            const result = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/device/list", { siteId: site.id, page: 1, pageSize: 100 });
             const devices = result.data?.rows || [];
-            console.log(`[list-devices] Site ${site.siteName}: ${devices.length} devices`);
-            
             for (const d of devices) {
               d._siteName = site.siteName;
               d._siteId = site.id;
-              console.log(`  - ${d.deviceSerial} | ${d.deviceName} | ${site.siteName} | online: ${d.isOnline}`);
               allDevices.push(d);
             }
-            
             siteResults.push({ siteId: site.id, siteName: site.siteName, deviceCount: devices.length });
           } catch (siteErr) {
-            console.warn(`[list-devices] Error fetching site ${site.siteName}: ${siteErr instanceof Error ? siteErr.message : "unknown"}`);
+            console.warn(`[list-devices] Site ${site.siteName} error: ${siteErr instanceof Error ? siteErr.message : "unknown"}`);
           }
         }
-        
+
         // Fallback: try without siteId
         if (allDevices.length === 0) {
-          console.log("[list-devices] No devices from sites, trying without siteId filter...");
-          const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-            body: JSON.stringify({ page: 1, pageSize: 100 }),
-            signal: AbortSignal.timeout(15000),
-          });
-          const result = await resp.json();
-          if (result.errorCode === "0") {
+          console.log("[list-devices] No devices from sites, trying without siteId...");
+          try {
+            const result = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/device/list", { page: 1, pageSize: 100 });
             const devices = result.data?.rows || [];
-            devices.forEach((d: any) => {
-              d._siteName = d.siteName || "Unknown";
-              allDevices.push(d);
-            });
-          }
+            devices.forEach((d: any) => { d._siteName = d.siteName || "Unknown"; allDevices.push(d); });
+          } catch { /* ignore */ }
         }
-        
-        console.log(`[list-devices] Total devices across all sites: ${allDevices.length}`);
-        
+
+        console.log(`[list-devices] Total: ${allDevices.length} devices`);
+
         if (action === "list-cloud-devices" && body.import_devices) {
           let imported = 0;
           for (const d of allDevices) {
@@ -671,78 +579,47 @@ serve(async (req: Request) => {
           }
           return jsonResp({ success: true, devices: allDevices, imported, sites: siteResults });
         }
-        
+
         return jsonResp({ success: true, devices: allDevices, sites: siteResults });
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Failed to list devices";
+        const errMsg = e instanceof Error ? e.message : "Failed";
         console.error(`[list-devices] FAILED: ${errMsg}`);
         return jsonResp({ success: false, error: errMsg });
       }
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: device-info
+    // ACTION: device-info — Cloud device/list
     // ═══════════════════════════════════════════════
     if (action === "device-info") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
-        
-        try {
-          const resp = await isapi(areaDomain, accessToken, device_serial, "System/deviceInfo");
-          const text = await resp.text();
+        const sites = await getAllSites(areaDomain, accessToken);
+        const found = await findDeviceInCloud(areaDomain, accessToken, device_serial, sites);
 
-          const getName = (t: string, tag: string) => { const m = t.match(new RegExp(`<${tag}>(.*?)</${tag}>`)); return m ? m[1] : null; };
-          const deviceName = getName(text, "deviceName");
-          const deviceModel = getName(text, "model");
-          const serialNumber = getName(text, "serialNumber");
-          const firmwareVersion = getName(text, "firmwareVersion");
+        if (!found) throw new Error("Device not found in cloud device list");
 
-          if (device_id) {
-            await supabase.from("hikvision_devices").update({
-              name: deviceName || undefined,
-              device_model: deviceModel || null,
-              device_version: firmwareVersion || null,
-              device_serial: serialNumber || device_serial,
-              last_sync_at: new Date().toISOString(),
-            }).eq("id", device_id);
-          }
-
-          await logSync(supabase, device_id, "device_info_fetched", "success", "device_info");
-          return jsonResp({ success: true, device: { deviceName, deviceModel, serialNumber, firmwareVersion }, method: "isapi" });
-        } catch (isapiErr) {
-          if (isIsapiBlocked(isapiErr)) {
-            console.log("[device-info] ISAPI blocked, using device/list data instead");
-            // Fallback: get device info from cloud device/list
-            const sites = await getAllSites(areaDomain, accessToken);
-            for (const site of sites) {
-              const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-                body: JSON.stringify({ siteId: site.id, page: 1, pageSize: 100 }),
-                signal: AbortSignal.timeout(15000),
-              });
-              const result = await resp.json();
-              if (result.errorCode === "0") {
-                const found = (result.data?.rows || []).find((d: any) => d.deviceSerial === device_serial);
-                if (found) {
-                  if (device_id) {
-                    await supabase.from("hikvision_devices").update({
-                      name: found.deviceName || undefined,
-                      device_model: found.deviceModel || null,
-                      device_version: found.deviceVersion || null,
-                      device_serial: found.deviceSerial,
-                      last_sync_at: new Date().toISOString(),
-                    }).eq("id", device_id);
-                  }
-                  await logSync(supabase, device_id, "device_info_fetched", "success", "device_info");
-                  return jsonResp({ success: true, device: { deviceName: found.deviceName, deviceModel: found.deviceModel, serialNumber: found.deviceSerial, firmwareVersion: found.deviceVersion }, method: "cloud_api" });
-                }
-              }
-            }
-            throw new Error("Device not found in cloud device list");
-          }
-          throw isapiErr;
+        if (device_id) {
+          await supabase.from("hikvision_devices").update({
+            name: found.deviceName || undefined,
+            device_model: found.deviceModel || null,
+            device_version: found.deviceVersion || null,
+            device_serial: found.deviceSerial,
+            last_sync_at: new Date().toISOString(),
+          }).eq("id", device_id);
         }
+
+        await logSync(supabase, device_id, "device_info_fetched", "success", "device_info");
+        return jsonResp({
+          success: true,
+          device: {
+            deviceName: found.deviceName,
+            deviceModel: found.deviceModel,
+            serialNumber: found.deviceSerial,
+            firmwareVersion: found.deviceVersion,
+          },
+          method: "cloud_api",
+        });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
         console.error(`[device-info] FAILED: ${errMsg}`);
@@ -752,159 +629,23 @@ serve(async (req: Request) => {
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: sync-employees (ISAPI + Cloud API fallback)
+    // ACTION: sync-employees (Cloud API + logs fallback)
     // ═══════════════════════════════════════════════
     if (action === "sync-employees") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
 
-        // Try ISAPI first
         try {
-          let position = 0;
-          let totalSynced = 0;
-          let hasMore = true;
+          const result = await cloudSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
+          await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", result.records_synced);
+          return jsonResp(result);
+        } catch (cloudErr) {
+          console.log(`[sync-employees] Cloud API failed: ${(cloudErr as Error).message}, falling back to attendance logs...`);
+          await logSync(supabase, device_id, "sync_employees_cloud_failed", "info", "employee", 0, (cloudErr as Error).message);
 
-          while (hasMore) {
-            const searchBody = {
-              UserInfoSearchCond: {
-                searchID: crypto.randomUUID(),
-                searchResultPosition: position,
-                maxResults: 50,
-              },
-            };
-
-            console.log(`[sync-employees] ISAPI: Fetching from position ${position}...`);
-            const resp = await isapi(areaDomain, accessToken, device_serial, "AccessControl/UserInfo/Search?format=json", "POST", searchBody);
-
-            const data = await resp.json();
-            const userList = data?.UserInfoSearch?.UserInfo || [];
-            const totalMatches = data?.UserInfoSearch?.totalMatches || 0;
-            console.log(`[sync-employees] ISAPI: totalMatches: ${totalMatches}, userList.length: ${userList.length}`);
-
-            for (const user of userList) {
-              const employeeCode = user.employeeNo || "";
-              const employeeName = user.name || "";
-              const cardNo = user.numOfCard > 0 ? (user.CardList?.Card?.[0]?.cardNo || "") : "";
-
-              await supabase.from("hikvision_employee_mapping").upsert({
-                device_employee_code: employeeCode,
-                device_employee_name: employeeName,
-                device_id,
-                card_number: cardNo || null,
-                department_name: user.Valid?.belongGroup || null,
-                synced_at: new Date().toISOString(),
-              }, { onConflict: "device_employee_code,device_id" });
-
-              const { data: existingEmp } = await supabase
-                .from("employees")
-                .select("id")
-                .eq("device_employee_code", employeeCode)
-                .maybeSingle();
-
-              if (!existingEmp && employeeName) {
-                const { data: newEmp } = await supabase.from("employees").insert({
-                  name: employeeName,
-                  device_employee_code: employeeCode,
-                  role: "staff",
-                  status: "active",
-                }).select("id").single();
-
-                if (newEmp) {
-                  await supabase.from("hikvision_employee_mapping")
-                    .update({ erp_employee_id: newEmp.id })
-                    .eq("device_employee_code", employeeCode)
-                    .eq("device_id", device_id);
-                }
-              } else if (existingEmp) {
-                await supabase.from("hikvision_employee_mapping")
-                  .update({ erp_employee_id: existingEmp.id })
-                  .eq("device_employee_code", employeeCode)
-                  .eq("device_id", device_id);
-              }
-
-              totalSynced++;
-            }
-
-            position += userList.length;
-            hasMore = position < totalMatches && userList.length > 0;
-          }
-
-          console.log(`[sync-employees] ISAPI completed. Total synced: ${totalSynced}`);
-          await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", totalSynced);
-          return jsonResp({ success: true, records_synced: totalSynced, method: "isapi" });
-        } catch (isapiErr) {
-          if (!isIsapiBlocked(isapiErr)) throw isapiErr;
-          
-          // *** FALLBACK: Cloud Attendance API ***
-          console.log(`[sync-employees] ISAPI blocked (${(isapiErr as Error).message}), falling back to Cloud API...`);
-          await logSync(supabase, device_id, "sync_employees_isapi_blocked", "info", "employee", 0, "Falling back to Cloud API");
-          
-          try {
-            const result = await cloudSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
-            await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", result.records_synced);
-            return jsonResp(result);
-          } catch (cloudErr) {
-            // *** FALLBACK 2: Extract employees from existing attendance logs ***
-            console.log(`[sync-employees] Cloud API also failed (${(cloudErr as Error).message}), falling back to attendance logs...`);
-            await logSync(supabase, device_id, "sync_employees_cloud_failed", "info", "employee", 0, `Cloud failed: ${(cloudErr as Error).message}. Trying attendance logs fallback.`);
-            
-            const { data: logs } = await supabase
-              .from("hikvision_attendance_logs")
-              .select("employee_code, employee_name")
-              .eq("device_id", device_id)
-              .not("employee_code", "is", null)
-              .not("employee_code", "eq", "");
-
-            const uniqueEmployees = new Map<string, string>();
-            for (const log of (logs || [])) {
-              if (log.employee_code && !uniqueEmployees.has(log.employee_code)) {
-                uniqueEmployees.set(log.employee_code, log.employee_name || `Employee ${log.employee_code}`);
-              }
-            }
-
-            console.log(`[sync-employees] Found ${uniqueEmployees.size} unique employees from attendance logs`);
-            let fallbackSynced = 0;
-
-            for (const [empCode, empName] of uniqueEmployees) {
-              await supabase.from("hikvision_employee_mapping").upsert({
-                device_employee_code: empCode,
-                device_employee_name: empName,
-                device_id: device_id,
-                synced_at: new Date().toISOString(),
-              }, { onConflict: "device_employee_code,device_id" });
-
-              const { data: existingEmp } = await supabase
-                .from("employees")
-                .select("id")
-                .eq("device_employee_code", empCode)
-                .maybeSingle();
-
-              if (!existingEmp && empName) {
-                const { data: newEmp } = await supabase.from("employees").insert({
-                  name: empName,
-                  device_employee_code: empCode,
-                  role: "staff",
-                  status: "active",
-                }).select("id").single();
-
-                if (newEmp) {
-                  await supabase.from("hikvision_employee_mapping")
-                    .update({ erp_employee_id: newEmp.id })
-                    .eq("device_employee_code", empCode)
-                    .eq("device_id", device_id);
-                }
-              } else if (existingEmp) {
-                await supabase.from("hikvision_employee_mapping")
-                  .update({ erp_employee_id: existingEmp.id })
-                  .eq("device_employee_code", empCode)
-                  .eq("device_id", device_id);
-              }
-              fallbackSynced++;
-            }
-
-            await logSync(supabase, device_id, "sync_employees_from_logs", "success", "employee", fallbackSynced);
-            return jsonResp({ success: true, records_synced: fallbackSynced, method: "attendance_logs_fallback" });
-          }
+          const result = await syncEmployeesFromLogs(device_id, supabase);
+          await logSync(supabase, device_id, "sync_employees_from_logs", "success", "employee", result.records_synced);
+          return jsonResp(result);
         }
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
@@ -915,102 +656,89 @@ serve(async (req: Request) => {
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: sync-departments (ISAPI + fallback)
+    // ACTION: sync-departments (Cloud API + logs fallback)
     // ═══════════════════════════════════════════════
     if (action === "sync-departments") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
 
         try {
-          console.log("[sync-departments] ISAPI: Fetching departments...");
-          const resp = await isapi(areaDomain, accessToken, device_serial, "AccessControl/Department?format=json");
+          // Trigger person/synchronize for department data
+          const syncResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize", { deviceSerial: device_serial });
+          const syncTaskID = syncResult.data?.syncTaskID || syncResult.data?.taskId || "";
 
-          const data = await resp.json();
-          const deptList = data?.DepartmentList?.Department || data?.Department || [];
+          // Wait for completion
+          let progress = 0;
+          let attempts = 0;
+          while (progress < 100 && attempts < 15) {
+            await new Promise(r => setTimeout(r, 2000));
+            attempts++;
+            try {
+              const progressResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/progress", { deviceSerial: device_serial });
+              progress = progressResult.data?.progress ?? 0;
+            } catch { break; }
+          }
+
+          // Get details with departments
+          const detailsBody: any = { queryType: 0, page: 1, pageSize: 100 };
+          if (syncTaskID) detailsBody.syncTaskID = syncTaskID;
+          else detailsBody.deviceSerial = device_serial;
+
+          const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", detailsBody);
+          const persons = detailsResult.data?.rows || detailsResult.data?.list || [];
+          const deptNames = new Set<string>();
+          for (const p of persons) {
+            const deptName = p.orgName || p.departmentName || "";
+            if (deptName) deptNames.add(deptName);
+          }
+
           let synced = 0;
-
-          for (const dept of (Array.isArray(deptList) ? deptList : [deptList])) {
-            const deptId = dept.departmentNo?.toString() || dept.id?.toString() || "";
-            const deptName = dept.departmentName || dept.name || `Department ${deptId}`;
-            if (!deptId) continue;
-
+          let deptIdx = 1;
+          for (const deptName of deptNames) {
             await supabase.from("departments").upsert({
               name: deptName,
-              device_department_id: deptId,
-              device_id,
+              device_department_id: `cloud_${deptIdx}`,
+              device_id: device_id,
             }, { onConflict: "device_department_id,device_id" });
             synced++;
+            deptIdx++;
           }
 
           await logSync(supabase, device_id, "sync_departments_completed", "success", "department", synced);
-          return jsonResp({ success: true, records_synced: synced, method: "isapi" });
-        } catch (isapiErr) {
-          if (!isIsapiBlocked(isapiErr)) throw isapiErr;
+          return jsonResp({ success: true, records_synced: synced, method: "cloud_api" });
+        } catch (cloudErr) {
+          // Fallback: extract from attendance logs
+          console.log(`[sync-departments] Cloud failed: ${(cloudErr as Error).message}, extracting from logs...`);
 
-          // Fallback: trigger person sync, then extract departments from details
-          console.log("[sync-departments] ISAPI blocked, triggering Cloud person sync for departments...");
-          
-          try {
-            // First trigger person/synchronize to get syncTaskID
-            let syncTaskID = "";
-            try {
-              const syncResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize", {
-                deviceSerial: device_serial,
-              });
-              syncTaskID = syncResult.data?.syncTaskID || syncResult.data?.taskId || "";
-              console.log(`[sync-departments] person/synchronize syncTaskID: ${syncTaskID}`);
-              
-              // Wait for sync to complete
-              let progress = 0;
-              let attempts = 0;
-              while (progress < 100 && attempts < 15) {
-                await new Promise(r => setTimeout(r, 2000));
-                attempts++;
-                try {
-                  const progressResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/progress", { deviceSerial: device_serial });
-                  progress = progressResult.data?.progress ?? 0;
-                } catch { break; }
-              }
-            } catch (syncErr) {
-              console.warn(`[sync-departments] person/synchronize failed: ${syncErr instanceof Error ? syncErr.message : "unknown"}, trying details directly...`);
-            }
+          const { data: logs } = await supabase
+            .from("hikvision_attendance_logs")
+            .select("raw_data")
+            .eq("device_id", device_id)
+            .not("raw_data", "is", null)
+            .limit(500);
 
-            const detailsBody: any = {
-              queryType: 0, // all results
-              page: 1,
-              pageSize: 100,
-            };
-            if (syncTaskID) {
-              detailsBody.syncTaskID = syncTaskID;
-            } else {
-              detailsBody.deviceSerial = device_serial;
-            }
-            const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", detailsBody);
-
-            const persons = detailsResult.data?.rows || detailsResult.data?.list || [];
-            const deptNames = new Set<string>();
-            for (const p of persons) {
-              const deptName = p.orgName || p.departmentName || "";
-              if (deptName) deptNames.add(deptName);
-            }
-
-            let synced = 0;
-            let deptIdx = 1;
-            for (const deptName of deptNames) {
-              await supabase.from("departments").upsert({
-                name: deptName,
-                device_department_id: `cloud_${deptIdx}`,
-                device_id,
-              }, { onConflict: "device_department_id,device_id" });
-              synced++;
-              deptIdx++;
-            }
-
-            await logSync(supabase, device_id, "sync_departments_completed", "success", "department", synced);
-            return jsonResp({ success: true, records_synced: synced, method: "cloud_api" });
-          } catch (cloudErr) {
-            throw new Error(`Cloud fallback also failed: ${cloudErr instanceof Error ? cloudErr.message : "unknown"}`);
+          const deptNames = new Set<string>();
+          for (const log of (logs || [])) {
+            const raw = log.raw_data;
+            const acsEvent = raw?.AccessControllerEvent || raw?.ACSEvent || {};
+            const dept = acsEvent.currentEvent?.departmentName || acsEvent.departmentName || "";
+            if (dept) deptNames.add(dept);
           }
+
+          let synced = 0;
+          let deptIdx = 1;
+          for (const deptName of deptNames) {
+            await supabase.from("departments").upsert({
+              name: deptName,
+              device_department_id: `log_${deptIdx}`,
+              device_id: device_id,
+            }, { onConflict: "device_department_id,device_id" });
+            synced++;
+            deptIdx++;
+          }
+
+          await logSync(supabase, device_id, "sync_departments_from_logs", "success", "department", synced);
+          return jsonResp({ success: true, records_synced: synced, method: "attendance_logs_fallback" });
         }
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
@@ -1021,198 +749,27 @@ serve(async (req: Request) => {
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: sync-photos (ISAPI + skip on blocked)
+    // ACTION: sync-photos — Not available in Cloud-only mode
     // ═══════════════════════════════════════════════
     if (action === "sync-photos") {
-      try {
-        const { accessToken, areaDomain } = await getHppToken();
-
-        const { data: mappingsData } = await supabase
-          .from("hikvision_employee_mapping")
-          .select("*, erp_employee_id")
-          .eq("device_id", device_id)
-          .eq("avatar_synced", false)
-          .not("erp_employee_id", "is", null);
-
-        console.log(`[sync-photos] Found ${mappingsData?.length || 0} mappings needing photo sync`);
-
-        let synced = 0;
-        for (const mapping of (mappingsData || [])) {
-          try {
-            const altBody = {
-              UserFaceInfoSearchCond: {
-                searchID: crypto.randomUUID(),
-                searchResultPosition: 0,
-                maxResults: 1,
-                employeeNo: mapping.device_employee_code,
-              },
-            };
-            
-            try {
-              const altResp = await isapi(
-                areaDomain, accessToken, device_serial,
-                "AccessControl/UserInfo/FaceInfo/Search?format=json", "POST", altBody
-              );
-
-              const altData = await altResp.json();
-              const faceInfo = altData?.UserFaceInfoSearch?.UserFaceInfo?.[0];
-              if (faceInfo?.faceURL) {
-                const imgResp = await fetch(faceInfo.faceURL, { signal: AbortSignal.timeout(15000) });
-                if (imgResp.ok) {
-                  const imgBlob = await imgResp.blob();
-                  const imgBuffer = new Uint8Array(await imgBlob.arrayBuffer());
-                  const filePath = `avatars/${mapping.erp_employee_id}.jpg`;
-
-                  await supabase.storage.from("uploads").upload(filePath, imgBuffer, {
-                    contentType: "image/jpeg",
-                    upsert: true,
-                  });
-
-                  const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(filePath);
-                  await supabase.from("employees").update({ avatar_url: urlData.publicUrl }).eq("id", mapping.erp_employee_id);
-                  await supabase.from("hikvision_employee_mapping").update({ avatar_synced: true }).eq("id", mapping.id);
-                  synced++;
-                }
-              }
-            } catch (faceErr) {
-              if (isIsapiBlocked(faceErr)) {
-                console.log("[sync-photos] ISAPI blocked for photos, skipping...");
-                break; // Skip all photos if ISAPI is blocked
-              }
-              console.warn(`[sync-photos] Face search failed for ${mapping.device_employee_code}: ${faceErr instanceof Error ? faceErr.message : "unknown"}`);
-            }
-          } catch (_photoErr) {
-            console.error(`[sync-photos] Error for ${mapping.device_employee_code}:`, _photoErr);
-          }
-        }
-
-        await logSync(supabase, device_id, "sync_photos_completed", "success", "photo", synced);
-        return jsonResp({ success: true, records_synced: synced, total_mappings: mappingsData?.length || 0 });
-      } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Failed";
-        console.error(`[sync-photos] FAILED: ${errMsg}`);
-        await logSync(supabase, device_id, "sync_photos_failed", "error", "photo", 0, errMsg);
-        return jsonResp({ success: false, error: errMsg });
-      }
+      await logSync(supabase, device_id, "sync_photos_skipped", "info", "photo", 0, "Not available in Cloud-only mode");
+      return jsonResp({
+        success: false,
+        error: "Photo sync is not available in Cloud-only mode. Face photos require direct device access (ISAPI) which is not enabled for this integration.",
+        method: "unsupported",
+      });
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: sync / sync-attendance (ISAPI + Cloud MQ fallback)
+    // ACTION: sync / sync-attendance — Cloud MQ
     // ═══════════════════════════════════════════════
     if (action === "sync" || action === "sync-attendance") {
       await logSync(supabase, device_id, "sync_started", "success", "attendance");
-
       try {
         const { accessToken, areaDomain } = await getHppToken();
-
-        // Try ISAPI first
-        try {
-          const { data: device } = await supabase
-            .from("hikvision_devices")
-            .select("last_sync_at, name")
-            .eq("id", device_id)
-            .single();
-
-          let position = 0;
-          let totalSynced = 0;
-          let hasMore = true;
-
-          const { data: mappings } = await supabase
-            .from("hikvision_employee_mapping")
-            .select("*")
-            .eq("device_id", device_id);
-          const mappingMap = new Map((mappings || []).map((m: any) => [m.device_employee_code, m]));
-
-          while (hasMore) {
-            const searchBody: any = {
-              AcsEventCond: {
-                searchID: crypto.randomUUID(),
-                searchResultPosition: position,
-                maxResults: 100,
-                major: 0,
-                minor: 0,
-              },
-            };
-
-            if (device?.last_sync_at) searchBody.AcsEventCond.startTime = device.last_sync_at;
-            searchBody.AcsEventCond.endTime = new Date().toISOString();
-
-            console.log(`[sync-attendance] ISAPI: Fetching events from position ${position}...`);
-            const resp = await isapi(areaDomain, accessToken, device_serial, "AccessControl/AcsEvent?format=json", "POST", searchBody);
-
-            const data = await resp.json();
-            const events = data?.AcsEvent?.InfoList || [];
-            const totalMatches = data?.AcsEvent?.totalMatches || 0;
-
-            for (const event of events) {
-              const employeeCode = event.employeeNoString || event.employeeNo?.toString() || "";
-              const employeeName = event.name || "";
-              const eventTime = event.time || event.dateTime;
-              if (!eventTime) continue;
-
-              let eventType = "access";
-              const major = event.major;
-              const minor = event.minor;
-              if (major === 5 && minor === 75) eventType = "checkin";
-              else if (major === 5 && minor === 76) eventType = "checkout";
-              else {
-                const cardType = event.cardType || event.currentEvent?.cardType;
-                if (cardType === 1) eventType = "checkin";
-                else if (cardType === 2) eventType = "checkout";
-              }
-
-              let mapping = mappingMap.get(employeeCode);
-              if (!mapping && employeeCode) {
-                const { data: newMapping } = await supabase
-                  .from("hikvision_employee_mapping")
-                  .upsert({
-                    device_employee_code: employeeCode,
-                    device_employee_name: employeeName,
-                    device_id,
-                    synced_at: new Date().toISOString(),
-                  }, { onConflict: "device_employee_code,device_id" })
-                  .select()
-                  .single();
-                mapping = newMapping;
-                if (mapping) mappingMap.set(employeeCode, mapping);
-              }
-
-              const { error: insertError } = await supabase
-                .from("hikvision_attendance_logs")
-                .upsert({
-                  device_id,
-                  employee_code: employeeCode,
-                  employee_name: employeeName,
-                  employee_id: mapping?.erp_employee_id || null,
-                  device_ip: device_serial,
-                  device_name: device?.name || "",
-                  event_time: eventTime,
-                  event_type: eventType,
-                  raw_data: event,
-                }, { onConflict: "device_id,employee_code,event_time" });
-
-              if (!insertError) totalSynced++;
-            }
-
-            position += events.length;
-            hasMore = position < totalMatches && events.length > 0;
-          }
-
-          await supabase.from("hikvision_devices").update({ last_sync_at: new Date().toISOString() }).eq("id", device_id);
-          console.log(`[sync-attendance] ISAPI completed. Total synced: ${totalSynced}`);
-          await logSync(supabase, device_id, "sync_completed", "success", "attendance", totalSynced);
-          return jsonResp({ success: true, records_synced: totalSynced, method: "isapi" });
-        } catch (isapiErr) {
-          if (!isIsapiBlocked(isapiErr)) throw isapiErr;
-
-          // *** FALLBACK: Cloud MQ API ***
-          console.log(`[sync-attendance] ISAPI blocked (${(isapiErr as Error).message}), falling back to Cloud MQ...`);
-          await logSync(supabase, device_id, "sync_isapi_blocked", "info", "attendance", 0, "Falling back to Cloud MQ");
-          
-          const result = await cloudSyncAttendance(areaDomain, accessToken, device_serial, device_id, supabase);
-          await logSync(supabase, device_id, "sync_completed", "success", "attendance", result.records_synced);
-          return jsonResp(result);
-        }
+        const result = await cloudSyncAttendance(areaDomain, accessToken, device_serial, device_id, supabase);
+        await logSync(supabase, device_id, "sync_completed", "success", "attendance", result.records_synced);
+        return jsonResp(result);
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Sync failed";
         console.error(`[sync-attendance] FAILED: ${errMsg}`);
@@ -1232,9 +789,9 @@ serve(async (req: Request) => {
         Authorization: authHeader || `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
       };
 
-      for (const subAction of ["device-info", "sync-departments", "sync-employees", "sync-photos", "sync-attendance"]) {
+      for (const subAction of ["device-info", "sync-departments", "sync-employees", "sync-attendance"]) {
         try {
-          console.log(`[full-sync] Running sub-action: ${subAction}`);
+          console.log(`[full-sync] Running: ${subAction}`);
           const resp = await fetch(baseUrl, {
             method: "POST",
             headers,
@@ -1242,10 +799,8 @@ serve(async (req: Request) => {
             signal: AbortSignal.timeout(120000),
           });
           results[subAction] = await resp.json();
-          console.log(`[full-sync] ${subAction} result: ${JSON.stringify(results[subAction]).substring(0, 200)}`);
         } catch (e) {
           results[subAction] = { success: false, error: e instanceof Error ? e.message : "Failed" };
-          console.error(`[full-sync] ${subAction} FAILED: ${e instanceof Error ? e.message : "unknown"}`);
         }
       }
 
@@ -1260,22 +815,15 @@ serve(async (req: Request) => {
     if (action === "subscribe-events") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
-        const resp = await fetch(`${areaDomain}/api/hpcgw/v1/mq/subscribe`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ subType: 1, subMode: "all" }),
-          signal: AbortSignal.timeout(15000),
-        });
-        const result = await resp.json();
-        console.log(`[subscribe-events] result: ${JSON.stringify(result).substring(0, 200)}`);
-        return jsonResp({ success: result.errorCode === "0", data: result });
+        const result = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/subscribe", { subType: 1, subMode: "all" });
+        return jsonResp({ success: true, data: result });
       } catch (e) {
         return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
       }
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: poll-messages (manually poll MQ for attendance)
+    // ACTION: poll-messages
     // ═══════════════════════════════════════════════
     if (action === "poll-messages") {
       try {
@@ -1284,9 +832,7 @@ serve(async (req: Request) => {
         await logSync(supabase, device_id, "poll_messages_completed", "success", "attendance", result.records_synced);
         return jsonResp(result);
       } catch (e) {
-        const errMsg = e instanceof Error ? e.message : "Failed";
-        console.error(`[poll-messages] FAILED: ${errMsg}`);
-        return jsonResp({ success: false, error: errMsg });
+        return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
       }
     }
 
@@ -1296,26 +842,18 @@ serve(async (req: Request) => {
     if (action === "auto-map") {
       try {
         const { data: unmapped } = await supabase
-          .from("hikvision_employee_mapping")
-          .select("*")
-          .is("erp_employee_id", null);
+          .from("hikvision_employee_mapping").select("*").is("erp_employee_id", null);
 
         let mapped = 0;
         for (const m of (unmapped || [])) {
           const { data: emp } = await supabase
-            .from("employees")
-            .select("id")
-            .eq("device_employee_code", m.device_employee_code)
-            .maybeSingle();
-
+            .from("employees").select("id").eq("device_employee_code", m.device_employee_code).maybeSingle();
           if (emp) {
-            await supabase.from("hikvision_employee_mapping")
-              .update({ erp_employee_id: emp.id })
-              .eq("id", m.id);
+            await supabase.from("hikvision_employee_mapping").update({ erp_employee_id: emp.id }).eq("id", m.id);
             mapped++;
           }
         }
-        console.log(`[auto-map] Mapped ${mapped} of ${unmapped?.length || 0} unmapped entries`);
+        console.log(`[auto-map] Mapped ${mapped} of ${unmapped?.length || 0}`);
         return jsonResp({ success: true, mapped });
       } catch (e) {
         return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });

@@ -502,6 +502,37 @@ function HikvisionTab() {
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "connected" | "error">("idle");
   const [discoveredSites, setDiscoveredSites] = useState<Array<{ siteId: string; siteName: string; deviceCount: number; isCustomerSite?: boolean }>>([]);
   const [totalDevices, setTotalDevices] = useState(0);
+  const [appKey, setAppKey] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [showAppKey, setShowAppKey] = useState(false);
+  const [showSecretKey, setShowSecretKey] = useState(false);
+  const [credentialStatus, setCredentialStatus] = useState<"idle" | "valid" | "invalid">("idle");
+  const [credentialInfo, setCredentialInfo] = useState<{ areaDomain?: string; expireTime?: number } | null>(null);
+  const [savingCredentials, setSavingCredentials] = useState(false);
+
+  const saveAndTestCredentials = async () => {
+    if (!appKey || !secretKey) { toast.error("Both App Key and Secret Key are required"); return; }
+    setSavingCredentials(true);
+    setCredentialStatus("idle");
+    try {
+      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+        body: { action: "save-credentials", appKey, secretKey },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        setCredentialStatus("valid");
+        setCredentialInfo({ areaDomain: data.areaDomain, expireTime: data.expireTime });
+        toast.success("Credentials validated! Token obtained successfully.");
+      } else {
+        setCredentialStatus("invalid");
+        toast.error(data?.error || "Invalid credentials");
+      }
+    } catch (e: any) {
+      setCredentialStatus("invalid");
+      toast.error(e.message || "Credential validation failed");
+    }
+    setSavingCredentials(false);
+  };
 
   const testConnection = async () => {
     setTesting(true);
@@ -532,38 +563,103 @@ function HikvisionTab() {
 
   return (
     <div className="grid gap-6 max-w-2xl">
-      {/* Connection Status */}
+      {/* Cloud API Credentials */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Cloud className="h-5 w-5" />
             Hik-Partner Pro Cloud API
           </CardTitle>
-          <CardDescription>Cloud API credentials are securely stored as backend secrets. Use "Test Connection" to verify.</CardDescription>
+          <CardDescription>Enter your App Key and Secret Key from the Hik-Partner Pro developer portal. Click "Save & Test" to validate.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>App Key</Label>
+              <div className="relative">
+                <Input
+                  type={showAppKey ? "text" : "password"}
+                  value={appKey}
+                  onChange={e => setAppKey(e.target.value)}
+                  placeholder="Enter App Key"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowAppKey(!showAppKey)}
+                >
+                  {showAppKey ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Secret Key</Label>
+              <div className="relative">
+                <Input
+                  type={showSecretKey ? "text" : "password"}
+                  value={secretKey}
+                  onChange={e => setSecretKey(e.target.value)}
+                  placeholder="Enter Secret Key"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowSecretKey(!showSecretKey)}
+                >
+                  {showSecretKey ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {credentialStatus !== "idle" && (
+            <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+              credentialStatus === "valid" ? "bg-green-500/10 text-green-700 border border-green-500/20" : "bg-destructive/10 text-destructive border border-destructive/20"
+            }`}>
+              <span className={`h-2.5 w-2.5 rounded-full ${credentialStatus === "valid" ? "bg-green-500" : "bg-destructive"}`} />
+              {credentialStatus === "valid" ? (
+                <div>
+                  <span className="font-medium">Credentials valid.</span>
+                  {credentialInfo?.areaDomain && <span className="ml-2 text-xs">Area: {credentialInfo.areaDomain}</span>}
+                  {credentialInfo?.expireTime && (
+                    <span className="ml-2 text-xs">Expires: {new Date(credentialInfo.expireTime).toLocaleDateString()}</span>
+                  )}
+                </div>
+              ) : (
+                <span>Invalid credentials. Check your App Key and Secret Key.</span>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button onClick={saveAndTestCredentials} disabled={savingCredentials || !appKey || !secretKey}>
+              {savingCredentials ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}
+              Save & Test
+            </Button>
+            <p className="text-xs text-muted-foreground self-center">
+              Keys are stored as backend secrets (HIK_PARTNER_APP_KEY, HIK_PARTNER_SECRET_KEY)
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Connection Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Connection & Device Discovery</CardTitle>
+          <CardDescription>Test the connection using stored credentials and discover sites/devices.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
             <span className={`h-3 w-3 rounded-full ${connectionStatus === "connected" ? "bg-green-500" : connectionStatus === "error" ? "bg-red-500" : "bg-muted-foreground/30"}`} />
             <span className="text-sm font-medium">
-              {connectionStatus === "connected" ? `Connected — ${discoveredSites.length} sites, ${totalDevices} devices` :
+              {connectionStatus === "connected" ? `Cloud API Connected — ${discoveredSites.length} sites, ${totalDevices} devices` :
                connectionStatus === "error" ? "Connection failed" : "Not tested yet"}
             </span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>App Key</Label>
-              <Input value="••••••••••••••••" disabled className="bg-muted" />
-              <p className="text-xs text-muted-foreground">Stored as HIK_PARTNER_APP_KEY secret</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label>API Secret</Label>
-              <Input value="••••••••••••••••" disabled className="bg-muted" />
-              <p className="text-xs text-muted-foreground">Stored as HIK_PARTNER_SECRET_KEY secret</p>
-            </div>
-          </div>
           <Button onClick={testConnection} disabled={testing} variant="outline">
             {testing ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}
-            Test Connection
+            Test Connection & Discover Devices
           </Button>
         </CardContent>
       </Card>
@@ -614,7 +710,6 @@ function HikvisionTab() {
           <div className="space-y-1.5">
             <Label>Default Site ID</Label>
             <Input value={integrations["hik_default_site_id"] || ""} onChange={e => updateField("hik_default_site_id", e.target.value)} placeholder="Enter or select from discovered sites above" />
-            <p className="text-xs text-muted-foreground">When set, device operations are filtered to this site</p>
           </div>
           <div className="space-y-1.5">
             <Label>Sync Mode</Label>
