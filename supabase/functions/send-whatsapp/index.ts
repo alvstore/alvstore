@@ -9,6 +9,34 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Handle Facebook webhook verification (GET request)
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge");
+
+    if (mode === "subscribe") {
+      // Get verify token from business_settings integrations
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: settings } = await supabase.from("business_settings").select("integrations").limit(1).single();
+      const integrations = (settings?.integrations as Record<string, string>) || {};
+      const expectedToken = integrations["wa_verify_token"];
+
+      if (token === expectedToken) {
+        console.log("Webhook verified");
+        return new Response(challenge, { status: 200 });
+      } else {
+        console.log("Webhook verification failed - token mismatch");
+        return new Response("Forbidden", { status: 403 });
+      }
+    }
+    return new Response("OK", { status: 200 });
+  }
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -26,7 +54,6 @@ serve(async (req) => {
     let waResponse: any;
 
     if (template_name) {
-      // Template message
       waResponse = await fetch(`${settings.whatsapp_api_url}/${settings.whatsapp_phone_id}/messages`, {
         method: "POST",
         headers: {
@@ -45,7 +72,6 @@ serve(async (req) => {
         }),
       });
     } else {
-      // Text message
       if (!message) throw new Error("Message content required");
       waResponse = await fetch(`${settings.whatsapp_api_url}/${settings.whatsapp_phone_id}/messages`, {
         method: "POST",
@@ -69,7 +95,6 @@ serve(async (req) => {
 
     const waMessageId = waData?.messages?.[0]?.id || null;
 
-    // Store message in chat if conversation_id provided
     if (conversation_id && message) {
       await supabase.from("chat_messages").insert({
         conversation_id,
