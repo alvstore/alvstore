@@ -19,6 +19,7 @@ async function getHppToken(): Promise<{ accessToken: string; areaDomain: string 
   const secretKey = Deno.env.get("HIK_PARTNER_SECRET_KEY");
   if (!appKey || !secretKey) throw new Error("HIK_PARTNER_APP_KEY and HIK_PARTNER_SECRET_KEY must be configured");
 
+  console.log("[getHppToken] Requesting token...");
   const resp = await fetch(`${HPP_BASE_URL}/api/hpcgw/v1/token/get`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -27,6 +28,7 @@ async function getHppToken(): Promise<{ accessToken: string; areaDomain: string 
   if (!resp.ok) throw new Error(`Token request failed: HTTP ${resp.status}`);
   const result: TokenResponse = await resp.json();
   if (result.errorCode !== "0" || !result.data?.accessToken) throw new Error(`Token error: ${result.errorCode}`);
+  console.log(`[getHppToken] Token acquired. areaDomain: ${result.data.areaDomain}`);
   return { accessToken: result.data.accessToken, areaDomain: result.data.areaDomain };
 }
 
@@ -37,7 +39,29 @@ function jsonResp(data: unknown, status = 200) {
   });
 }
 
+// Checks for Hik-Partner API-level errors in JSON response body
+function checkApiError(text: string): void {
+  try {
+    const parsed = JSON.parse(text);
+    // Hik-Partner wraps errors with errorCode at top level
+    if (parsed.errorCode && parsed.errorCode !== "0") {
+      throw new Error(`Hik API error ${parsed.errorCode}: ${parsed.errorMessage || parsed.message || "Unknown error"}`);
+    }
+    // ISAPI transparent proxy errors - sometimes nested
+    if (parsed.statusCode && parseInt(parsed.statusCode) >= 400) {
+      throw new Error(`ISAPI error ${parsed.statusCode}: ${parsed.statusString || parsed.subStatusCode || "Device error"}`);
+    }
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      // Not JSON (could be XML) - that's fine, no error detected
+      return;
+    }
+    throw e; // Re-throw API errors
+  }
+}
+
 async function isapi(areaDomain: string, accessToken: string, deviceSerial: string, path: string, method = "GET", body?: unknown) {
+  console.log(`[isapi] ${method} ${path} | device: ${deviceSerial}`);
   const opts: RequestInit = {
     method,
     headers: {
@@ -48,7 +72,21 @@ async function isapi(areaDomain: string, accessToken: string, deviceSerial: stri
     signal: AbortSignal.timeout(30000),
   };
   if (body) opts.body = JSON.stringify(body);
-  return fetch(`${areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/${path}`, opts);
+  const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/${path}`, opts);
+  
+  // Clone response so we can read the body for error checking AND return it
+  const cloned = resp.clone();
+  const text = await cloned.text();
+  console.log(`[isapi] Response status: ${resp.status} | body preview: ${text.substring(0, 300)}`);
+  
+  // Check for API-level errors even when HTTP status is 200
+  checkApiError(text);
+  
+  if (!resp.ok) {
+    throw new Error(`ISAPI HTTP ${resp.status}: ${text.substring(0, 500)}`);
+  }
+  
+  return resp;
 }
 
 async function getDeviceSerial(supabase: any, body: any): Promise<string> {
@@ -61,10 +99,14 @@ async function getDeviceSerial(supabase: any, body: any): Promise<string> {
       .single();
     serial = dev?.device_serial || dev?.ip_address;
   }
+  if (!serial) {
+    console.warn("[getDeviceSerial] No device serial found!");
+  }
   return serial || "";
 }
 
 async function logSync(supabase: any, deviceId: string | null, action: string, status: string, syncType?: string, records?: number, error?: string) {
+  console.log(`[logSync] ${action} | status: ${status} | records: ${records || 0} | error: ${error || "none"}`);
   await supabase.from("hikvision_sync_log").insert({
     device_id: deviceId,
     action,
@@ -95,7 +137,9 @@ serve(async (req: Request) => {
 
     const body = await req.json();
     const { action, device_id } = body;
+    console.log(`\n========== ACTION: ${action} | device_id: ${device_id} ==========`);
     const device_serial = await getDeviceSerial(supabase, body);
+    console.log(`[main] Resolved device_serial: ${device_serial}`);
 
     // ═══════════════════════════════════════════════
     // ACTION: test
@@ -103,25 +147,23 @@ serve(async (req: Request) => {
     if (action === "test") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
+        // isapi() now throws on API errors automatically
         const resp = await isapi(areaDomain, accessToken, device_serial, "System/deviceInfo");
         const text = await resp.text();
-        if (resp.ok) {
-          await logSync(supabase, device_id, "test_connection", "success", "device_info");
-          return jsonResp({ success: true, status: "connected", data: text });
-        }
-        await logSync(supabase, device_id, "test_connection", "error", "device_info", 0, `HTTP ${resp.status}: ${text.substring(0, 500)}`);
-        return jsonResp({ success: false, status: "failed", error: `HTTP ${resp.status}: ${text.substring(0, 200)}` });
+        await logSync(supabase, device_id, "test_connection", "success", "device_info");
+        return jsonResp({ success: true, status: "connected", data: text });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Connection failed";
+        console.error(`[test] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "test_connection", "error", "device_info", 0, errMsg);
         return jsonResp({ success: false, status: "error", error: errMsg });
       }
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: list-devices
+    // ACTION: list-devices (cloud devices from API)
     // ═══════════════════════════════════════════════
-    if (action === "list-devices") {
+    if (action === "list-devices" || action === "list-cloud-devices") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
         const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
@@ -131,10 +173,34 @@ serve(async (req: Request) => {
           signal: AbortSignal.timeout(15000),
         });
         const result = await resp.json();
-        if (result.errorCode !== "0") return jsonResp({ success: false, error: `API error: ${result.errorCode}` });
-        return jsonResp({ success: true, devices: result.data?.rows || [] });
+        console.log(`[list-devices] errorCode: ${result.errorCode}, total: ${result.data?.total || 0}`);
+        if (result.errorCode !== "0") return jsonResp({ success: false, error: `API error: ${result.errorCode}: ${result.errorMessage || ""}` });
+        
+        const devices = result.data?.rows || [];
+        console.log(`[list-devices] Found ${devices.length} devices`);
+        devices.forEach((d: any) => console.log(`  - ${d.deviceSerial} | ${d.deviceName} | ${d.siteName} | online: ${d.isOnline}`));
+        
+        // If action is list-cloud-devices and import flag is set, create/update DB records
+        if (action === "list-cloud-devices" && body.import_devices) {
+          let imported = 0;
+          for (const d of devices) {
+            const { error } = await supabase.from("hikvision_devices").upsert({
+              name: d.deviceName || d.deviceSerial,
+              device_serial: d.deviceSerial,
+              device_model: d.deviceModel || null,
+              ip_address: d.deviceSerial, // Use serial as placeholder IP
+              status: d.isOnline === "1" ? "active" : "inactive",
+            }, { onConflict: "device_serial" });
+            if (!error) imported++;
+          }
+          return jsonResp({ success: true, devices, imported });
+        }
+        
+        return jsonResp({ success: true, devices });
       } catch (e) {
-        return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed to list devices" });
+        const errMsg = e instanceof Error ? e.message : "Failed to list devices";
+        console.error(`[list-devices] FAILED: ${errMsg}`);
+        return jsonResp({ success: false, error: errMsg });
       }
     }
 
@@ -146,7 +212,6 @@ serve(async (req: Request) => {
         const { accessToken, areaDomain } = await getHppToken();
         const resp = await isapi(areaDomain, accessToken, device_serial, "System/deviceInfo");
         const text = await resp.text();
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text.substring(0, 500)}`);
 
         // Parse XML response
         const getName = (t: string, tag: string) => { const m = t.match(new RegExp(`<${tag}>(.*?)</${tag}>`)); return m ? m[1] : null; };
@@ -154,6 +219,8 @@ serve(async (req: Request) => {
         const deviceModel = getName(text, "model");
         const serialNumber = getName(text, "serialNumber");
         const firmwareVersion = getName(text, "firmwareVersion");
+
+        console.log(`[device-info] name: ${deviceName}, model: ${deviceModel}, serial: ${serialNumber}`);
 
         // Update device record
         if (device_id) {
@@ -173,6 +240,7 @@ serve(async (req: Request) => {
         });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
+        console.error(`[device-info] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "device_info_failed", "error", "device_info", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
@@ -197,20 +265,27 @@ serve(async (req: Request) => {
             },
           };
 
+          console.log(`[sync-employees] Fetching from position ${position}...`);
+          // isapi() will throw if API returns an error
           const resp = await isapi(areaDomain, accessToken, device_serial, "AccessControl/UserInfo/Search?format=json", "POST", searchBody);
-          if (!resp.ok) {
-            const errorText = await resp.text();
-            throw new Error(`HTTP ${resp.status}: ${errorText.substring(0, 500)}`);
-          }
 
           const data = await resp.json();
+          console.log(`[sync-employees] Raw response keys: ${Object.keys(data).join(", ")}`);
+          
           const userList = data?.UserInfoSearch?.UserInfo || [];
           const totalMatches = data?.UserInfoSearch?.totalMatches || 0;
+          console.log(`[sync-employees] totalMatches: ${totalMatches}, userList.length: ${userList.length}`);
+
+          if (totalMatches === 0 && position === 0) {
+            console.log("[sync-employees] No employees found on device. This could mean the device has no users or credentials issue.");
+          }
 
           for (const user of userList) {
             const employeeCode = user.employeeNo || "";
             const employeeName = user.name || "";
             const cardNo = user.numOfCard > 0 ? (user.CardList?.Card?.[0]?.cardNo || "") : "";
+
+            console.log(`[sync-employees] Processing: ${employeeCode} - ${employeeName}`);
 
             // Upsert into mapping table
             await supabase.from("hikvision_employee_mapping").upsert({
@@ -257,10 +332,12 @@ serve(async (req: Request) => {
           hasMore = position < totalMatches && userList.length > 0;
         }
 
+        console.log(`[sync-employees] Completed. Total synced: ${totalSynced}`);
         await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", totalSynced);
         return jsonResp({ success: true, records_synced: totalSynced });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
+        console.error(`[sync-employees] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "sync_employees_failed", "error", "employee", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
@@ -273,15 +350,15 @@ serve(async (req: Request) => {
       try {
         const { accessToken, areaDomain } = await getHppToken();
 
-        // Try JSON endpoint first
+        console.log("[sync-departments] Fetching departments...");
         const resp = await isapi(areaDomain, accessToken, device_serial, "AccessControl/Department?format=json");
-        if (!resp.ok) {
-          const errorText = await resp.text();
-          throw new Error(`HTTP ${resp.status}: ${errorText.substring(0, 500)}`);
-        }
 
         const data = await resp.json();
+        console.log(`[sync-departments] Raw response keys: ${Object.keys(data).join(", ")}`);
+        
         const deptList = data?.DepartmentList?.Department || data?.Department || [];
+        console.log(`[sync-departments] Found ${Array.isArray(deptList) ? deptList.length : 1} departments`);
+        
         let synced = 0;
 
         for (const dept of (Array.isArray(deptList) ? deptList : [deptList])) {
@@ -289,6 +366,7 @@ serve(async (req: Request) => {
           const deptName = dept.departmentName || dept.name || `Department ${deptId}`;
 
           if (!deptId) continue;
+          console.log(`[sync-departments] Upserting: ${deptId} - ${deptName}`);
 
           await supabase.from("departments").upsert({
             name: deptName,
@@ -298,10 +376,12 @@ serve(async (req: Request) => {
           synced++;
         }
 
+        console.log(`[sync-departments] Completed. Total synced: ${synced}`);
         await logSync(supabase, device_id, "sync_departments_completed", "success", "department", synced);
         return jsonResp({ success: true, records_synced: synced });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
+        console.error(`[sync-departments] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "sync_departments_failed", "error", "department", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
@@ -322,97 +402,66 @@ serve(async (req: Request) => {
           .eq("avatar_synced", false)
           .not("erp_employee_id", "is", null);
 
+        console.log(`[sync-photos] Found ${mappings?.length || 0} mappings needing photo sync`);
+
         let synced = 0;
         for (const mapping of (mappings || [])) {
           try {
-            // Search for face data using UserInfo/FaceInfo
-            const searchBody = {
-              searchResultPosition: 0,
-              maxResults: 1,
-              faceLibType: "blackFD",
-              FDID: "1",
-              FPID: mapping.device_employee_code,
+            console.log(`[sync-photos] Fetching photo for employee ${mapping.device_employee_code}`);
+            
+            // Try face search endpoint
+            const altBody = {
+              UserFaceInfoSearchCond: {
+                searchID: crypto.randomUUID(),
+                searchResultPosition: 0,
+                maxResults: 1,
+                employeeNo: mapping.device_employee_code,
+              },
             };
-
-            const resp = await isapi(
-              areaDomain, accessToken, device_serial,
-              "Intelligent/FDLib/FDSearch?format=json", "POST", searchBody
-            );
-
-            if (!resp.ok) {
-              // Try alternative endpoint
-              const altBody = {
-                UserFaceInfoSearchCond: {
-                  searchID: crypto.randomUUID(),
-                  searchResultPosition: 0,
-                  maxResults: 1,
-                  employeeNo: mapping.device_employee_code,
-                },
-              };
+            
+            try {
               const altResp = await isapi(
                 areaDomain, accessToken, device_serial,
                 "AccessControl/UserInfo/FaceInfo/Search?format=json", "POST", altBody
               );
 
-              if (altResp.ok) {
-                const altData = await altResp.json();
-                const faceInfo = altData?.UserFaceInfoSearch?.UserFaceInfo?.[0];
-                if (faceInfo?.faceURL || faceInfo?.modelData) {
-                  // If we get a face URL, download and store it
-                  const faceUrl = faceInfo.faceURL;
-                  if (faceUrl) {
-                    const imgResp = await fetch(faceUrl, { signal: AbortSignal.timeout(15000) });
-                    if (imgResp.ok) {
-                      const imgBlob = await imgResp.blob();
-                      const imgBuffer = new Uint8Array(await imgBlob.arrayBuffer());
-                      const filePath = `avatars/${mapping.erp_employee_id}.jpg`;
+              const altData = await altResp.json();
+              const faceInfo = altData?.UserFaceInfoSearch?.UserFaceInfo?.[0];
+              if (faceInfo?.faceURL) {
+                const imgResp = await fetch(faceInfo.faceURL, { signal: AbortSignal.timeout(15000) });
+                if (imgResp.ok) {
+                  const imgBlob = await imgResp.blob();
+                  const imgBuffer = new Uint8Array(await imgBlob.arrayBuffer());
+                  const filePath = `avatars/${mapping.erp_employee_id}.jpg`;
 
-                      await supabase.storage.from("uploads").upload(filePath, imgBuffer, {
-                        contentType: "image/jpeg",
-                        upsert: true,
-                      });
+                  await supabase.storage.from("uploads").upload(filePath, imgBuffer, {
+                    contentType: "image/jpeg",
+                    upsert: true,
+                  });
 
-                      const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(filePath);
-                      await supabase.from("employees").update({ avatar_url: urlData.publicUrl }).eq("id", mapping.erp_employee_id);
-                      await supabase.from("hikvision_employee_mapping").update({ avatar_synced: true }).eq("id", mapping.id);
-                      synced++;
-                    }
-                  }
+                  const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(filePath);
+                  await supabase.from("employees").update({ avatar_url: urlData.publicUrl }).eq("id", mapping.erp_employee_id);
+                  await supabase.from("hikvision_employee_mapping").update({ avatar_synced: true }).eq("id", mapping.id);
+                  synced++;
+                  console.log(`[sync-photos] Photo synced for ${mapping.device_employee_code}`);
                 }
+              } else {
+                console.log(`[sync-photos] No face URL for ${mapping.device_employee_code}`);
               }
-              continue;
-            }
-
-            const data = await resp.json();
-            const matchList = data?.MatchList?.MatchItem || [];
-            if (matchList.length > 0 && matchList[0].faceURL) {
-              const imgResp = await fetch(matchList[0].faceURL, { signal: AbortSignal.timeout(15000) });
-              if (imgResp.ok) {
-                const imgBlob = await imgResp.blob();
-                const imgBuffer = new Uint8Array(await imgBlob.arrayBuffer());
-                const filePath = `avatars/${mapping.erp_employee_id}.jpg`;
-
-                await supabase.storage.from("uploads").upload(filePath, imgBuffer, {
-                  contentType: "image/jpeg",
-                  upsert: true,
-                });
-
-                const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(filePath);
-                await supabase.from("employees").update({ avatar_url: urlData.publicUrl }).eq("id", mapping.erp_employee_id);
-                await supabase.from("hikvision_employee_mapping").update({ avatar_synced: true }).eq("id", mapping.id);
-                synced++;
-              }
+            } catch (faceErr) {
+              console.warn(`[sync-photos] Face search failed for ${mapping.device_employee_code}: ${faceErr instanceof Error ? faceErr.message : "unknown"}`);
             }
           } catch (_photoErr) {
-            // Skip individual photo errors, continue with others
-            console.error(`Photo sync error for ${mapping.device_employee_code}:`, _photoErr);
+            console.error(`[sync-photos] Error for ${mapping.device_employee_code}:`, _photoErr);
           }
         }
 
+        console.log(`[sync-photos] Completed. Synced: ${synced}`);
         await logSync(supabase, device_id, "sync_photos_completed", "success", "photo", synced);
         return jsonResp({ success: true, records_synced: synced, total_mappings: mappings?.length || 0 });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
+        console.error(`[sync-photos] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "sync_photos_failed", "error", "photo", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
@@ -460,15 +509,13 @@ serve(async (req: Request) => {
           }
           searchBody.AcsEventCond.endTime = new Date().toISOString();
 
+          console.log(`[sync-attendance] Fetching events from position ${position}...`);
           const resp = await isapi(areaDomain, accessToken, device_serial, "AccessControl/AcsEvent?format=json", "POST", searchBody);
-          if (!resp.ok) {
-            const errorText = await resp.text();
-            throw new Error(`HTTP ${resp.status}: ${errorText.substring(0, 500)}`);
-          }
 
           const data = await resp.json();
           const events = data?.AcsEvent?.InfoList || [];
           const totalMatches = data?.AcsEvent?.totalMatches || 0;
+          console.log(`[sync-attendance] totalMatches: ${totalMatches}, events.length: ${events.length}`);
 
           for (const event of events) {
             const employeeCode = event.employeeNoString || event.employeeNo?.toString() || "";
@@ -525,10 +572,12 @@ serve(async (req: Request) => {
         }
 
         await supabase.from("hikvision_devices").update({ last_sync_at: new Date().toISOString() }).eq("id", device_id);
+        console.log(`[sync-attendance] Completed. Total synced: ${totalSynced}`);
         await logSync(supabase, device_id, "sync_completed", "success", "attendance", totalSynced);
         return jsonResp({ success: true, records_synced: totalSynced });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Sync failed";
+        console.error(`[sync-attendance] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "sync_failed", "error", "attendance", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
@@ -547,6 +596,7 @@ serve(async (req: Request) => {
 
       for (const subAction of ["device-info", "sync-departments", "sync-employees", "sync-photos", "sync-attendance"]) {
         try {
+          console.log(`[full-sync] Running sub-action: ${subAction}`);
           const resp = await fetch(baseUrl, {
             method: "POST",
             headers,
@@ -554,13 +604,16 @@ serve(async (req: Request) => {
             signal: AbortSignal.timeout(120000),
           });
           results[subAction] = await resp.json();
+          console.log(`[full-sync] ${subAction} result: ${JSON.stringify(results[subAction]).substring(0, 200)}`);
         } catch (e) {
           results[subAction] = { success: false, error: e instanceof Error ? e.message : "Failed" };
+          console.error(`[full-sync] ${subAction} FAILED: ${e instanceof Error ? e.message : "unknown"}`);
         }
       }
 
-      await logSync(supabase, device_id, "full_sync_completed", "success", "full_sync");
-      return jsonResp({ success: true, results });
+      const allSuccess = Object.values(results).every((r: any) => r.success);
+      await logSync(supabase, device_id, "full_sync_completed", allSuccess ? "success" : "partial", "full_sync");
+      return jsonResp({ success: allSuccess, results });
     }
 
     // ═══════════════════════════════════════════════
@@ -576,6 +629,7 @@ serve(async (req: Request) => {
           signal: AbortSignal.timeout(15000),
         });
         const result = await resp.json();
+        console.log(`[subscribe-events] result: ${JSON.stringify(result).substring(0, 200)}`);
         return jsonResp({ success: result.errorCode === "0", data: result });
       } catch (e) {
         return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
@@ -587,7 +641,6 @@ serve(async (req: Request) => {
     // ═══════════════════════════════════════════════
     if (action === "auto-map") {
       try {
-        // Match unmapped entries by employee code
         const { data: unmapped } = await supabase
           .from("hikvision_employee_mapping")
           .select("*")
@@ -608,6 +661,7 @@ serve(async (req: Request) => {
             mapped++;
           }
         }
+        console.log(`[auto-map] Mapped ${mapped} of ${unmapped?.length || 0} unmapped entries`);
         return jsonResp({ success: true, mapped });
       } catch (e) {
         return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
@@ -616,6 +670,7 @@ serve(async (req: Request) => {
 
     return jsonResp({ error: "Invalid action" }, 400);
   } catch (e) {
+    console.error(`[FATAL] ${e instanceof Error ? e.message : "Internal error"}`);
     return jsonResp({ error: e instanceof Error ? e.message : "Internal error" }, 500);
   }
 });
