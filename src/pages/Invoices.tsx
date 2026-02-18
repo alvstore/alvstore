@@ -5,19 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Receipt, Trash2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Plus, Search, Receipt, FileText, TrendingUp, AlertCircle, CheckCircle, Copy, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { StatusBadge } from "@/components/documents/StatusBadge";
+import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
+import { TotalsPanel, calculateTotals } from "@/components/documents/TotalsPanel";
+import { ActionButtons } from "@/components/documents/ActionButtons";
+import { DocumentPreview } from "@/components/documents/DocumentPreview";
+import { CustomerCard } from "@/components/documents/CustomerCard";
 
 interface Invoice {
   id: string;
@@ -32,33 +33,18 @@ interface Invoice {
   notes: string | null;
   due_date: string | null;
   created_at: string;
-  customers?: { name: string } | null;
+  discount_type: string | null;
+  discount_value: number | null;
+  gst_inclusive: boolean | null;
+  public_token: string | null;
+  signature_data: string | null;
+  signature_name: string | null;
+  quotation_id: string | null;
+  customers?: { name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null } | null;
 }
 
-interface InvoiceItemForm {
-  product_id: string | null;
-  product_name: string;
-  quantity: number;
-  unit_price: number;
-  gst_percentage: number;
-  total: number;
-}
-
-interface Product { id: string; name: string; selling_price: number | null; gst_percentage: number | null; }
-interface Customer { id: string; name: string; }
-
-const statusColors: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  sent: "bg-info/10 text-info",
-  paid: "bg-success/10 text-success",
-  cancelled: "bg-destructive/10 text-destructive",
-};
-
-const paymentColors: Record<string, string> = {
-  unpaid: "bg-destructive/10 text-destructive",
-  partial: "bg-warning/10 text-warning",
-  paid: "bg-success/10 text-success",
-};
+interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; }
+interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; }
 
 export default function Invoices() {
   const { user } = useAuth();
@@ -67,22 +53,30 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [detailSheet, setDetailSheet] = useState<Invoice | null>(null);
+  const [detailItems, setDetailItems] = useState<DocumentItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Form
   const [formCustomerId, setFormCustomerId] = useState("");
   const [formNotes, setFormNotes] = useState("");
   const [formDueDate, setFormDueDate] = useState("");
-  const [formItems, setFormItems] = useState<InvoiceItemForm[]>([]);
+  const [formItems, setFormItems] = useState<DocumentItem[]>([]);
+  const [formGstInclusive, setFormGstInclusive] = useState(false);
+  const [formDiscountType, setFormDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [formDiscountValue, setFormDiscountValue] = useState(0);
 
-  // Payment recording
+  // Payment
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
   const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("cash");
 
   const fetchInvoices = async () => {
     setLoading(true);
-    let query = supabase.from("invoices").select("*, customers(name)").order("created_at", { ascending: false });
+    let query = supabase.from("invoices").select("*, customers(name, email, phone, address, gst_number)").order("created_at", { ascending: false });
     if (statusFilter !== "all") query = query.eq("status", statusFilter);
     if (search) query = query.ilike("invoice_number", `%${search}%`);
     const { data, error } = await query;
@@ -94,65 +88,43 @@ export default function Invoices() {
   useEffect(() => { fetchInvoices(); }, [search, statusFilter]);
   useEffect(() => {
     Promise.all([
-      supabase.from("customers").select("id, name").order("name"),
-      supabase.from("products").select("id, name, selling_price, gst_percentage").order("name"),
-    ]).then(([c, p]) => {
-      setCustomers(c.data || []);
-      setProducts(p.data || []);
-    });
+      supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
+      supabase.from("products").select("id, name, description, selling_price, gst_percentage").order("name"),
+    ]).then(([c, p]) => { setCustomers(c.data || []); setProducts(p.data || []); });
   }, []);
+
+  // KPIs
+  const totalInvoices = invoices.length;
+  const paidCount = invoices.filter(i => i.payment_status === "paid").length;
+  const unpaidCount = invoices.filter(i => i.payment_status === "unpaid").length;
+  const totalRevenue = invoices.filter(i => i.payment_status === "paid").reduce((s, i) => s + (i.total || 0), 0);
 
   const openNew = () => {
     setFormCustomerId(""); setFormNotes(""); setFormDueDate(""); setFormItems([]);
+    setFormGstInclusive(false); setFormDiscountType("percentage"); setFormDiscountValue(0);
     setSheetOpen(true);
   };
-
-  const addItem = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-    setFormItems(prev => [...prev, {
-      product_id: product.id, product_name: product.name,
-      quantity: 1, unit_price: product.selling_price || 0,
-      gst_percentage: product.gst_percentage || 18,
-      total: product.selling_price || 0,
-    }]);
-  };
-
-  const updateItem = (idx: number, field: string, value: any) => {
-    setFormItems(prev => prev.map((item, i) => {
-      if (i !== idx) return item;
-      const updated = { ...item, [field]: value };
-      if (field === "quantity" || field === "unit_price") {
-        updated.total = (updated.quantity || 0) * (updated.unit_price || 0);
-      }
-      return updated;
-    }));
-  };
-
-  const removeItem = (idx: number) => setFormItems(prev => prev.filter((_, i) => i !== idx));
-  const calcSubtotal = () => formItems.reduce((sum, i) => sum + i.total, 0);
-  const calcGst = () => formItems.reduce((sum, i) => sum + (i.total * i.gst_percentage / 100), 0);
 
   const handleSave = async () => {
     if (!formCustomerId) { toast.error("Select a customer"); return; }
     if (formItems.length === 0) { toast.error("Add at least one item"); return; }
 
-    const subtotal = calcSubtotal();
-    const gstAmount = calcGst();
-    const total = subtotal + gstAmount;
+    const totals = calculateTotals(formItems, formGstInclusive, formDiscountType, formDiscountValue);
 
     const { data: inv, error: invErr } = await supabase.from("invoices").insert({
-      customer_id: formCustomerId, subtotal, gst_amount: gstAmount, total,
-      notes: formNotes || null, due_date: formDueDate || null,
-      created_by: user?.id,
+      customer_id: formCustomerId, subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount,
+      total: totals.grandTotal, notes: formNotes || null, due_date: formDueDate || null,
+      discount_type: formDiscountType, discount_value: formDiscountValue,
+      gst_inclusive: formGstInclusive, created_by: user?.id,
     }).select().single();
 
     if (invErr) { toast.error(invErr.message); return; }
 
     const items = formItems.map(i => ({
-      invoice_id: inv.id, product_id: i.product_id,
-      product_name: i.product_name, quantity: i.quantity,
-      unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
+      invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
+      quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
+      description: i.description || null, hsn_code: i.hsn_code || null,
+      discount_type: i.discount_type, discount_value: i.discount_value,
     }));
 
     const { error: iErr } = await supabase.from("invoice_items").insert(items);
@@ -162,9 +134,22 @@ export default function Invoices() {
     fetchInvoices();
   };
 
+  const openDetail = async (inv: Invoice) => {
+    setDetailSheet(inv);
+    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
+    setDetailItems((data || []).map((i: any) => ({
+      id: i.id, product_id: i.product_id, product_name: i.product_name,
+      description: i.description || "", hsn_code: i.hsn_code || "",
+      quantity: i.quantity, unit_price: i.unit_price,
+      discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
+      gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+    })));
+  };
+
   const openPayment = (inv: Invoice) => {
     setPayInvoice(inv);
-    setPayAmount(String(inv.total - inv.paid_amount));
+    setPayAmount(String((inv.total - inv.paid_amount).toFixed(2)));
+    setPayMethod("cash");
     setPaySheetOpen(true);
   };
 
@@ -175,25 +160,55 @@ export default function Invoices() {
     const newPaid = payInvoice.paid_amount + amount;
     const paymentStatus = newPaid >= payInvoice.total ? "paid" : "partial";
     const status = paymentStatus === "paid" ? "paid" : payInvoice.status;
-    const { error } = await supabase.from("invoices").update({
-      paid_amount: newPaid, payment_status: paymentStatus, status,
-    }).eq("id", payInvoice.id);
+    const { error } = await supabase.from("invoices").update({ paid_amount: newPaid, payment_status: paymentStatus, status }).eq("id", payInvoice.id);
     if (error) toast.error(error.message);
     else toast.success("Payment recorded");
     setPaySheetOpen(false);
+    setDetailSheet(null);
     fetchInvoices();
   };
+
+  const copyPublicLink = (token: string | null) => {
+    if (!token) { toast.error("No public link available"); return; }
+    navigator.clipboard.writeText(`${window.location.origin}/invoice/public/${token}`);
+    toast.success("Link copied");
+  };
+
+  const selectedCustomer = formCustomerId ? customers.find(c => c.id === formCustomerId) : null;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
-          <p className="text-muted-foreground">Create and manage GST invoices</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Invoices</h1>
+          <p className="text-sm text-muted-foreground">Create and manage GST invoices</p>
         </div>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New Invoice</Button>
       </div>
 
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Total Invoices", value: totalInvoices, icon: FileText, color: "text-primary" },
+          { label: "Paid", value: paidCount, icon: CheckCircle, color: "text-success" },
+          { label: "Unpaid", value: unpaidCount, icon: AlertCircle, color: "text-destructive" },
+          { label: "Revenue", value: `₹${totalRevenue.toLocaleString("en-IN")}`, icon: TrendingUp, color: "text-accent" },
+        ].map(kpi => (
+          <Card key={kpi.label} className="border-border">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-lg bg-muted flex items-center justify-center ${kpi.color}`}>
+                <kpi.icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                <p className="text-lg font-bold text-foreground">{kpi.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 items-start">
         <Tabs value={statusFilter} onValueChange={setStatusFilter}>
           <TabsList>
@@ -206,56 +221,56 @@ export default function Invoices() {
         </Tabs>
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by number..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+          <Input placeholder="Search invoices..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
       </div>
 
-      <div className="rounded-lg border bg-card">
+      {/* Table */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Invoice #</TableHead>
-              <TableHead className="hidden sm:table-cell">Customer</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Payment</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="hidden md:table-cell">Date</TableHead>
-              <TableHead className="w-32">Actions</TableHead>
+            <TableRow className="bg-muted/30">
+              <TableHead className="text-xs">Invoice #</TableHead>
+              <TableHead className="hidden sm:table-cell text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Status</TableHead>
+              <TableHead className="text-xs">Payment</TableHead>
+              <TableHead className="text-right text-xs">Total</TableHead>
+              <TableHead className="hidden md:table-cell text-xs">Date</TableHead>
+              <TableHead className="w-32 text-xs">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : invoices.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />No invoices yet
+              <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />No invoices found
               </TableCell></TableRow>
             ) : invoices.map(inv => (
-              <TableRow key={inv.id}>
-                <TableCell className="font-medium">{inv.invoice_number}</TableCell>
-                <TableCell className="hidden sm:table-cell">{inv.customers?.name || "—"}</TableCell>
-                <TableCell><Badge className={statusColors[inv.status] || ""}>{inv.status}</Badge></TableCell>
-                <TableCell><Badge className={paymentColors[inv.payment_status] || ""}>{inv.payment_status}</Badge></TableCell>
-                <TableCell className="text-right font-medium">₹{inv.total}</TableCell>
-                <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
+              <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openDetail(inv)}>
+                <TableCell className="font-medium text-sm">{inv.invoice_number}</TableCell>
+                <TableCell className="hidden sm:table-cell text-sm">{inv.customers?.name || "—"}</TableCell>
+                <TableCell><StatusBadge status={inv.status} /></TableCell>
+                <TableCell>
+                  <div className="space-y-1">
+                    <StatusBadge status={inv.payment_status} />
+                    {inv.payment_status === "partial" && (
+                      <Progress value={(inv.paid_amount / (inv.total || 1)) * 100} className="h-1 w-16" />
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right font-semibold text-sm">₹{(inv.total || 0).toLocaleString("en-IN")}</TableCell>
+                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                   {new Date(inv.created_at).toLocaleDateString("en-IN")}
                 </TableCell>
-                <TableCell>
+                <TableCell onClick={e => e.stopPropagation()}>
                   <div className="flex gap-1">
-                    <Select value={inv.status} onValueChange={async (v) => {
-                      const { error } = await supabase.from("invoices").update({ status: v }).eq("id", inv.id);
-                      if (error) toast.error(error.message); else { toast.success("Updated"); fetchInvoices(); }
-                    }}>
-                      <SelectTrigger className="h-7 w-[90px] text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {["draft", "sent", "paid", "cancelled"].map(s => (
-                          <SelectItem key={s} value={s} className="capitalize text-xs">{s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                     {inv.payment_status !== "paid" && (
                       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openPayment(inv)}>Pay</Button>
                     )}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyPublicLink(inv.public_token)} title="Copy link">
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -264,79 +279,181 @@ export default function Invoices() {
         </Table>
       </div>
 
-      {/* Create Invoice Sheet */}
+      {/* Create Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="overflow-y-auto sm:max-w-lg">
+        <SheetContent className="overflow-y-auto sm:max-w-xl w-full">
           <SheetHeader>
             <SheetTitle>New Invoice</SheetTitle>
-            <SheetDescription>Create a GST invoice from inventory products</SheetDescription>
+            <SheetDescription>Create a GST invoice</SheetDescription>
           </SheetHeader>
           <div className="space-y-5 mt-6">
             <div className="space-y-1.5">
-              <Label>Customer *</Label>
+              <Label className="text-xs font-medium">Customer *</Label>
               <Select value={formCustomerId} onValueChange={setFormCustomerId}>
                 <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                 <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+
+            {selectedCustomer && <CustomerCard name={selectedCustomer.name} email={selectedCustomer.email} phone={selectedCustomer.phone} address={selectedCustomer.address} gstNumber={selectedCustomer.gst_number} compact />}
+
             <div className="space-y-1.5">
-              <Label>Due Date</Label>
+              <Label className="text-xs font-medium">Due Date</Label>
               <Input type="date" value={formDueDate} onChange={e => setFormDueDate(e.target.value)} />
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Items</Label>
-                <Select onValueChange={addItem}>
-                  <SelectTrigger className="w-[200px] h-8 text-xs"><SelectValue placeholder="+ Add product" /></SelectTrigger>
-                  <SelectContent>
-                    {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} — ₹{p.selling_price}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              {formItems.length === 0 && <p className="text-sm text-muted-foreground">No items added yet.</p>}
-              {formItems.map((item, idx) => (
-                <div key={idx} className="rounded-lg border p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">{item.product_name}</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeItem(idx)}><Trash2 className="h-3 w-3" /></Button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div><Label className="text-xs">Qty</Label><Input type="number" min="1" className="h-8 text-sm" value={item.quantity} onChange={e => updateItem(idx, "quantity", parseInt(e.target.value) || 0)} /></div>
-                    <div><Label className="text-xs">Price</Label><Input type="number" className="h-8 text-sm" value={item.unit_price} onChange={e => updateItem(idx, "unit_price", parseFloat(e.target.value) || 0)} /></div>
-                    <div><Label className="text-xs">GST %</Label><Input type="number" className="h-8 text-sm" value={item.gst_percentage} onChange={e => updateItem(idx, "gst_percentage", parseFloat(e.target.value) || 0)} /></div>
-                  </div>
-                  <p className="text-xs text-right text-muted-foreground">Line total: ₹{item.total.toFixed(2)}</p>
-                </div>
-              ))}
-              {formItems.length > 0 && (
-                <div className="text-right space-y-1 text-sm border-t pt-3">
-                  <p>Subtotal: ₹{calcSubtotal().toFixed(2)}</p>
-                  <p>GST: ₹{calcGst().toFixed(2)}</p>
-                  <p className="font-bold text-base">Total: ₹{(calcSubtotal() + calcGst()).toFixed(2)}</p>
-                </div>
-              )}
-            </div>
+            <ItemsTable items={formItems} onItemsChange={setFormItems} products={products} />
 
-            <div className="space-y-1.5"><Label>Notes</Label><Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} /></div>
+            {formItems.length > 0 && (
+              <TotalsPanel
+                items={formItems} gstInclusive={formGstInclusive}
+                globalDiscountType={formDiscountType} globalDiscountValue={formDiscountValue}
+                onGstInclusiveChange={setFormGstInclusive}
+                onGlobalDiscountTypeChange={setFormDiscountType}
+                onGlobalDiscountValueChange={setFormDiscountValue}
+              />
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Notes</Label>
+              <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} />
+            </div>
             <Button className="w-full" onClick={handleSave}>Create Invoice</Button>
           </div>
         </SheetContent>
       </Sheet>
 
-      {/* Record Payment Sheet */}
+      {/* Detail Sheet */}
+      <Sheet open={!!detailSheet} onOpenChange={v => !v && setDetailSheet(null)}>
+        <SheetContent className="overflow-y-auto sm:max-w-xl w-full">
+          {detailSheet && (
+            <>
+              <SheetHeader>
+                <div className="flex items-center justify-between">
+                  <SheetTitle>{detailSheet.invoice_number}</SheetTitle>
+                  <div className="flex gap-1.5">
+                    <StatusBadge status={detailSheet.status} />
+                    <StatusBadge status={detailSheet.payment_status} />
+                  </div>
+                </div>
+                <SheetDescription>Created {new Date(detailSheet.created_at).toLocaleDateString("en-IN")}</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-5 mt-6">
+                {detailSheet.customers && (
+                  <div className="rounded-lg border border-border p-3 bg-muted/20">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Customer</p>
+                    <CustomerCard name={detailSheet.customers.name} email={detailSheet.customers.email} phone={detailSheet.customers.phone} address={detailSheet.customers.address} gstNumber={detailSheet.customers.gst_number} compact />
+                  </div>
+                )}
+
+                {/* Payment Progress */}
+                {detailSheet.total > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Paid</span>
+                      <span className="font-medium">₹{detailSheet.paid_amount.toLocaleString("en-IN")} / ₹{detailSheet.total.toLocaleString("en-IN")}</span>
+                    </div>
+                    <Progress value={(detailSheet.paid_amount / detailSheet.total) * 100} className="h-2" />
+                  </div>
+                )}
+
+                <ItemsTable items={detailItems} onItemsChange={() => {}} products={[]} readOnly />
+
+                <TotalsPanel
+                  items={detailItems} gstInclusive={detailSheet.gst_inclusive || false}
+                  globalDiscountType={(detailSheet.discount_type as any) || "percentage"}
+                  globalDiscountValue={detailSheet.discount_value || 0}
+                  readOnly
+                />
+
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs shrink-0">Status:</Label>
+                  <Select value={detailSheet.status} onValueChange={async v => {
+                    const { error } = await supabase.from("invoices").update({ status: v }).eq("id", detailSheet.id);
+                    if (error) toast.error(error.message);
+                    else { toast.success("Updated"); setDetailSheet({ ...detailSheet, status: v }); fetchInvoices(); }
+                  }}>
+                    <SelectTrigger className="h-8 w-[120px] text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["draft", "sent", "paid", "cancelled"].map(s => (
+                        <SelectItem key={s} value={s} className="capitalize text-xs">{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <ActionButtons
+                  onPreview={() => setPreviewOpen(true)}
+                  onDownload={() => window.print()}
+                  onCopyLink={() => copyPublicLink(detailSheet.public_token)}
+                  onSendEmail={() => toast.info("Email integration coming soon")}
+                  onSendWhatsApp={() => toast.info("WhatsApp integration coming soon")}
+                  compact
+                />
+
+                {detailSheet.payment_status !== "paid" && (
+                  <Button className="w-full" onClick={() => openPayment(detailSheet)}>Record Payment</Button>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Payment Sheet */}
       <Sheet open={paySheetOpen} onOpenChange={setPaySheetOpen}>
         <SheetContent className="sm:max-w-md">
           <SheetHeader>
             <SheetTitle>Record Payment</SheetTitle>
-            <SheetDescription>{payInvoice?.invoice_number} — Balance: ₹{((payInvoice?.total || 0) - (payInvoice?.paid_amount || 0)).toFixed(2)}</SheetDescription>
+            <SheetDescription>
+              {payInvoice?.invoice_number} — Balance: ₹{((payInvoice?.total || 0) - (payInvoice?.paid_amount || 0)).toFixed(2)}
+            </SheetDescription>
           </SheetHeader>
           <div className="space-y-4 mt-6">
-            <div className="space-y-1.5"><Label>Amount</Label><Input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Amount</Label>
+              <Input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Payment Method</Label>
+              <Select value={payMethod} onValueChange={setPayMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["cash", "card", "upi", "online"].map(m => <SelectItem key={m} value={m} className="capitalize">{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <Button className="w-full" onClick={recordPayment}>Record Payment</Button>
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Preview */}
+      {detailSheet && (
+        <DocumentPreview
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          type="invoice"
+          number={detailSheet.invoice_number}
+          status={detailSheet.status}
+          customer={detailSheet.customers ? {
+            name: detailSheet.customers.name,
+            email: detailSheet.customers.email,
+            phone: detailSheet.customers.phone,
+            address: detailSheet.customers.address,
+            gstNumber: detailSheet.customers.gst_number,
+          } : null}
+          items={detailItems}
+          gstInclusive={detailSheet.gst_inclusive || false}
+          globalDiscountType={(detailSheet.discount_type as any) || "percentage"}
+          globalDiscountValue={detailSheet.discount_value || 0}
+          notes={detailSheet.notes}
+          dueDate={detailSheet.due_date}
+          createdAt={detailSheet.created_at}
+          signatureData={detailSheet.signature_data}
+          signatureName={detailSheet.signature_name}
+        />
+      )}
     </div>
   );
 }

@@ -760,7 +760,11 @@ export type Database = {
       }
       invoice_items: {
         Row: {
+          description: string | null
+          discount_type: string | null
+          discount_value: number | null
           gst_percentage: number | null
+          hsn_code: string | null
           id: string
           invoice_id: string
           product_id: string | null
@@ -770,7 +774,11 @@ export type Database = {
           unit_price: number | null
         }
         Insert: {
+          description?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_percentage?: number | null
+          hsn_code?: string | null
           id?: string
           invoice_id: string
           product_id?: string | null
@@ -780,7 +788,11 @@ export type Database = {
           unit_price?: number | null
         }
         Update: {
+          description?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_percentage?: number | null
+          hsn_code?: string | null
           id?: string
           invoice_id?: string
           product_id?: string | null
@@ -811,15 +823,22 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_id: string | null
+          discount_type: string | null
+          discount_value: number | null
           due_date: string | null
           gst_amount: number | null
+          gst_inclusive: boolean | null
           id: string
           invoice_number: string
           job_sheet_id: string | null
           notes: string | null
           paid_amount: number | null
           payment_status: string | null
+          public_token: string | null
           quotation_id: string | null
+          signature_data: string | null
+          signature_name: string | null
+          signed_at: string | null
           status: string | null
           subtotal: number | null
           total: number | null
@@ -829,15 +848,22 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           due_date?: string | null
           gst_amount?: number | null
+          gst_inclusive?: boolean | null
           id?: string
           invoice_number?: string
           job_sheet_id?: string | null
           notes?: string | null
           paid_amount?: number | null
           payment_status?: string | null
+          public_token?: string | null
           quotation_id?: string | null
+          signature_data?: string | null
+          signature_name?: string | null
+          signed_at?: string | null
           status?: string | null
           subtotal?: number | null
           total?: number | null
@@ -847,15 +873,22 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           due_date?: string | null
           gst_amount?: number | null
+          gst_inclusive?: boolean | null
           id?: string
           invoice_number?: string
           job_sheet_id?: string | null
           notes?: string | null
           paid_amount?: number | null
           payment_status?: string | null
+          public_token?: string | null
           quotation_id?: string | null
+          signature_data?: string | null
+          signature_name?: string | null
+          signed_at?: string | null
           status?: string | null
           subtotal?: number | null
           total?: number | null
@@ -1395,7 +1428,11 @@ export type Database = {
       }
       quotation_items: {
         Row: {
+          description: string | null
+          discount_type: string | null
+          discount_value: number | null
           gst_percentage: number | null
+          hsn_code: string | null
           id: string
           image_url: string | null
           notes: string | null
@@ -1407,7 +1444,11 @@ export type Database = {
           unit_price: number
         }
         Insert: {
+          description?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_percentage?: number | null
+          hsn_code?: string | null
           id?: string
           image_url?: string | null
           notes?: string | null
@@ -1419,7 +1460,11 @@ export type Database = {
           unit_price?: number
         }
         Update: {
+          description?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_percentage?: number | null
+          hsn_code?: string | null
           id?: string
           image_url?: string | null
           notes?: string | null
@@ -1449,52 +1494,85 @@ export type Database = {
       }
       quotations: {
         Row: {
+          converted_invoice_id: string | null
           created_at: string
           created_by: string | null
           customer_id: string | null
+          discount_type: string | null
+          discount_value: number | null
           gst_amount: number | null
+          gst_inclusive: boolean | null
           id: string
+          last_viewed_at: string | null
           notes: string | null
           public_token: string
           quotation_number: string
+          reminder_sent_at: string | null
+          signature_data: string | null
+          signature_name: string | null
+          signed_at: string | null
+          signed_ip: string | null
           status: Database["public"]["Enums"]["quotation_status"]
           subtotal: number | null
           terms: string | null
           total: number | null
           updated_at: string
           valid_until: string | null
+          view_count: number | null
         }
         Insert: {
+          converted_invoice_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_amount?: number | null
+          gst_inclusive?: boolean | null
           id?: string
+          last_viewed_at?: string | null
           notes?: string | null
           public_token?: string
           quotation_number: string
+          reminder_sent_at?: string | null
+          signature_data?: string | null
+          signature_name?: string | null
+          signed_at?: string | null
+          signed_ip?: string | null
           status?: Database["public"]["Enums"]["quotation_status"]
           subtotal?: number | null
           terms?: string | null
           total?: number | null
           updated_at?: string
           valid_until?: string | null
+          view_count?: number | null
         }
         Update: {
+          converted_invoice_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_amount?: number | null
+          gst_inclusive?: boolean | null
           id?: string
+          last_viewed_at?: string | null
           notes?: string | null
           public_token?: string
           quotation_number?: string
+          reminder_sent_at?: string | null
+          signature_data?: string | null
+          signature_name?: string | null
+          signed_at?: string | null
+          signed_ip?: string | null
           status?: Database["public"]["Enums"]["quotation_status"]
           subtotal?: number | null
           terms?: string | null
           total?: number | null
           updated_at?: string
           valid_until?: string | null
+          view_count?: number | null
         }
         Relationships: [
           {
