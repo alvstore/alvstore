@@ -1,112 +1,104 @@
 
 
-# Enhanced Hikvision Integration UI/UX
+# Fix Hikvision API Integration - Robust MQ Attendance Sync
 
-## Overview
-Redesign the Hikvision configuration and device management experience. The Settings Hikvision tab will show Cloud API connection status and let admins manage credentials. The Attendance Devices tab will get an enhanced "Import from Cloud" dialog showing site hierarchy, site IDs, and zone info per device. Each device record will store its associated site ID and zone.
+## Current Issues Found
 
-## Database Changes
+1. **`mq/offset` fails**: The API requires a `batchId` parameter (from the messages response), but the code passes an empty object `{}`
+2. **Wrong event format parsing**: MQ messages use `AccessControllerEvent` format with `majorEventType`/`subEventType`, but code looks for `ACSEvent` with `major`/`minor`
+3. **Employee extraction from MQ events**: Since `person/synchronize` requires Cloud Attendance tier (which the current App Key doesn't have), we should extract employee info directly from MQ attendance events as a fallback
+4. **No `employeeNoString` extraction from correct path**: The actual data path is `msg.alarmData -> AccessControllerEvent -> employeeNoString`
 
-Add `site_id`, `site_name`, and `zone` columns to the `hikvision_devices` table:
+## Evidence from Logs
 
-```sql
-ALTER TABLE public.hikvision_devices
-  ADD COLUMN IF NOT EXISTS site_id text,
-  ADD COLUMN IF NOT EXISTS site_name text,
-  ADD COLUMN IF NOT EXISTS zone text;
+The MQ messages ARE flowing successfully. Here is the actual format:
+```text
+AccessControllerEvent: {
+  deviceName: "Access Controller",
+  majorEventType: 3,
+  subEventType: 112,
+  employeeNoString: "...",
+  ...
+}
 ```
 
-## Changes to Settings > Hikvision Tab (`src/pages/Settings.tsx`)
+## Plan
 
-Replace the current outdated HikvisionTab (lines 498-532) with a modern Cloud API configuration panel:
+### Step 1: Fix `cloudSyncAttendance` - Pass `batchId` to `mq/offset`
 
-- **Connection Status Card**: Shows whether API keys are configured by calling the edge function `site-search` action. Displays a green/red status indicator and the number of accessible sites/devices.
-- **API Credentials Section**: Two input fields for App Key and API Secret. Since these are stored as backend secrets (not in `business_settings`), show masked values and a note explaining that credentials are securely stored. Include a "Test Connection" button that calls `site-search` and reports how many sites/devices were found.
-- **Default Site ID Field**: Optional field to store a default site ID in `business_settings.integrations.hik_default_site_id`. When set, the system filters device operations to this site.
-- **Discovered Sites List**: After testing connection, display a read-only table of all discovered sites (name, ID, type: installer vs customer). The admin can click a site row to set it as default.
-- Remove the old local IP/port/username/password fields since they are no longer used (the system uses Cloud API).
+The `mq/messages` response includes `data.batchId`. The `mq/offset` API requires this `batchId` to acknowledge receipt. Currently passing `{}` which causes `LAP000001: batchId must not be blank`.
 
-## Changes to Attendance > Devices Tab (`src/pages/Attendance.tsx`)
+**Fix**: Extract `batchId` from messages response and pass it to offset call.
 
-### Enhanced "Import from Cloud" Flow
+### Step 2: Fix Event Parsing for `AccessControllerEvent` Format
 
-Replace the current simple `fetchCloudDevices` function with a multi-step dialog (Sheet slide-over):
+The current code looks for:
+- `alarmData.ACSEvent` or `alarmData.accessControlEvent` -- WRONG
+- `acsEvent.major` / `acsEvent.minor` -- WRONG
 
-1. **Step 1 - Fetch Sites**: Calls `list-devices` action. Shows a loading spinner while fetching.
-2. **Step 2 - Site + Device List**: Displays results grouped by site. Each group header shows `Site Name | Site ID | Type (installer/customer)`. Under each site, shows a table of devices with columns:
-   - Checkbox (for selection)
-   - Device Name
-   - Serial Number
-   - Model
-   - Online Status (green/red dot)
-   - Already Imported (badge if device serial already exists in `hikvision_devices`)
-3. **Step 3 - Import Selected**: Button to import selected devices. Each imported device stores `site_id`, `site_name`, and `zone` from the cloud data.
+The actual MQ format from the device is:
+- `alarmData.AccessControllerEvent` -- CORRECT
+- `AccessControllerEvent.majorEventType` / `.subEventType` -- CORRECT
+- `AccessControllerEvent.employeeNoString` -- CORRECT
+- `alarmData.dateTime` for event time -- CORRECT
 
-### Enhanced Device Table
+### Step 3: Add MQ-based Employee Discovery
 
-Add two new columns to the registered devices table:
-- **Site** - Shows `site_name` (with `site_id` as tooltip)
-- **Zone** - Shows zone value, editable inline
+Since `person/synchronize` requires Cloud Attendance tier (error `0x02401000`), add a new approach:
+- When `sync-employees` Cloud API fallback fails, automatically extract employee info from MQ attendance events already stored in `hikvision_attendance_logs`
+- Also create employee mappings on-the-fly during attendance sync from MQ events (already partially done, but needs fixing)
 
-### Enhanced Add/Edit Device Sheet
+### Step 4: Test All Actions Sequentially
 
-Update the device form (lines 394-407) to include:
-- Device Name (existing)
-- Device Serial Number (existing)
-- Site ID (new - with a "Search Sites" button that fetches available sites and shows a dropdown)
-- Site Name (new - auto-populated when site is selected)
-- Zone (new - free text field like "Main Entrance", "Floor 2", etc.)
+After deploying, test in order:
+1. `subscribe-events` -- confirm subscription active
+2. `sync-attendance` / `poll-messages` -- confirm events parsed and saved
+3. `sync-employees` -- confirm fallback extracts employees from attendance logs
+4. Verify `mq/offset` succeeds with batchId
 
-### Edge Function Update (`supabase/functions/hikvision-sync/index.ts`)
-
-Update the `list-devices` / `list-cloud-devices` action response to include `_siteId` and `_siteName` (already present). Update the import logic to save `site_id` and `site_name` to the database when importing devices.
+---
 
 ## Technical Details
 
-### Files to Modify
+### File: `supabase/functions/hikvision-sync/index.ts`
 
-1. **Database migration** - Add `site_id`, `site_name`, `zone` columns to `hikvision_devices`
-2. **`src/pages/Settings.tsx`** - Rewrite `HikvisionTab` component (lines 498-532) with Cloud API config UI, connection test, and site discovery
-3. **`src/pages/Attendance.tsx`** - Rewrite `fetchCloudDevices` (lines 256-277) with Sheet-based import dialog; update device table (lines 343-392) to show site/zone columns; update form (lines 394-407) with site/zone fields
-4. **`supabase/functions/hikvision-sync/index.ts`** - Update import logic (lines 620-633) to save `site_id` and `site_name`
+**Change 1 - Fix `mq/offset` (line ~457)**
 
-### HikvisionTab New Structure
-
-```text
-Card: Hik-Partner Pro Cloud API
-  - Status indicator (connected/not configured)
-  - App Key input (masked, stored as secret)
-  - API Secret input (masked, stored as secret)  
-  - [Test Connection] button
-  - Result: "Connected - Found X sites, Y devices"
-
-Card: Discovered Sites (shown after test)
-  - Table: Site Name | Site ID | Type | Devices Count
-  - Click to set as default
-
-Card: Sync Settings
-  - Default Site ID (dropdown from discovered sites)
-  - Sync Mode (manual/auto)
-  - Auto-sync interval
+Before:
+```typescript
+await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", {});
 ```
 
-### Import from Cloud Sheet Structure
+After:
+```typescript
+await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId });
+```
+
+The `batchId` comes from the `mq/messages` response: `msgResult.data.batchId`
+
+**Change 2 - Fix event parsing in `cloudSyncAttendance` (lines ~380-410)**
+
+Update the event extraction logic to handle the actual `AccessControllerEvent` format:
+- Check `alarmData.AccessControllerEvent` in addition to `ACSEvent`
+- Use `majorEventType` / `subEventType` instead of `major` / `minor`
+- Extract `employeeNoString` from `AccessControllerEvent`
+- Use `alarmData.dateTime` as primary event time
+
+**Change 3 - Add employee extraction fallback in `sync-employees` (lines ~820-830)**
+
+When Cloud API `person/synchronize` fails with `0x02401000`, add a third fallback:
+- Query existing `hikvision_attendance_logs` for the device
+- Extract unique employee codes and names
+- Create mappings and employee records from that data
+
+### Testing Sequence
 
 ```text
-Sheet: Import Devices from Cloud
-  Header: "Select devices to add to your ERP"
-  
-  [Fetching sites and devices... spinner]
-  
-  Site Group: "ALVStore" (da31347f...) - Customer Site
-    [ ] DS-K1T343EFWX  | FF6426490 | Online  | Already imported
-    
-  Site Group: "RAJAT LEKHARI" (abc123...) - Installer Site  
-    [x] House Main Gate | Q25759169 | Online  | New
-    [x] ALVSTORE SEC 14 | C29173942 | Online  | New
-    
-  Zone assignment: [text input per selected device]
-  
-  [Import X Selected Devices] button
+1. Deploy updated edge function
+2. Call subscribe-events -> verify subscription
+3. Call sync-attendance for FF6426490 -> verify events parsed and batchId offset works
+4. Call sync-employees for FF6426490 -> verify fallback extracts from attendance logs
+5. Check hikvision_attendance_logs table for new records
+6. Check hikvision_employee_mapping table for auto-created mappings
 ```
 
