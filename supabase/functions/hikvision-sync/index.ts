@@ -39,6 +39,72 @@ function jsonResp(data: unknown, status = 200) {
   });
 }
 
+// Discover ALL sites (installer sites + customer sites)
+async function getAllSites(areaDomain: string, accessToken: string): Promise<Array<{ id: string; siteName: string; shareType?: number; isCustomerSite?: boolean }>> {
+  console.log("[getAllSites] Fetching installer sites via site/search...");
+  const allSites: Array<{ id: string; siteName: string; shareType?: number; isCustomerSite?: boolean }> = [];
+  
+  // 1. Get installer's own sites via site/search
+  let page = 1;
+  let hasMore = true;
+  while (hasMore) {
+    const resp = await fetch(`${areaDomain}/api/hpcgw/v1/site/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ page, pageSize: 100 }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const result = await resp.json();
+    console.log(`[getAllSites] site/search page ${page}: errorCode=${result.errorCode}, total=${result.data?.total || 0}`);
+    if (result.errorCode !== "0") break;
+    const rows = result.data?.rows || [];
+    for (const site of rows) {
+      const shareType = site.sharedInfo?.shareType;
+      console.log(`  - Installer Site: ${site.siteName} | ID: ${site.id} | shareType: ${shareType}`);
+      allSites.push({ id: site.id, siteName: site.siteName, shareType, isCustomerSite: false });
+    }
+    const totalPage = result.data?.totalPage || 1;
+    hasMore = page < totalPage;
+    page++;
+  }
+
+  // 2. For each installer site, get customer sites via site/customer/list (v2)
+  // The customer/list API requires a siteId and returns customers who the site was shared/handed over to
+  // Those customer sites may have additional devices
+  console.log("[getAllSites] Fetching customer sites for each installer site...");
+  const installerSiteIds = allSites.map(s => s.id);
+  
+  for (const siteId of installerSiteIds) {
+    try {
+      const resp = await fetch(`${areaDomain}/api/hpcgw/v2/site/customer/list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ siteId, page: 1, pageSize: 100 }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const result = await resp.json();
+      console.log(`[getAllSites] customer/list for site ${siteId}: errorCode=${result.errorCode}, raw: ${JSON.stringify(result).substring(0, 500)}`);
+      
+      if (result.errorCode === "0" && result.data?.rows) {
+        for (const customer of result.data.rows) {
+          const custSiteId = customer.siteId || customer.id;
+          const custSiteName = customer.siteName || customer.hcAccount || `Customer ${custSiteId}`;
+          console.log(`  - Customer: ${custSiteName} | siteId: ${custSiteId} | account: ${customer.hcAccount || "N/A"}`);
+          // Only add if it's a different site ID than what we already have
+          if (custSiteId && !allSites.find(s => s.id === custSiteId)) {
+            allSites.push({ id: custSiteId, siteName: custSiteName, isCustomerSite: true });
+          }
+        }
+      }
+    } catch (custErr) {
+      console.warn(`[getAllSites] customer/list for site ${siteId} failed: ${custErr instanceof Error ? custErr.message : "unknown"}`);
+    }
+  }
+
+  console.log(`[getAllSites] Total sites discovered: ${allSites.length} (installer + customer)`);
+  return allSites;
+}
+
 // Checks for Hik-Partner API-level errors in JSON response body
 function checkApiError(text: string): void {
   try {
@@ -161,29 +227,121 @@ serve(async (req: Request) => {
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: list-devices (cloud devices from API)
+    // ACTION: site-search (discover all sites)
+    // ═══════════════════════════════════════════════
+    if (action === "site-search" || action === "test-site-search") {
+      try {
+        const { accessToken, areaDomain } = await getHppToken();
+        const sites = await getAllSites(areaDomain, accessToken);
+        
+        // Also try fetching devices with specific siteId if provided
+        const debugResults: any = {};
+        if (body.test_site_id) {
+          console.log(`[site-search] Testing device/list with siteId: ${body.test_site_id}`);
+          const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ siteId: body.test_site_id, page: 1, pageSize: 100 }),
+            signal: AbortSignal.timeout(15000),
+          });
+          debugResults.deviceListForSite = await resp.json();
+          console.log(`[site-search] device/list for siteId ${body.test_site_id}: ${JSON.stringify(debugResults.deviceListForSite).substring(0, 500)}`);
+        }
+        
+        // Also try customer/detail for a site if provided
+        if (body.test_site_id) {
+          try {
+            const resp2 = await fetch(`${areaDomain}/api/hpcgw/v1/site/customer/detail`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+              body: JSON.stringify({ siteId: body.test_site_id }),
+              signal: AbortSignal.timeout(15000),
+            });
+            debugResults.customerDetail = await resp2.json();
+            console.log(`[site-search] customer/detail for siteId ${body.test_site_id}: ${JSON.stringify(debugResults.customerDetail).substring(0, 500)}`);
+          } catch (_e) { /* ignore */ }
+        }
+        
+        return jsonResp({ success: true, sites, debug: debugResults });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : "Failed to search sites";
+        console.error(`[site-search] FAILED: ${errMsg}`);
+        return jsonResp({ success: false, error: errMsg });
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // ACTION: list-devices (cloud devices from ALL sites)
     // ═══════════════════════════════════════════════
     if (action === "list-devices" || action === "list-cloud-devices") {
       try {
         const { accessToken, areaDomain } = await getHppToken();
-        const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ page: 1, pageSize: 100 }),
-          signal: AbortSignal.timeout(15000),
-        });
-        const result = await resp.json();
-        console.log(`[list-devices] errorCode: ${result.errorCode}, total: ${result.data?.total || 0}`);
-        if (result.errorCode !== "0") return jsonResp({ success: false, error: `API error: ${result.errorCode}: ${result.errorMessage || ""}` });
         
-        const devices = result.data?.rows || [];
-        console.log(`[list-devices] Found ${devices.length} devices`);
-        devices.forEach((d: any) => console.log(`  - ${d.deviceSerial} | ${d.deviceName} | ${d.siteName} | online: ${d.isOnline}`));
+        // Step 1: Discover all sites (including customer sites)
+        const sites = await getAllSites(areaDomain, accessToken);
+        
+        // Step 2: Fetch devices from each site
+        const allDevices: any[] = [];
+        const siteResults: Array<{ siteId: string; siteName: string; deviceCount: number }> = [];
+        
+        for (const site of sites) {
+          try {
+            console.log(`[list-devices] Fetching devices for site: ${site.siteName} (${site.id})`);
+            const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+              body: JSON.stringify({ siteId: site.id, page: 1, pageSize: 100 }),
+              signal: AbortSignal.timeout(15000),
+            });
+            const result = await resp.json();
+            
+            if (result.errorCode !== "0") {
+              console.warn(`[list-devices] Site ${site.siteName} error: ${result.errorCode}`);
+              continue;
+            }
+            
+            const devices = result.data?.rows || [];
+            console.log(`[list-devices] Site ${site.siteName}: ${devices.length} devices`);
+            
+            for (const d of devices) {
+              d._siteName = site.siteName;
+              d._siteId = site.id;
+              console.log(`  - ${d.deviceSerial} | ${d.deviceName} | ${site.siteName} | online: ${d.isOnline}`);
+              allDevices.push(d);
+            }
+            
+            siteResults.push({ siteId: site.id, siteName: site.siteName, deviceCount: devices.length });
+          } catch (siteErr) {
+            console.warn(`[list-devices] Error fetching site ${site.siteName}: ${siteErr instanceof Error ? siteErr.message : "unknown"}`);
+          }
+        }
+        
+        // Fallback: if no sites found or no devices, try without siteId
+        if (allDevices.length === 0) {
+          console.log("[list-devices] No devices from sites, trying without siteId filter...");
+          const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/list`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ page: 1, pageSize: 100 }),
+            signal: AbortSignal.timeout(15000),
+          });
+          const result = await resp.json();
+          if (result.errorCode === "0") {
+            const devices = result.data?.rows || [];
+            console.log(`[list-devices] Fallback: ${devices.length} devices`);
+            devices.forEach((d: any) => {
+              d._siteName = d.siteName || "Unknown";
+              allDevices.push(d);
+            });
+          }
+        }
+        
+        console.log(`[list-devices] Total devices across all sites: ${allDevices.length}`);
         
         // If action is list-cloud-devices and import flag is set, create/update DB records
         if (action === "list-cloud-devices" && body.import_devices) {
           let imported = 0;
-          for (const d of devices) {
+          for (const d of allDevices) {
             const { error } = await supabase.from("hikvision_devices").upsert({
               name: d.deviceName || d.deviceSerial,
               device_serial: d.deviceSerial,
@@ -193,10 +351,10 @@ serve(async (req: Request) => {
             }, { onConflict: "device_serial" });
             if (!error) imported++;
           }
-          return jsonResp({ success: true, devices, imported });
+          return jsonResp({ success: true, devices: allDevices, imported, sites: siteResults });
         }
         
-        return jsonResp({ success: true, devices });
+        return jsonResp({ success: true, devices: allDevices, sites: siteResults });
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed to list devices";
         console.error(`[list-devices] FAILED: ${errMsg}`);
