@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ interface Customer { id: string; name: string; email: string | null; phone: stri
 
 export default function Sales() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -261,7 +263,7 @@ export default function Sales() {
                 <p className="text-sm">No quotations found</p>
               </TableCell></TableRow>
             ) : quotations.map(q => (
-              <TableRow key={q.id} className="cursor-pointer hover:bg-muted/30 border-border/50 transition-colors" onClick={() => openDetail(q)}>
+              <TableRow key={q.id} className="cursor-pointer hover:bg-muted/30 border-border/50 transition-colors" onClick={() => navigate(`/sales/${q.id}`)}>
                 <TableCell className="font-semibold text-sm text-primary">{q.quotation_number}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-3">

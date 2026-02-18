@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ const emptyForm = {
 
 export default function CRM() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -201,7 +203,7 @@ export default function CRM() {
               </TableRow>
             ) : (
               customers.map((c) => (
-                <TableRow key={c.id} className="border-border/50 hover:bg-muted/30 transition-colors">
+                <TableRow key={c.id} className="border-border/50 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate(`/customers/${c.id}`)}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -226,7 +228,7 @@ export default function CRM() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1 justify-end">
+                    <div className="flex gap-1 justify-end" onClick={e => e.stopPropagation()}>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEdit(c)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
