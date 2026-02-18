@@ -197,18 +197,30 @@ async function cloudSyncEmployees(
   console.log(`[cloudSyncEmployees] Starting Cloud API person sync for ${deviceSerial}`);
 
   // Step 1: Trigger person synchronize from device to platform
+  // Per API docs: POST /api/hpcgw/v1/person/synchronize
+  // Required: deviceSerial (String)
   console.log("[cloudSyncEmployees] Step 1: Triggering person/synchronize...");
-  await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize", {
+  const syncResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize", {
     deviceSerial,
   });
+  
+  // Extract syncTaskID from response (needed for progress and details APIs)
+  const syncTaskID = syncResult.data?.syncTaskID || syncResult.data?.taskId || "";
+  console.log(`[cloudSyncEmployees] Sync triggered. syncTaskID: ${syncTaskID}`);
+
+  if (!syncTaskID) {
+    console.warn("[cloudSyncEmployees] No syncTaskID returned, will try without it");
+  }
 
   // Step 2: Poll progress until complete (max 60s)
+  // Per API docs: POST /api/hpcgw/v1/person/synchronize/progress
+  // Required: deviceSerial (String)
   console.log("[cloudSyncEmployees] Step 2: Polling synchronize/progress...");
   let progress = 0;
   let attempts = 0;
   const maxAttempts = 30;
   while (progress < 100 && attempts < maxAttempts) {
-    await new Promise(r => setTimeout(r, 2000)); // wait 2s between polls
+    await new Promise(r => setTimeout(r, 2000));
     attempts++;
     try {
       const progressResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/progress", {
@@ -218,12 +230,13 @@ async function cloudSyncEmployees(
       console.log(`[cloudSyncEmployees] Progress: ${progress}% (attempt ${attempts}/${maxAttempts})`);
     } catch (e) {
       console.warn(`[cloudSyncEmployees] Progress check failed: ${e instanceof Error ? e.message : "unknown"}`);
-      // If progress API fails, wait a bit and try getting details directly
       if (attempts > 5) break;
     }
   }
 
   // Step 3: Get synced person details
+  // Per API docs: POST /api/hpcgw/v1/person/synchronize/details
+  // Required: syncTaskID (String), queryType (Integer - 0: all, 1: success, 2: failed)
   console.log("[cloudSyncEmployees] Step 3: Fetching person/synchronize/details...");
   let totalSynced = 0;
   let page = 1;
@@ -231,11 +244,17 @@ async function cloudSyncEmployees(
 
   while (hasMore) {
     try {
-      const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", {
-        deviceSerial,
+      const detailsBody: any = {
+        syncTaskID: syncTaskID,
+        queryType: 0, // 0 = query all results
         page,
         pageSize: 100,
-      });
+      };
+      // Also include deviceSerial as fallback
+      if (!syncTaskID) {
+        detailsBody.deviceSerial = deviceSerial;
+      }
+      const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", detailsBody);
 
       const persons = detailsResult.data?.rows || detailsResult.data?.list || [];
       const total = detailsResult.data?.total || 0;
@@ -249,7 +268,6 @@ async function cloudSyncEmployees(
         if (!employeeCode) continue;
         console.log(`[cloudSyncEmployees] Processing: ${employeeCode} - ${employeeName}`);
 
-        // Upsert into mapping table
         await supabase.from("hikvision_employee_mapping").upsert({
           device_employee_code: employeeCode,
           device_employee_name: employeeName,
@@ -259,7 +277,6 @@ async function cloudSyncEmployees(
           synced_at: new Date().toISOString(),
         }, { onConflict: "device_employee_code,device_id" });
 
-        // Auto-create or link ERP employee
         const { data: existingEmp } = await supabase
           .from("employees")
           .select("id")
@@ -313,10 +330,13 @@ async function cloudSyncAttendance(
   console.log(`[cloudSyncAttendance] Starting Cloud MQ attendance sync for ${deviceSerial}`);
 
   // Step 1: Subscribe to ACSEvent (idempotent - safe to call multiple times)
+  // Per API docs: POST /api/hpcgw/v1/mq/subscribe
+  // Required: subType (Integer - 1: event alarm), subMode (String - "all" or "list")
   console.log("[cloudSyncAttendance] Step 1: Subscribing to ACSEvent...");
   try {
     await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/subscribe", {
-      operationType: "subscribe",
+      subType: 1,       // 1 = event alarm subscription
+      subMode: "all",   // "all" = subscribe to all event types
     });
     console.log("[cloudSyncAttendance] MQ subscription active");
   } catch (e) {
@@ -846,16 +866,45 @@ serve(async (req: Request) => {
         } catch (isapiErr) {
           if (!isIsapiBlocked(isapiErr)) throw isapiErr;
 
-          // Fallback: extract departments from person/synchronize/details
-          console.log("[sync-departments] ISAPI blocked, extracting departments from Cloud person sync...");
+          // Fallback: trigger person sync, then extract departments from details
+          console.log("[sync-departments] ISAPI blocked, triggering Cloud person sync for departments...");
           
-          // Trigger person sync first (or just read existing details)
           try {
-            const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", {
-              deviceSerial: device_serial,
+            // First trigger person/synchronize to get syncTaskID
+            let syncTaskID = "";
+            try {
+              const syncResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize", {
+                deviceSerial: device_serial,
+              });
+              syncTaskID = syncResult.data?.syncTaskID || syncResult.data?.taskId || "";
+              console.log(`[sync-departments] person/synchronize syncTaskID: ${syncTaskID}`);
+              
+              // Wait for sync to complete
+              let progress = 0;
+              let attempts = 0;
+              while (progress < 100 && attempts < 15) {
+                await new Promise(r => setTimeout(r, 2000));
+                attempts++;
+                try {
+                  const progressResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/progress", { deviceSerial: device_serial });
+                  progress = progressResult.data?.progress ?? 0;
+                } catch { break; }
+              }
+            } catch (syncErr) {
+              console.warn(`[sync-departments] person/synchronize failed: ${syncErr instanceof Error ? syncErr.message : "unknown"}, trying details directly...`);
+            }
+
+            const detailsBody: any = {
+              queryType: 0, // all results
               page: 1,
               pageSize: 100,
-            });
+            };
+            if (syncTaskID) {
+              detailsBody.syncTaskID = syncTaskID;
+            } else {
+              detailsBody.deviceSerial = device_serial;
+            }
+            const detailsResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/person/synchronize/details", detailsBody);
 
             const persons = detailsResult.data?.rows || detailsResult.data?.list || [];
             const deptNames = new Set<string>();
@@ -1133,7 +1182,7 @@ serve(async (req: Request) => {
         const resp = await fetch(`${areaDomain}/api/hpcgw/v1/mq/subscribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ operationType: "subscribe" }),
+          body: JSON.stringify({ subType: 1, subMode: "all" }),
           signal: AbortSignal.timeout(15000),
         });
         const result = await resp.json();
