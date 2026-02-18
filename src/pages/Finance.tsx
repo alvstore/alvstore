@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,12 @@ interface AuditEntry {
 interface CashControl {
   id: string; date: string; opening_cash: number;
   closing_cash: number | null; difference: number | null;
-  staff_name: string | null;
+  staff_name: string | null; status: string | null;
+  denominations: any; pos_total: number | null;
+  manual_income: number | null; manual_expense: number | null;
+  expected_closing: number | null; notes: string | null;
+  closed_at: string | null; closed_by: string | null;
+  created_by: string | null;
 }
 
 export default function Finance() {
@@ -651,59 +657,354 @@ function LedgerTab({ transactions, accounts, categories }: {
   );
 }
 
-// ─── Cash Control Tab ─────────────────────────
+// ─── Cash Control Tab (Advanced) ──────────────
+const DENOMINATIONS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+
 function CashControlTab({ records, staffName, userId, onRefresh }: {
   records: CashControl[]; staffName: string; userId?: string; onRefresh: () => void;
 }) {
-  const [form, setForm] = useState({ date: format(new Date(), "yyyy-MM-dd"), opening_cash: "", closing_cash: "" });
+  const [dateFilter, setDateFilter] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "custom">("today");
+  const [openSheetOpen, setOpenSheetOpen] = useState(false);
+  const [closeSheetOpen, setCloseSheetOpen] = useState(false);
+  const [openingCash, setOpeningCash] = useState("");
+  const [closingCash, setClosingCash] = useState("");
+  const [closingNotes, setClosingNotes] = useState("");
+  const [openDenoms, setOpenDenoms] = useState<Record<number, string>>({});
+  const [closeDenoms, setCloseDenoms] = useState<Record<number, string>>({});
+  const [manualIncome, setManualIncome] = useState("");
+  const [manualExpense, setManualExpense] = useState("");
+  const [incomeRef, setIncomeRef] = useState("");
+  const [expenseRef, setExpenseRef] = useState("");
+  const [incomeSheetOpen, setIncomeSheetOpen] = useState(false);
+  const [expenseSheetOpen, setExpenseSheetOpen] = useState(false);
 
-  const handleSave = async () => {
-    const oc = parseFloat(form.opening_cash) || 0;
-    const cc = form.closing_cash ? parseFloat(form.closing_cash) : null;
-    const diff = cc != null ? cc - oc : null;
+  const today = format(new Date(), "yyyy-MM-dd");
+  const todayRecord = records.find(r => r.date === today);
+  const isDayOpen = todayRecord?.status === "open";
+  const isDayClosed = todayRecord?.status === "closed";
+
+  const denomTotal = (denoms: Record<number, string>) =>
+    DENOMINATIONS.reduce((sum, d) => sum + d * (parseInt(denoms[d] || "0") || 0), 0);
+
+  const handleOpenDay = async () => {
+    const oc = denomTotal(openDenoms) || parseFloat(openingCash) || 0;
+    if (oc <= 0) { toast.error("Enter valid opening cash"); return; }
     const { error } = await supabase.from("daily_cash_control").insert({
-      date: form.date, opening_cash: oc, closing_cash: cc, difference: diff,
+      date: today, opening_cash: oc, status: "open",
       staff_name: staffName, created_by: userId,
+      denominations: { opening: openDenoms },
     });
     if (error) {
-      if (error.code === "23505") toast.error("Record for this date already exists");
+      if (error.code === "23505") toast.error("Day already opened");
       else toast.error(error.message);
-    } else { toast.success("Cash record saved"); onRefresh(); }
+    } else {
+      await supabase.from("finance_audit_log").insert({
+        action: "DAY_OPENED", entity_type: "cash_control",
+        details: `Day opened with ₹${oc.toLocaleString()}`,
+        staff_name: staffName, user_id: userId,
+      });
+      toast.success("Day opened"); setOpenSheetOpen(false); onRefresh();
+    }
   };
+
+  const handleCloseDay = async () => {
+    if (!todayRecord) return;
+    const cc = denomTotal(closeDenoms) || parseFloat(closingCash) || 0;
+    if (cc <= 0) { toast.error("Enter valid closing cash"); return; }
+    const expected = todayRecord.opening_cash + (todayRecord.manual_income || 0) + (todayRecord.pos_total || 0) - (todayRecord.manual_expense || 0);
+    const diff = cc - expected;
+    if (Math.abs(diff) > 100 && !closingNotes.trim()) {
+      toast.error("Notes required when variance exceeds ₹100"); return;
+    }
+    const { error } = await supabase.from("daily_cash_control").update({
+      closing_cash: cc, difference: diff, expected_closing: expected,
+      status: "closed", closed_by: userId, closed_at: new Date().toISOString(),
+      notes: closingNotes || null,
+      denominations: { ...(todayRecord.denominations || {}), closing: closeDenoms },
+    }).eq("id", todayRecord.id);
+    if (error) toast.error(error.message);
+    else {
+      await supabase.from("finance_audit_log").insert({
+        action: "DAY_CLOSED", entity_type: "cash_control",
+        details: `Day closed. Expected: ₹${expected.toLocaleString()}, Actual: ₹${cc.toLocaleString()}, Variance: ₹${diff.toLocaleString()}`,
+        staff_name: staffName, user_id: userId,
+      });
+      toast.success("Day closed"); setCloseSheetOpen(false); onRefresh();
+    }
+  };
+
+  const addManualEntry = async (type: "income" | "expense") => {
+    if (!todayRecord || todayRecord.status !== "open") { toast.error("Open the day first"); return; }
+    const amt = parseFloat(type === "income" ? manualIncome : manualExpense) || 0;
+    const ref = type === "income" ? incomeRef : expenseRef;
+    if (amt <= 0) { toast.error("Enter valid amount"); return; }
+    const field = type === "income" ? "manual_income" : "manual_expense";
+    const current = type === "income" ? (todayRecord.manual_income || 0) : (todayRecord.manual_expense || 0);
+    const { error } = await supabase.from("daily_cash_control").update({
+      [field]: current + amt,
+    }).eq("id", todayRecord.id);
+    if (error) toast.error(error.message);
+    else {
+      await supabase.from("finance_audit_log").insert({
+        action: `MANUAL_${type.toUpperCase()}`, entity_type: "cash_control",
+        details: `Manual ${type}: ₹${amt.toLocaleString()} | Ref: ${ref || "N/A"}`,
+        staff_name: staffName, user_id: userId,
+      });
+      toast.success(`${type === "income" ? "Income" : "Expense"} recorded`);
+      if (type === "income") { setManualIncome(""); setIncomeRef(""); setIncomeSheetOpen(false); }
+      else { setManualExpense(""); setExpenseRef(""); setExpenseSheetOpen(false); }
+      onRefresh();
+    }
+  };
+
+  // Filter records by date
+  const filteredRecords = records.filter(r => {
+    if (dateRange === "today") return r.date === today;
+    if (dateRange === "week") {
+      const d = new Date(); d.setDate(d.getDate() - 7);
+      return new Date(r.date) >= d;
+    }
+    if (dateRange === "month") {
+      const d = new Date(); d.setDate(1);
+      return new Date(r.date) >= d;
+    }
+    return r.date === dateFilter;
+  });
+
+  const DenomGrid = ({ denoms, onChange }: { denoms: Record<number, string>; onChange: (d: Record<number, string>) => void }) => (
+    <div className="grid grid-cols-5 gap-2">
+      {DENOMINATIONS.map(d => (
+        <div key={d} className="space-y-1">
+          <label className="text-[10px] font-medium text-muted-foreground">₹{d}</label>
+          <Input className="h-8 text-xs text-center" type="number" min="0"
+            value={denoms[d] || ""} onChange={e => onChange({ ...denoms, [d]: e.target.value })} placeholder="0" />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-sm">Daily Cash Entry</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-            <div className="space-y-1.5"><Label>Date</Label><Input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} /></div>
-            <div className="space-y-1.5"><Label>Opening Cash</Label><Input type="number" value={form.opening_cash} onChange={e => setForm(p => ({ ...p, opening_cash: e.target.value }))} /></div>
-            <div className="space-y-1.5"><Label>Closing Cash</Label><Input type="number" value={form.closing_cash} onChange={e => setForm(p => ({ ...p, closing_cash: e.target.value }))} /></div>
-            <Button onClick={handleSave}>Save</Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Today's Status Card */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Status</p>
+            <Badge className={cn(
+              isDayClosed ? "bg-success/10 text-success" :
+              isDayOpen ? "bg-warning/10 text-warning" :
+              "bg-muted text-muted-foreground"
+            )}>
+              {isDayClosed ? "Closed" : isDayOpen ? "Open" : "Not Started"}
+            </Badge>
+            <p className="text-[10px] text-muted-foreground mt-1">{format(new Date(), "dd MMM yyyy")}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Opening Cash</p>
+            <p className="text-xl font-bold">₹{(todayRecord?.opening_cash || 0).toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Expected Closing</p>
+            <p className="text-xl font-bold">
+              ₹{todayRecord ? ((todayRecord.opening_cash || 0) + (todayRecord.manual_income || 0) + (todayRecord.pos_total || 0) - (todayRecord.manual_expense || 0)).toLocaleString() : "0"}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Variance</p>
+            <p className={cn("text-xl font-bold",
+              todayRecord?.difference != null && todayRecord.difference < 0 ? "text-destructive" :
+              todayRecord?.difference != null && todayRecord.difference > 0 ? "text-success" : ""
+            )}>
+              {todayRecord?.difference != null ? `₹${todayRecord.difference.toLocaleString()}` : "—"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex flex-wrap gap-3">
+        {!isDayOpen && !isDayClosed && (
+          <Button onClick={() => { setOpenDenoms({}); setOpeningCash(""); setOpenSheetOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />Open Day
+          </Button>
+        )}
+        {isDayOpen && (
+          <>
+            <Button variant="outline" onClick={() => { setManualIncome(""); setIncomeRef(""); setIncomeSheetOpen(true); }}>
+              <TrendingUp className="h-4 w-4 mr-2" />Record Income
+            </Button>
+            <Button variant="outline" onClick={() => { setManualExpense(""); setExpenseRef(""); setExpenseSheetOpen(true); }}>
+              <TrendingDown className="h-4 w-4 mr-2" />Record Expense
+            </Button>
+            <Button className="bg-destructive hover:bg-destructive/90" onClick={() => { setCloseDenoms({}); setClosingCash(""); setClosingNotes(""); setCloseSheetOpen(true); }}>
+              Close Day
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* Date Filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(["today", "week", "month", "custom"] as const).map(v => (
+          <Button key={v} size="sm" variant={dateRange === v ? "default" : "outline"} onClick={() => setDateRange(v)} className="capitalize">
+            {v === "custom" ? "Custom" : v === "today" ? "Today" : v === "week" ? "7 Days" : "This Month"}
+          </Button>
+        ))}
+        {dateRange === "custom" && (
+          <Input type="date" className="w-auto h-9" value={dateFilter} onChange={e => setDateFilter(e.target.value)} />
+        )}
+      </div>
+
+      {/* History Table */}
       <div className="rounded-lg border bg-card">
         <Table>
-          <TableHeader><TableRow><TableHead>Date</TableHead><TableHead className="text-right">Opening</TableHead><TableHead className="text-right">Closing</TableHead><TableHead className="text-right">Difference</TableHead><TableHead>Staff</TableHead></TableRow></TableHeader>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Opening</TableHead>
+              <TableHead className="text-right">Income</TableHead>
+              <TableHead className="text-right">Expense</TableHead>
+              <TableHead className="text-right">Expected</TableHead>
+              <TableHead className="text-right">Actual</TableHead>
+              <TableHead className="text-right">Variance</TableHead>
+              <TableHead>Staff</TableHead>
+              <TableHead>Notes</TableHead>
+            </TableRow>
+          </TableHeader>
           <TableBody>
-            {records.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No records</TableCell></TableRow>
-            ) : records.map(r => (
-              <TableRow key={r.id}>
-                <TableCell>{format(new Date(r.date), "dd MMM yyyy")}</TableCell>
-                <TableCell className="text-right">₹{r.opening_cash.toLocaleString()}</TableCell>
-                <TableCell className="text-right">{r.closing_cash != null ? `₹${r.closing_cash.toLocaleString()}` : "—"}</TableCell>
-                <TableCell className={`text-right font-medium ${r.difference != null && r.difference < 0 ? "text-destructive" : r.difference != null && r.difference > 0 ? "text-success" : ""}`}>
-                  {r.difference != null ? `₹${r.difference.toLocaleString()}` : "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground">{r.staff_name || "—"}</TableCell>
-              </TableRow>
-            ))}
+            {filteredRecords.length === 0 ? (
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No records for this period</TableCell></TableRow>
+            ) : filteredRecords.map(r => {
+              const expected = (r.opening_cash || 0) + (r.manual_income || 0) + (r.pos_total || 0) - (r.manual_expense || 0);
+              return (
+                <TableRow key={r.id}>
+                  <TableCell className="font-medium">{format(new Date(r.date), "dd MMM yyyy")}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={cn(
+                      r.status === "closed" ? "text-success border-success/30" : "text-warning border-warning/30"
+                    )}>{r.status || "open"}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right">₹{r.opening_cash.toLocaleString()}</TableCell>
+                  <TableCell className="text-right text-success">₹{((r.manual_income || 0) + (r.pos_total || 0)).toLocaleString()}</TableCell>
+                  <TableCell className="text-right text-destructive">₹{(r.manual_expense || 0).toLocaleString()}</TableCell>
+                  <TableCell className="text-right">₹{expected.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{r.closing_cash != null ? `₹${r.closing_cash.toLocaleString()}` : "—"}</TableCell>
+                  <TableCell className={cn("text-right font-medium",
+                    r.difference != null && r.difference < 0 ? "text-destructive" :
+                    r.difference != null && r.difference > 0 ? "text-success" : ""
+                  )}>
+                    {r.difference != null ? `₹${r.difference.toLocaleString()}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">{r.staff_name || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs max-w-[120px] truncate">{r.notes || "—"}</TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
+
+      {/* Open Day Sheet */}
+      <Sheet open={openSheetOpen} onOpenChange={setOpenSheetOpen}>
+        <SheetContent className="overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Open Day — {format(new Date(), "dd MMM yyyy")}</SheetTitle>
+            <SheetDescription>Enter opening cash or count denominations</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div className="space-y-1.5">
+              <Label>Opening Cash Amount</Label>
+              <Input type="number" value={openingCash} onChange={e => setOpeningCash(e.target.value)} placeholder="Or use denominations below" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Denomination Count (optional)</Label>
+              <DenomGrid denoms={openDenoms} onChange={setOpenDenoms} />
+              {denomTotal(openDenoms) > 0 && (
+                <p className="text-sm font-medium text-right">Denomination Total: ₹{denomTotal(openDenoms).toLocaleString()}</p>
+              )}
+            </div>
+            <Button className="w-full" onClick={handleOpenDay}>Open Day</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Close Day Sheet */}
+      <Sheet open={closeSheetOpen} onOpenChange={setCloseSheetOpen}>
+        <SheetContent className="overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Close Day</SheetTitle>
+            <SheetDescription>
+              Expected: ₹{todayRecord ? ((todayRecord.opening_cash || 0) + (todayRecord.manual_income || 0) + (todayRecord.pos_total || 0) - (todayRecord.manual_expense || 0)).toLocaleString() : "0"}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div className="space-y-1.5">
+              <Label>Actual Closing Cash</Label>
+              <Input type="number" value={closingCash} onChange={e => setClosingCash(e.target.value)} placeholder="Or use denominations below" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Denomination Count (optional)</Label>
+              <DenomGrid denoms={closeDenoms} onChange={setCloseDenoms} />
+              {denomTotal(closeDenoms) > 0 && (
+                <p className="text-sm font-medium text-right">Denomination Total: ₹{denomTotal(closeDenoms).toLocaleString()}</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes {(() => {
+                const cc = denomTotal(closeDenoms) || parseFloat(closingCash) || 0;
+                const exp = todayRecord ? (todayRecord.opening_cash + (todayRecord.manual_income || 0) + (todayRecord.pos_total || 0) - (todayRecord.manual_expense || 0)) : 0;
+                return Math.abs(cc - exp) > 100 ? "(required — variance > ₹100)" : "(optional)";
+              })()}</Label>
+              <Textarea value={closingNotes} onChange={e => setClosingNotes(e.target.value)} rows={2} placeholder="Explain any variance" />
+            </div>
+            <Button className="w-full" onClick={handleCloseDay}>Close Day</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Manual Income Sheet */}
+      <Sheet open={incomeSheetOpen} onOpenChange={setIncomeSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Record Manual Income</SheetTitle>
+            <SheetDescription>Link to invoice, job sheet, quotation, or other</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div className="space-y-1.5"><Label>Amount *</Label><Input type="number" value={manualIncome} onChange={e => setManualIncome(e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label>Reference (Invoice/Job Sheet/Quote #)</Label>
+              <Input value={incomeRef} onChange={e => setIncomeRef(e.target.value)} placeholder="INV-00001 / JOB-2026-00001 / QT-00001" />
+            </div>
+            <Button className="w-full" onClick={() => addManualEntry("income")}>Record Income</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Manual Expense Sheet */}
+      <Sheet open={expenseSheetOpen} onOpenChange={setExpenseSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Record Manual Expense</SheetTitle>
+            <SheetDescription>Link to repair, invoice, or other reference</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            <div className="space-y-1.5"><Label>Amount *</Label><Input type="number" value={manualExpense} onChange={e => setManualExpense(e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label>Reference (Repair/Invoice/Other)</Label>
+              <Input value={expenseRef} onChange={e => setExpenseRef(e.target.value)} placeholder="JOB-2026-00001 / Parts purchase / Other" />
+            </div>
+            <Button className="w-full" onClick={() => addManualEntry("expense")}>Record Expense</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

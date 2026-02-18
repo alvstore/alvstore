@@ -13,7 +13,7 @@ import { BusinessHeader } from "@/components/documents/BusinessHeader";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
-import { ArrowLeft, Send, Download, Printer, Pencil, CreditCard, Copy, Eye } from "lucide-react";
+import { ArrowLeft, Send, Download, Printer, Pencil, CreditCard, Copy, Eye, Link, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function InvoicePreview() {
@@ -28,6 +28,7 @@ export default function InvoicePreview() {
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("cash");
+  const [sendingLink, setSendingLink] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -75,6 +76,37 @@ export default function InvoicePreview() {
     if (!invoice?.public_token) return;
     navigator.clipboard.writeText(`${window.location.origin}/invoice/public/${invoice.public_token}`);
     toast.success("Link copied");
+  };
+
+  const sendPaymentLink = async () => {
+    if (!invoice) return;
+    const bal = (invoice.total || 0) - (invoice.paid_amount || 0);
+    if (bal <= 0) { toast.error("No balance due"); return; }
+    setSendingLink(true);
+    try {
+      const customer = invoice.customers;
+      const { data, error } = await supabase.functions.invoke("create-payment-link", {
+        body: {
+          amount: bal,
+          customer_name: customer?.name || "",
+          customer_email: customer?.email || "",
+          customer_phone: customer?.phone || "",
+          invoice_id: invoice.id,
+          description: `Payment for ${invoice.invoice_number}`,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success("Payment link sent!", { description: data.payment_link_url });
+        navigator.clipboard.writeText(data.payment_link_url);
+      } else {
+        throw new Error(data?.error || "Failed to create link");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create payment link");
+    } finally {
+      setSendingLink(false);
+    }
   };
 
   if (loading) {
@@ -211,9 +243,9 @@ export default function InvoicePreview() {
 
             {invoice.payment_status !== "paid" && (
               <Card className="shadow-sm border-border/50">
-                <CardContent className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Accept Payment</p>
-                  <p className="text-sm text-muted-foreground mb-3">
+                <CardContent className="p-5 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Accept Payment</p>
+                  <p className="text-sm text-muted-foreground">
                     Balance due: <span className="font-bold text-foreground">₹{balance.toLocaleString("en-IN")}</span>
                   </p>
                   <Button
@@ -225,6 +257,15 @@ export default function InvoicePreview() {
                     }}
                   >
                     <CreditCard className="h-4 w-4 mr-2" /> Add Payment
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full border-primary/30 text-primary hover:bg-primary/5"
+                    onClick={sendPaymentLink}
+                    disabled={sendingLink}
+                  >
+                    {sendingLink ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link className="h-4 w-4 mr-2" />}
+                    {sendingLink ? "Creating..." : "Send Razorpay Link"}
                   </Button>
                 </CardContent>
               </Card>
