@@ -101,6 +101,7 @@ const App = () => (
               <Route path="/payroll" element={<Payroll />} />
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/audit-logs" element={<AuditLogs />} />
+              <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/templates" element={<Navigate to="/settings" replace />} />
               <Route path="/staff" element={<Navigate to="/employees" replace />} />
