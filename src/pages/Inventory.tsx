@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -17,7 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Pencil, Trash2, LayoutGrid, List, Package, AlertTriangle, Barcode, Printer, ArrowRightLeft } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, LayoutGrid, List, Package, AlertTriangle, Barcode, Printer, ArrowRightLeft, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import JsBarcode from "jsbarcode";
 
@@ -48,36 +47,15 @@ interface StockMovement {
   created_at: string;
 }
 
-const emptyForm = {
-  name: "", sku: "", barcode: "", description: "", category: "",
-  purchase_price: "0", selling_price: "0", gst_percentage: "18",
-  stock_quantity: "0", low_stock_threshold: "5", unit: "pcs",
-};
-
 // Barcode preview component
 function BarcodePreview({ value, productName }: { value: string; productName?: string }) {
   const svgRef = useRef<SVGSVGElement>(null);
-
   useEffect(() => {
     if (svgRef.current && value) {
-      try {
-        JsBarcode(svgRef.current, value, {
-          format: "CODE128",
-          width: 2,
-          height: 60,
-          displayValue: true,
-          fontSize: 14,
-          margin: 10,
-          background: "#ffffff",
-        });
-      } catch {
-        // Invalid barcode value
-      }
+      try { JsBarcode(svgRef.current, value, { format: "CODE128", width: 2, height: 60, displayValue: true, fontSize: 14, margin: 10, background: "#ffffff" }); } catch {}
     }
   }, [value]);
-
   if (!value) return null;
-
   return (
     <div className="bg-white rounded-lg border p-3 text-center">
       {productName && <p className="text-xs text-muted-foreground mb-1 font-medium">{productName}</p>}
@@ -86,86 +64,46 @@ function BarcodePreview({ value, productName }: { value: string; productName?: s
   );
 }
 
-// Print barcode function
 function printBarcode(barcodeValue: string, productName: string, sellingPrice: number) {
   const printWindow = window.open("", "_blank", "width=400,height=300");
   if (!printWindow) return;
-
   const svgContainer = document.createElement("div");
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svgContainer.appendChild(svg);
-  try {
-    JsBarcode(svg, barcodeValue, {
-      format: "CODE128", width: 2, height: 50, displayValue: true, fontSize: 12, margin: 5,
-    });
-  } catch { return; }
-
-  printWindow.document.write(`
-    <html><head><title>Print Barcode</title>
-    <style>
-      body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: sans-serif; }
-      .label { text-align: center; padding: 8px; }
-      .name { font-size: 11px; font-weight: bold; margin-bottom: 4px; }
-      .price { font-size: 13px; font-weight: bold; margin-top: 2px; }
-      @media print { @page { margin: 0; size: 50mm 30mm; } }
-    </style></head>
-    <body>
-      <div class="label">
-        <div class="name">${productName}</div>
-        ${svgContainer.innerHTML}
-        <div class="price">₹${sellingPrice}</div>
-      </div>
-    </body></html>
-  `);
+  try { JsBarcode(svg, barcodeValue, { format: "CODE128", width: 2, height: 50, displayValue: true, fontSize: 12, margin: 5 }); } catch { return; }
+  printWindow.document.write(`<html><head><title>Print Barcode</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif}.label{text-align:center;padding:8px}.name{font-size:11px;font-weight:bold;margin-bottom:4px}.price{font-size:13px;font-weight:bold;margin-top:2px}@media print{@page{margin:0;size:50mm 30mm}}</style></head><body><div class="label"><div class="name">${productName}</div>${svgContainer.innerHTML}<div class="price">₹${sellingPrice}</div></div></body></html>`);
   printWindow.document.close();
   setTimeout(() => { printWindow.print(); printWindow.close(); }, 300);
 }
 
-function generateBarcode(): string {
-  // Generate EAN-13 compatible barcode
-  const prefix = "200"; // In-store use prefix
-  const random = String(Math.floor(Math.random() * 1000000000)).padStart(9, "0");
-  const code = prefix + random;
-  // Calculate check digit
-  let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    sum += parseInt(code[i]) * (i % 2 === 0 ? 1 : 3);
-  }
-  const checkDigit = (10 - (sum % 10)) % 10;
-  return code + checkDigit;
-}
-
 export default function Inventory() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [loading, setLoading] = useState(true);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
   const [categories, setCategories] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("products");
-
-  // Barcode sheet
   const [barcodeSheetOpen, setBarcodeSheetOpen] = useState(false);
   const [barcodeProduct, setBarcodeProduct] = useState<Product | null>(null);
 
   const fetchProducts = async () => {
     setLoading(true);
     let query = supabase.from("products").select("*").order("created_at", { ascending: false });
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`);
-    }
-    if (categoryFilter !== "all") {
-      query = query.eq("category", categoryFilter);
-    }
+    if (search) query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`);
+    if (categoryFilter !== "all") query = query.eq("category", categoryFilter);
     const { data, error } = await query;
     if (error) toast.error(error.message);
     else {
-      setProducts(data || []);
+      let filtered = data || [];
+      if (stockFilter === "low") filtered = filtered.filter(p => p.stock_quantity > 0 && p.stock_quantity <= p.low_stock_threshold);
+      else if (stockFilter === "out") filtered = filtered.filter(p => p.stock_quantity <= 0);
+      else if (stockFilter === "in") filtered = filtered.filter(p => p.stock_quantity > p.low_stock_threshold);
+      setProducts(filtered);
       const cats = [...new Set((data || []).map(p => p.category).filter(Boolean))] as string[];
       setCategories(cats);
     }
@@ -177,51 +115,12 @@ export default function Inventory() {
     if (!error) setMovements(data || []);
   };
 
-  useEffect(() => { fetchProducts(); }, [search, categoryFilter]);
+  useEffect(() => { fetchProducts(); }, [search, categoryFilter, stockFilter]);
   useEffect(() => { if (activeTab === "movements") fetchMovements(); }, [activeTab]);
-
-  // Check URL params for tab
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "movements") setActiveTab("movements");
   }, []);
-
-  const openNew = () => { setEditId(null); setForm(emptyForm); setSheetOpen(true); };
-
-  const openEdit = (p: Product) => {
-    setEditId(p.id);
-    setForm({
-      name: p.name, sku: p.sku || "", barcode: p.barcode || "",
-      description: p.description || "", category: p.category || "",
-      purchase_price: String(p.purchase_price), selling_price: String(p.selling_price),
-      gst_percentage: String(p.gst_percentage), stock_quantity: String(p.stock_quantity),
-      low_stock_threshold: String(p.low_stock_threshold), unit: p.unit || "pcs",
-    });
-    setSheetOpen(true);
-  };
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { toast.error("Name is required"); return; }
-    const payload = {
-      name: form.name, sku: form.sku || null, barcode: form.barcode || null,
-      description: form.description || null, category: form.category || null,
-      purchase_price: parseFloat(form.purchase_price) || 0,
-      selling_price: parseFloat(form.selling_price) || 0,
-      gst_percentage: parseFloat(form.gst_percentage) || 18,
-      stock_quantity: parseInt(form.stock_quantity) || 0,
-      low_stock_threshold: parseInt(form.low_stock_threshold) || 5,
-      unit: form.unit || "pcs",
-    };
-    if (editId) {
-      const { error } = await supabase.from("products").update(payload).eq("id", editId);
-      if (error) toast.error(error.message); else toast.success("Product updated");
-    } else {
-      const { error } = await supabase.from("products").insert({ ...payload, created_by: user?.id });
-      if (error) toast.error(error.message); else toast.success("Product created");
-    }
-    setSheetOpen(false);
-    fetchProducts();
-  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this product?")) return;
@@ -230,30 +129,48 @@ export default function Inventory() {
     else { toast.success("Product deleted"); fetchProducts(); }
   };
 
-  const updateField = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
   const isLowStock = (p: Product) => p.stock_quantity <= p.low_stock_threshold;
-
-  const handleGenerateBarcode = () => {
-    const code = generateBarcode();
-    setForm(prev => ({ ...prev, barcode: code }));
-    toast.success("Barcode generated: " + code);
-  };
-
-  const openBarcodeView = (p: Product) => {
-    setBarcodeProduct(p);
-    setBarcodeSheetOpen(true);
-  };
-
+  const openBarcodeView = (p: Product) => { setBarcodeProduct(p); setBarcodeSheetOpen(true); };
   const getProductName = (productId: string) => products.find(p => p.id === productId)?.name || productId;
+
+  // KPI stats
+  const totalProducts = products.length;
+  const inStock = products.filter(p => p.stock_quantity > p.low_stock_threshold).length;
+  const lowStock = products.filter(p => p.stock_quantity > 0 && p.stock_quantity <= p.low_stock_threshold).length;
+  const outOfStock = products.filter(p => p.stock_quantity <= 0).length;
+
+  const kpiCards = [
+    { label: "Total Products", value: totalProducts, icon: Package, bg: "bg-primary/10", iconColor: "text-primary" },
+    { label: "In Stock", value: inStock, icon: CheckCircle, bg: "bg-success/10", iconColor: "text-success" },
+    { label: "Low Stock", value: lowStock, icon: AlertTriangle, bg: "bg-warning/10", iconColor: "text-warning" },
+    { label: "Out of Stock", value: outOfStock, icon: XCircle, bg: "bg-destructive/10", iconColor: "text-destructive" },
+  ];
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
-          <p className="text-muted-foreground">Manage products, stock, and barcodes</p>
+          <h1 className="text-2xl font-bold tracking-tight">Products</h1>
+          <p className="text-muted-foreground">Manage your product catalog and inventory</p>
         </div>
-        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Add Product</Button>
+        <Button onClick={() => navigate("/inventory/add")}><Plus className="h-4 w-4 mr-2" /> Add Product</Button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {kpiCards.map(kpi => (
+          <Card key={kpi.label} className="border-border/50 shadow-sm">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={`h-11 w-11 rounded-xl ${kpi.bg} flex items-center justify-center`}>
+                <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">{kpi.label}</p>
+                <p className="text-xl font-bold text-foreground">{loading ? "—" : kpi.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -264,16 +181,25 @@ export default function Inventory() {
 
         <TabsContent value="products" className="space-y-4 mt-4">
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search by name, SKU, barcode..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+              <Input placeholder="Search products..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Category" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={stockFilter} onValueChange={setStockFilter}>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Stock Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="in">In Stock</SelectItem>
+                <SelectItem value="low">Low Stock</SelectItem>
+                <SelectItem value="out">Out of Stock</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex gap-1 border rounded-lg p-0.5">
@@ -282,7 +208,6 @@ export default function Inventory() {
             </div>
           </div>
 
-          {/* Products */}
           {loading ? (
             <div className="text-center py-12 text-muted-foreground">Loading...</div>
           ) : products.length === 0 ? (
@@ -297,34 +222,51 @@ export default function Inventory() {
                   <TableRow>
                     <TableHead>Product</TableHead>
                     <TableHead className="hidden sm:table-cell">SKU</TableHead>
-                    <TableHead className="hidden md:table-cell">Category</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="w-32">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {products.map(p => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {p.name}
-                          {isLowStock(p) && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Low</Badge>}
+                    <TableRow key={p.id} className="cursor-pointer" onClick={() => navigate(`/inventory/${p.id}/edit`)}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                            {p.image_url ? <img src={p.image_url} alt="" className="h-full w-full object-cover" /> : <Package className="h-4 w-4 text-muted-foreground/50" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{p.name}</p>
+                            <p className="text-[11px] text-muted-foreground">{p.category || "Uncategorized"}</p>
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">{p.sku || "—"}</TableCell>
-                      <TableCell className="hidden md:table-cell">{p.category || "—"}</TableCell>
-                      <TableCell className="text-right">₹{p.selling_price}</TableCell>
-                      <TableCell className="text-right">{p.stock_quantity} {p.unit}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{p.sku || "—"}</TableCell>
+                      <TableCell className="text-right font-medium">{p.stock_quantity} {p.unit}</TableCell>
+                      <TableCell className="text-right font-medium">₹{p.selling_price}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
+                        {p.stock_quantity <= 0 ? (
+                          <Badge variant="destructive" className="text-[10px]">Out of Stock</Badge>
+                        ) : isLowStock(p) ? (
+                          <Badge className="bg-warning/10 text-warning text-[10px]">Low Stock</Badge>
+                        ) : (
+                          <Badge className="bg-success/10 text-success text-[10px]">In Stock</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                           {p.barcode && (
-                            <Button variant="ghost" size="icon" onClick={() => openBarcodeView(p)} title="View Barcode">
+                            <Button variant="ghost" size="icon" onClick={() => openBarcodeView(p)} title="Barcode">
                               <Barcode className="h-4 w-4" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => navigate(`/inventory/${p.id}/edit`)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -335,22 +277,28 @@ export default function Inventory() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {products.map(p => (
-                <Card key={p.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                <Card key={p.id} className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate(`/inventory/${p.id}/edit`)}>
                   <div className="h-36 bg-muted flex items-center justify-center">
                     {p.image_url ? <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" /> : <Package className="h-10 w-10 text-muted-foreground/30" />}
                   </div>
                   <CardContent className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold text-sm leading-tight">{p.name}</h3>
-                      {isLowStock(p) && <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />}
+                      {p.stock_quantity <= 0 ? (
+                        <Badge variant="destructive" className="text-[10px] shrink-0">Out</Badge>
+                      ) : isLowStock(p) ? (
+                        <Badge className="bg-warning/10 text-warning text-[10px] shrink-0">Low</Badge>
+                      ) : (
+                        <Badge className="bg-success/10 text-success text-[10px] shrink-0">In Stock</Badge>
+                      )}
                     </div>
                     {p.sku && <p className="text-xs text-muted-foreground">SKU: {p.sku}</p>}
                     <div className="flex justify-between items-center text-sm">
                       <span className="font-bold">₹{p.selling_price}</span>
-                      <span className={isLowStock(p) ? "text-destructive font-medium" : "text-muted-foreground"}>{p.stock_quantity} {p.unit}</span>
+                      <span className="text-muted-foreground">{p.stock_quantity} {p.unit}</span>
                     </div>
-                    <div className="flex gap-1 pt-1">
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(p)}>Edit</Button>
+                    <div className="flex gap-1 pt-1" onClick={e => e.stopPropagation()}>
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => navigate(`/inventory/${p.id}/edit`)}>Edit</Button>
                       {p.barcode && <Button variant="outline" size="sm" onClick={() => openBarcodeView(p)}><Barcode className="h-3.5 w-3.5" /></Button>}
                       <Button variant="outline" size="sm" onClick={() => handleDelete(p.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                     </div>
@@ -399,61 +347,6 @@ export default function Inventory() {
         </TabsContent>
       </Tabs>
 
-      {/* Product Form Sheet */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{editId ? "Edit Product" : "Add Product"}</SheetTitle>
-            <SheetDescription>{editId ? "Update product details" : "Fill in the product information"}</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            {[
-              { key: "name", label: "Name *" },
-              { key: "sku", label: "SKU" },
-              { key: "category", label: "Category" },
-              { key: "unit", label: "Unit" },
-            ].map(f => (
-              <div key={f.key} className="space-y-1.5">
-                <Label>{f.label}</Label>
-                <Input value={(form as any)[f.key]} onChange={e => updateField(f.key, e.target.value)} />
-              </div>
-            ))}
-
-            {/* Barcode with generator */}
-            <div className="space-y-1.5">
-              <Label>Barcode</Label>
-              <div className="flex gap-2">
-                <Input value={form.barcode} onChange={e => updateField("barcode", e.target.value)} placeholder="Scan or generate" className="flex-1" />
-                <Button type="button" variant="outline" size="sm" onClick={handleGenerateBarcode} title="Auto-generate barcode">
-                  <Barcode className="h-4 w-4 mr-1" />Generate
-                </Button>
-              </div>
-              {form.barcode && <BarcodePreview value={form.barcode} />}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Textarea value={form.description} onChange={e => updateField("description", e.target.value)} rows={2} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { key: "purchase_price", label: "Purchase Price" },
-                { key: "selling_price", label: "Selling Price" },
-                { key: "gst_percentage", label: "GST %" },
-                { key: "stock_quantity", label: "Stock Qty" },
-                { key: "low_stock_threshold", label: "Low Stock Alert" },
-              ].map(f => (
-                <div key={f.key} className="space-y-1.5">
-                  <Label>{f.label}</Label>
-                  <Input type="number" value={(form as any)[f.key]} onChange={e => updateField(f.key, e.target.value)} />
-                </div>
-              ))}
-            </div>
-            <Button className="w-full" onClick={handleSave}>{editId ? "Update Product" : "Create Product"}</Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-
       {/* Barcode View/Print Sheet */}
       <Sheet open={barcodeSheetOpen} onOpenChange={setBarcodeSheetOpen}>
         <SheetContent className="sm:max-w-md">
@@ -466,10 +359,7 @@ export default function Inventory() {
               <>
                 <BarcodePreview value={barcodeProduct.barcode} productName={barcodeProduct.name} />
                 <p className="text-center text-sm text-muted-foreground">₹{barcodeProduct.selling_price}</p>
-                <Button
-                  className="w-full"
-                  onClick={() => printBarcode(barcodeProduct.barcode!, barcodeProduct.name, barcodeProduct.selling_price)}
-                >
+                <Button className="w-full" onClick={() => printBarcode(barcodeProduct.barcode!, barcodeProduct.name, barcodeProduct.selling_price)}>
                   <Printer className="h-4 w-4 mr-2" />Print Barcode Label
                 </Button>
               </>

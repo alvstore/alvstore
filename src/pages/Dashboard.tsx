@@ -23,18 +23,38 @@ async function fetchKpis() {
   const today = startOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
 
-  const [salesToday, salesMonth, pendingPayments, cashBalance, lowStock, activeRepairs, completedToday, totalCustomers] = await Promise.all([
+  const [salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers] = await Promise.all([
     supabase.from("pos_transactions").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
     supabase.from("pos_transactions").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
     supabase.from("payments").select("amount").eq("status", "pending").then(r => r.data?.reduce((s, p) => s + Number(p.amount), 0) ?? 0),
-    supabase.from("payments").select("amount").eq("status", "completed").then(r => r.data?.reduce((s, p) => s + Number(p.amount), 0) ?? 0),
+    supabase.from("finance_accounts").select("current_balance").eq("status", "active").then(r => r.data?.reduce((s, a) => s + Number(a.current_balance), 0) ?? 0),
+    supabase.from("finance_transactions").select("amount").eq("type", "income").gte("date", format(startOfMonth(new Date()), "yyyy-MM-dd")).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
+    supabase.from("finance_transactions").select("amount").eq("type", "expense").gte("date", format(startOfMonth(new Date()), "yyyy-MM-dd")).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
     supabase.from("products").select("id", { count: "exact", head: true }).or("stock_quantity.lte.low_stock_threshold").then(r => r.count ?? 0),
     supabase.from("repair_tickets").select("id", { count: "exact", head: true }).not("status", "in", '("completed","delivered")').then(r => r.count ?? 0),
     supabase.from("repair_status_history").select("id", { count: "exact", head: true }).eq("new_status", "completed").gte("created_at", today).then(r => r.count ?? 0),
     supabase.from("customers").select("id", { count: "exact", head: true }).then(r => r.count ?? 0),
   ]);
 
-  return { salesToday, salesMonth, pendingPayments, cashBalance, lowStock, activeRepairs, completedToday, totalCustomers };
+  return { salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers };
+}
+
+async function fetchIncomeExpenseTrend() {
+  const days: { name: string; income: number; expense: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = subDays(new Date(), i);
+    const dayStr = format(d, "yyyy-MM-dd");
+    const [incData, expData] = await Promise.all([
+      supabase.from("finance_transactions").select("amount").eq("type", "income").eq("date", dayStr),
+      supabase.from("finance_transactions").select("amount").eq("type", "expense").eq("date", dayStr),
+    ]);
+    days.push({
+      name: format(d, "EEE"),
+      income: incData.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0,
+      expense: expData.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0,
+    });
+  }
+  return days;
 }
 
 async function fetchSalesTrend() {
@@ -90,6 +110,7 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const { data: kpis, isLoading: kpiLoading } = useQuery({ queryKey: ["dashboard-kpis"], queryFn: fetchKpis, staleTime: 60_000 });
   const { data: salesTrend, isLoading: trendLoading } = useQuery({ queryKey: ["dashboard-sales-trend"], queryFn: fetchSalesTrend, staleTime: 60_000 });
+  const { data: incomeExpenseTrend } = useQuery({ queryKey: ["dashboard-income-expense"], queryFn: fetchIncomeExpenseTrend, staleTime: 60_000 });
   const { data: repairBreakdown } = useQuery({ queryKey: ["dashboard-repairs"], queryFn: fetchRepairBreakdown, staleTime: 60_000 });
   const { data: topProducts } = useQuery({ queryKey: ["dashboard-top-products"], queryFn: fetchTopProducts, staleTime: 60_000 });
   const { data: recentInvoices } = useQuery({ queryKey: ["dashboard-recent-invoices"], queryFn: fetchRecentInvoices, staleTime: 60_000 });
@@ -97,20 +118,21 @@ export default function Dashboard() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["dashboard-kpis"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-sales-trend"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-income-expense"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-repairs"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-top-products"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-recent-invoices"] });
   };
 
   const kpiCards = [
-    { label: "Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", icon: DollarSign, bg: "bg-primary/10", iconColor: "text-primary", trend: "+12%", up: true },
-    { label: "Monthly Revenue", value: kpis ? fmt(kpis.salesMonth) : "—", icon: TrendingUp, bg: "bg-success/10", iconColor: "text-success", trend: "+8%", up: true },
-    { label: "Pending Payments", value: kpis ? fmt(kpis.pendingPayments) : "—", icon: CreditCard, bg: "bg-warning/10", iconColor: "text-warning", trend: "-5%", up: false },
+    { label: "Revenue", value: kpis ? fmt(kpis.revenue) : "—", icon: TrendingUp, bg: "bg-success/10", iconColor: "text-success", trend: "+8%", up: true },
+    { label: "Expenses", value: kpis ? fmt(kpis.expenses) : "—", icon: CreditCard, bg: "bg-destructive/10", iconColor: "text-destructive", trend: "-5%", up: false },
+    { label: "Net Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, bg: "bg-primary/10", iconColor: "text-primary", trend: "+12%", up: true },
     { label: "Total Customers", value: kpis ? String(kpis.totalCustomers) : "—", icon: Users, bg: "bg-info/10", iconColor: "text-info", trend: "+22%", up: true },
   ];
 
   const statCards = [
-    { label: "Cash Balance", value: kpis ? fmt(kpis.cashBalance) : "—", icon: Wallet, color: "text-primary" },
+    { label: "Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", icon: DollarSign, color: "text-primary" },
     { label: "Low Stock", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-destructive" },
     { label: "Active Repairs", value: kpis ? String(kpis.activeRepairs) : "—", icon: Wrench, color: "text-accent" },
     { label: "Completed Today", value: kpis ? String(kpis.completedToday) : "—", icon: CheckCircle, color: "text-success" },
@@ -199,9 +221,9 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Sales Trend - Area chart */}
-        <Card className="lg:col-span-2 border-border/50 shadow-sm">
+        <Card className="border-border/50 shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div>
@@ -240,8 +262,40 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+      </div>
 
-        {/* Repair Breakdown - Donut */}
+      {/* Charts Row 2 - Income/Expense + Repair */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Income vs Expense Bar Chart */}
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Income vs Expenses</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Last 7 days from Finance</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-success">{kpis ? fmt(kpis.revenue - kpis.expenses) : "—"}</p>
+                <p className="text-[11px] text-muted-foreground">Net This Month</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={incomeExpenseTrend || []} barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} formatter={(value: number) => [fmt(value)]} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px" }} />
+                <Bar dataKey="income" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} barSize={16} name="Income" />
+                <Bar dataKey="expense" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} barSize={16} name="Expense" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Repair Breakdown - Donut (moved from row 1) */}
         <Card className="border-border/50 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Repair Status</CardTitle>
@@ -261,7 +315,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Charts Row 2 */}
+      {/* Charts Row 3 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Products - Horizontal Bar */}
         <Card className="border-border/50 shadow-sm">

@@ -41,6 +41,8 @@ import Tasks from "./pages/Tasks";
 import Employees from "./pages/Employees";
 import Payroll from "./pages/Payroll";
 import AuditLogs from "./pages/AuditLogs";
+import Chat from "./pages/Chat";
+import ProductAdd from "./pages/ProductAdd";
 
 const queryClient = new QueryClient();
 
@@ -78,6 +80,9 @@ const App = () => (
               <Route path="/customers/:id" element={<CustomerProfile />} />
               <Route path="/pos" element={<POS />} />
               <Route path="/inventory" element={<Inventory />} />
+              <Route path="/inventory/add" element={<ProductAdd />} />
+              <Route path="/inventory/:id/edit" element={<ProductAdd />} />
+              <Route path="/chat" element={<Chat />} />
               <Route path="/repairs" element={<JobSheets />} />
               <Route path="/repairs/new" element={<JobSheetCreate />} />
               <Route path="/repairs/:id" element={<JobSheetDetail />} />

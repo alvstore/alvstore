@@ -4,7 +4,7 @@ import {
   Wrench, Clock, CreditCard, BarChart3, FileText, Settings,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
   Target, ClipboardList, Receipt, ArrowRightLeft, UserCog,
-  Wallet, Shield,
+  Wallet, Shield, MessageCircle,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -53,6 +53,12 @@ const adminStaffNav: NavCategory[] = [
     label: "FINANCE",
     items: [
       { title: "Transactions", url: "/finance", icon: CreditCard },
+    ],
+  },
+  {
+    label: "CHAT",
+    items: [
+      { title: "Messages", url: "/chat", icon: MessageCircle },
     ],
   },
   {
