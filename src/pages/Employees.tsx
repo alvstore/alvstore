@@ -15,6 +15,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, Search, User, Pencil, Loader2, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,6 +34,8 @@ interface Employee {
   joining_date: string | null;
   status: string;
   created_at: string;
+  avatar_url: string | null;
+  device_employee_code: string | null;
 }
 
 const emptyForm = {
@@ -191,7 +194,7 @@ export default function Employees() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead>Employee</TableHead>
                 <TableHead className="hidden sm:table-cell">Contact</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead className="hidden md:table-cell">Department</TableHead>
@@ -205,7 +208,20 @@ export default function Employees() {
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No employees found</TableCell></TableRow>
               ) : employees.map(e => (
                 <TableRow key={e.id}>
-                  <TableCell className="font-medium">{e.name}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        {e.avatar_url ? <AvatarImage src={e.avatar_url} alt={e.name} /> : null}
+                        <AvatarFallback className="text-xs">{e.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <span className="font-medium">{e.name}</span>
+                        {e.device_employee_code && (
+                          <span className="block text-xs text-muted-foreground font-mono">{e.device_employee_code}</span>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{e.phone || e.email || "—"}</TableCell>
                   <TableCell><Badge className={roleColors[e.role] || "bg-muted text-muted-foreground"}>{e.role}</Badge></TableCell>
                   <TableCell className="hidden md:table-cell text-sm">{e.department || "—"}</TableCell>

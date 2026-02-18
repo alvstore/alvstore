@@ -212,6 +212,48 @@ export type Database = {
         }
         Relationships: []
       }
+      departments: {
+        Row: {
+          created_at: string
+          device_department_id: string | null
+          device_id: string | null
+          id: string
+          name: string
+          parent_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          device_department_id?: string | null
+          device_id?: string | null
+          id?: string
+          name: string
+          parent_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          device_department_id?: string | null
+          device_id?: string | null
+          id?: string
+          name?: string
+          parent_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "departments_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "hikvision_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "departments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       device_brands: {
         Row: {
           created_at: string
@@ -250,9 +292,12 @@ export type Database = {
       }
       employees: {
         Row: {
+          avatar_url: string | null
           created_at: string
           department: string | null
+          department_id: string | null
           designation: string | null
+          device_employee_code: string | null
           email: string | null
           id: string
           joining_date: string | null
@@ -265,9 +310,12 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           department?: string | null
+          department_id?: string | null
           designation?: string | null
+          device_employee_code?: string | null
           email?: string | null
           id?: string
           joining_date?: string | null
@@ -280,9 +328,12 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           department?: string | null
+          department_id?: string | null
           designation?: string | null
+          device_employee_code?: string | null
           email?: string | null
           id?: string
           joining_date?: string | null
@@ -294,7 +345,15 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "employees_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       finance_accounts: {
         Row: {
@@ -551,6 +610,9 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          device_model: string | null
+          device_serial: string | null
+          device_version: string | null
           id: string
           ip_address: string
           last_sync_at: string | null
@@ -563,6 +625,9 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          device_model?: string | null
+          device_serial?: string | null
+          device_version?: string | null
           id?: string
           ip_address: string
           last_sync_at?: string | null
@@ -575,6 +640,9 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          device_model?: string | null
+          device_serial?: string | null
+          device_version?: string | null
           id?: string
           ip_address?: string
           last_sync_at?: string | null
@@ -588,28 +656,40 @@ export type Database = {
       }
       hikvision_employee_mapping: {
         Row: {
+          avatar_synced: boolean | null
+          card_number: string | null
           created_at: string
+          department_name: string | null
           device_employee_code: string
           device_employee_name: string | null
           device_id: string | null
           erp_employee_id: string | null
           id: string
+          synced_at: string | null
         }
         Insert: {
+          avatar_synced?: boolean | null
+          card_number?: string | null
           created_at?: string
+          department_name?: string | null
           device_employee_code: string
           device_employee_name?: string | null
           device_id?: string | null
           erp_employee_id?: string | null
           id?: string
+          synced_at?: string | null
         }
         Update: {
+          avatar_synced?: boolean | null
+          card_number?: string | null
           created_at?: string
+          department_name?: string | null
           device_employee_code?: string
           device_employee_name?: string | null
           device_id?: string | null
           erp_employee_id?: string | null
           id?: string
+          synced_at?: string | null
         }
         Relationships: [
           {
@@ -637,6 +717,7 @@ export type Database = {
           id: string
           records_synced: number | null
           status: string
+          sync_type: string | null
         }
         Insert: {
           action: string
@@ -646,6 +727,7 @@ export type Database = {
           id?: string
           records_synced?: number | null
           status?: string
+          sync_type?: string | null
         }
         Update: {
           action?: string
@@ -655,6 +737,7 @@ export type Database = {
           id?: string
           records_synced?: number | null
           status?: string
+          sync_type?: string | null
         }
         Relationships: [
           {
