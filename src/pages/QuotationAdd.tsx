@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,13 @@ interface BusinessSettings { company_name: string | null; company_address: strin
 
 export default function QuotationAdd() {
   const { user } = useAuth();
+  const { id: editId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [business, setBusiness] = useState<BusinessSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const isEditing = !!editId;
 
   const [customerId, setCustomerId] = useState("");
   const [validUntil, setValidUntil] = useState("");
@@ -51,6 +53,34 @@ export default function QuotationAdd() {
       if (b.data) setBusiness(b.data);
     });
   }, []);
+
+  // Load existing quotation for editing
+  useEffect(() => {
+    if (!editId) return;
+    const loadQuotation = async () => {
+      const { data: q } = await supabase.from("quotations").select("*").eq("id", editId).single();
+      if (q) {
+        setCustomerId(q.customer_id || "");
+        setValidUntil(q.valid_until || "");
+        setNotes(q.notes || "");
+        setTerms(q.terms || "1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
+        setGstInclusive(q.gst_inclusive || false);
+        setDiscountType((q.discount_type as "percentage" | "fixed") || "percentage");
+        setDiscountValue(q.discount_value || 0);
+      }
+      const { data: itms } = await supabase.from("quotation_items").select("*").eq("quotation_id", editId);
+      if (itms) {
+        setItems(itms.map((i: any) => ({
+          id: i.id, product_id: i.product_id, product_name: i.product_name,
+          description: i.description || "", hsn_code: i.hsn_code || "",
+          quantity: i.quantity, unit_price: i.unit_price,
+          discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
+          gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+        })));
+      }
+    };
+    loadQuotation();
+  }, [editId]);
 
   const selectedCustomer = customerId ? customers.find(c => c.id === customerId) : null;
   const totals = calculateTotals(items, gstInclusive, discountType, discountValue);
@@ -84,27 +114,50 @@ export default function QuotationAdd() {
     if (items.length === 0) { toast.error("Add at least one item"); return; }
     setSaving(true);
 
-    const { data: q, error: qErr } = await supabase.from("quotations").insert({
-      quotation_number: "", customer_id: customerId,
-      subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount, total: totals.grandTotal,
-      notes: notes || null, terms: terms || null, valid_until: validUntil || null,
-      discount_type: discountType, discount_value: discountValue,
-      gst_inclusive: gstInclusive, created_by: user?.id,
-    }).select().single();
+    if (isEditing) {
+      // Update existing quotation
+      const { error: qErr } = await supabase.from("quotations").update({
+        customer_id: customerId, subtotal: totals.itemSubtotal,
+        gst_amount: totals.gstAmount, total: totals.grandTotal,
+        notes: notes || null, terms: terms || null, valid_until: validUntil || null,
+        discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
+      }).eq("id", editId);
+      if (qErr) { toast.error(qErr.message); setSaving(false); return; }
 
-    if (qErr) { toast.error(qErr.message); setSaving(false); return; }
+      // Delete old items and insert new
+      await supabase.from("quotation_items").delete().eq("quotation_id", editId);
+      const qItems = items.map(i => ({
+        quotation_id: editId, product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
+        total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
+        discount_type: i.discount_type, discount_value: i.discount_value,
+      }));
+      await supabase.from("quotation_items").insert(qItems);
+      setSaving(false);
+      toast.success("Quotation updated");
+      navigate(`/sales/${editId}`);
+    } else {
+      // Create new
+      const { data: q, error: qErr } = await supabase.from("quotations").insert({
+        quotation_number: "", customer_id: customerId,
+        subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount, total: totals.grandTotal,
+        notes: notes || null, terms: terms || null, valid_until: validUntil || null,
+        discount_type: discountType, discount_value: discountValue,
+        gst_inclusive: gstInclusive, created_by: user?.id,
+      }).select().single();
+      if (qErr) { toast.error(qErr.message); setSaving(false); return; }
 
-    const qItems = items.map(i => ({
-      quotation_id: q.id, product_id: i.product_id, product_name: i.product_name,
-      quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
-      total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
-      discount_type: i.discount_type, discount_value: i.discount_value,
-    }));
-
-    const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
-    setSaving(false);
-    if (iErr) toast.error(iErr.message);
-    else { toast.success("Quotation created — " + q.quotation_number); navigate(`/sales/${q.id}`); }
+      const qItems = items.map(i => ({
+        quotation_id: q.id, product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
+        total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
+        discount_type: i.discount_type, discount_value: i.discount_value,
+      }));
+      const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
+      setSaving(false);
+      if (iErr) toast.error(iErr.message);
+      else { toast.success("Quotation created — " + q.quotation_number); navigate(`/sales/${q.id}`); }
+    }
   };
 
   return (
@@ -114,8 +167,8 @@ export default function QuotationAdd() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Add Quotation</h1>
-          <p className="text-sm text-muted-foreground">Create a professional quotation</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{isEditing ? "Edit Quotation" : "Add Quotation"}</h1>
+          <p className="text-sm text-muted-foreground">{isEditing ? "Update quotation details" : "Create a professional quotation"}</p>
         </div>
       </div>
 

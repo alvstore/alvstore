@@ -55,7 +55,7 @@ export default function Chat() {
   const [searchText, setSearchText] = useState("");
   const [profiles, setProfiles] = useState<ProfileMap>({});
   const [newSheetOpen, setNewSheetOpen] = useState(false);
-  const [allProfiles, setAllProfiles] = useState<{ user_id: string; full_name: string | null }[]>([]);
+  const [allProfiles, setAllProfiles] = useState<{ user_id: string; full_name: string | null; role?: string }[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const [channelFilter, setChannelFilter] = useState<"all" | "internal" | "whatsapp">("all");
@@ -98,8 +98,17 @@ export default function Chat() {
   }, [profiles]);
 
   const fetchAllProfiles = useCallback(async () => {
-    const { data } = await supabase.from("profiles").select("user_id, full_name");
-    if (data) setAllProfiles(data.filter(p => p.user_id !== user?.id));
+    const { data: profilesData } = await supabase.from("profiles").select("user_id, full_name");
+    const { data: rolesData } = await supabase.from("user_roles").select("user_id, role");
+    if (profilesData) {
+      const rolesMap: Record<string, string> = {};
+      rolesData?.forEach(r => { rolesMap[r.user_id] = r.role; });
+      setAllProfiles(
+        profilesData
+          .filter(p => p.user_id !== user?.id)
+          .map(p => ({ ...p, full_name: p.full_name || "User", role: rolesMap[p.user_id] || "staff" }))
+      );
+    }
   }, [user]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
@@ -481,7 +490,10 @@ export default function Chat() {
                   <SelectContent>
                     {allProfiles.map(p => (
                       <SelectItem key={p.user_id} value={p.user_id}>
-                        {p.full_name || "User"}
+                        <div className="flex items-center gap-2">
+                          <span>{p.full_name || "User"}</span>
+                          <Badge variant="outline" className="text-[10px] px-1 py-0 capitalize">{p.role || "staff"}</Badge>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
