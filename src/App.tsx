@@ -43,6 +43,9 @@ import Payroll from "./pages/Payroll";
 import AuditLogs from "./pages/AuditLogs";
 import Chat from "./pages/Chat";
 import ProductAdd from "./pages/ProductAdd";
+import InvoiceAdd from "./pages/InvoiceAdd";
+import QuotationAdd from "./pages/QuotationAdd";
+import CalendarPage from "./pages/CalendarPage";
 
 const queryClient = new QueryClient();
 
@@ -74,8 +77,10 @@ const App = () => (
               <Route path="/crm" element={<CRM />} />
               <Route path="/leads" element={<Leads />} />
               <Route path="/sales" element={<Sales />} />
+              <Route path="/sales/new" element={<QuotationAdd />} />
               <Route path="/sales/:id" element={<QuotationPreview />} />
               <Route path="/invoices" element={<Invoices />} />
+              <Route path="/invoices/new" element={<InvoiceAdd />} />
               <Route path="/invoices/:id" element={<InvoicePreview />} />
               <Route path="/customers/:id" element={<CustomerProfile />} />
               <Route path="/pos" element={<POS />} />

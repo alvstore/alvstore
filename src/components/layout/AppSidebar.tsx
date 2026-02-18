@@ -4,7 +4,7 @@ import {
   Wrench, Clock, CreditCard, BarChart3, FileText, Settings,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
   Target, ClipboardList, Receipt, ArrowRightLeft, UserCog,
-  Wallet, Shield, MessageCircle,
+  Wallet, Shield, MessageCircle, CalendarDays,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -59,6 +59,7 @@ const adminStaffNav: NavCategory[] = [
     label: "CHAT",
     items: [
       { title: "Messages", url: "/chat", icon: MessageCircle },
+      { title: "Calendar", url: "/calendar", icon: CalendarDays },
     ],
   },
   {
@@ -93,6 +94,7 @@ const adminStaffNav: NavCategory[] = [
 const customerNav: NavCategory[] = [
   { label: "MAIN", items: [
     { title: "My Portal", url: "/portal", icon: Home },
+    { title: "Chat", url: "/chat", icon: MessageCircle },
     { title: "Settings", url: "/settings", icon: Settings },
   ]},
 ];
@@ -101,6 +103,7 @@ const technicianNav: NavCategory[] = [
   { label: "MAIN", items: [
     { title: "My Repairs", url: "/technicians", icon: Wrench },
     { title: "My Tasks", url: "/tasks", icon: ClipboardList },
+    { title: "Chat", url: "/chat", icon: MessageCircle },
     { title: "Settings", url: "/settings", icon: Settings },
   ]},
 ];

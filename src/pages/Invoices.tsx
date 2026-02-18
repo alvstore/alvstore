@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -15,11 +13,6 @@ import { Progress } from "@/components/ui/progress";
 import { Plus, Search, Receipt, FileText, TrendingUp, AlertCircle, CheckCircle, Copy, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/documents/StatusBadge";
-import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
-import { TotalsPanel, calculateTotals } from "@/components/documents/TotalsPanel";
-import { ActionButtons } from "@/components/documents/ActionButtons";
-import { DocumentPreview } from "@/components/documents/DocumentPreview";
-import { CustomerCard } from "@/components/documents/CustomerCard";
 
 interface Invoice {
   id: string;
@@ -44,33 +37,14 @@ interface Invoice {
   customers?: { name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null } | null;
 }
 
-interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; }
-interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; }
-
 export default function Invoices() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [detailSheet, setDetailSheet] = useState<Invoice | null>(null);
-  const [detailItems, setDetailItems] = useState<DocumentItem[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Form
-  const [formCustomerId, setFormCustomerId] = useState("");
-  const [formNotes, setFormNotes] = useState("");
-  const [formDueDate, setFormDueDate] = useState("");
-  const [formItems, setFormItems] = useState<DocumentItem[]>([]);
-  const [formGstInclusive, setFormGstInclusive] = useState(false);
-  const [formDiscountType, setFormDiscountType] = useState<"percentage" | "fixed">("percentage");
-  const [formDiscountValue, setFormDiscountValue] = useState(0);
-
-  // Payment
+  // Payment sheet (kept for quick inline payments)
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
   const [payAmount, setPayAmount] = useState("");
@@ -88,65 +62,11 @@ export default function Invoices() {
   };
 
   useEffect(() => { fetchInvoices(); }, [search, statusFilter]);
-  useEffect(() => {
-    Promise.all([
-      supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
-      supabase.from("products").select("id, name, description, selling_price, gst_percentage").order("name"),
-    ]).then(([c, p]) => { setCustomers(c.data || []); setProducts(p.data || []); });
-  }, []);
 
-  // KPIs
   const totalInvoices = invoices.length;
   const paidCount = invoices.filter(i => i.payment_status === "paid").length;
   const unpaidCount = invoices.filter(i => i.payment_status === "unpaid").length;
   const totalRevenue = invoices.filter(i => i.payment_status === "paid").reduce((s, i) => s + (i.total || 0), 0);
-
-  const openNew = () => {
-    setFormCustomerId(""); setFormNotes(""); setFormDueDate(""); setFormItems([]);
-    setFormGstInclusive(false); setFormDiscountType("percentage"); setFormDiscountValue(0);
-    setSheetOpen(true);
-  };
-
-  const handleSave = async () => {
-    if (!formCustomerId) { toast.error("Select a customer"); return; }
-    if (formItems.length === 0) { toast.error("Add at least one item"); return; }
-
-    const totals = calculateTotals(formItems, formGstInclusive, formDiscountType, formDiscountValue);
-
-    const { data: inv, error: invErr } = await supabase.from("invoices").insert({
-      customer_id: formCustomerId, subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount,
-      total: totals.grandTotal, notes: formNotes || null, due_date: formDueDate || null,
-      discount_type: formDiscountType, discount_value: formDiscountValue,
-      gst_inclusive: formGstInclusive, created_by: user?.id,
-    }).select().single();
-
-    if (invErr) { toast.error(invErr.message); return; }
-
-    const items = formItems.map(i => ({
-      invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
-      quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
-      description: i.description || null, hsn_code: i.hsn_code || null,
-      discount_type: i.discount_type, discount_value: i.discount_value,
-    }));
-
-    const { error: iErr } = await supabase.from("invoice_items").insert(items);
-    if (iErr) toast.error(iErr.message);
-    else toast.success("Invoice created — " + inv.invoice_number);
-    setSheetOpen(false);
-    fetchInvoices();
-  };
-
-  const openDetail = async (inv: Invoice) => {
-    setDetailSheet(inv);
-    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
-    setDetailItems((data || []).map((i: any) => ({
-      id: i.id, product_id: i.product_id, product_name: i.product_name,
-      description: i.description || "", hsn_code: i.hsn_code || "",
-      quantity: i.quantity, unit_price: i.unit_price,
-      discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-      gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
-    })));
-  };
 
   const openPayment = (inv: Invoice) => {
     setPayInvoice(inv);
@@ -166,7 +86,6 @@ export default function Invoices() {
     if (error) toast.error(error.message);
     else toast.success("Payment recorded");
     setPaySheetOpen(false);
-    setDetailSheet(null);
     fetchInvoices();
   };
 
@@ -176,8 +95,6 @@ export default function Invoices() {
     toast.success("Link copied");
   };
 
-  const selectedCustomer = formCustomerId ? customers.find(c => c.id === formCustomerId) : null;
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -185,10 +102,10 @@ export default function Invoices() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Invoices</h1>
           <p className="text-sm text-muted-foreground">Create and manage GST invoices</p>
         </div>
-        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New Invoice</Button>
+        <Button onClick={() => navigate("/invoices/new")}><Plus className="h-4 w-4 mr-2" />New Invoice</Button>
       </div>
 
-      {/* KPIs - Materialize style */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Total Invoices", value: totalInvoices, icon: FileText, bg: "bg-primary/10", iconColor: "text-primary" },
@@ -227,7 +144,7 @@ export default function Invoices() {
         </div>
       </div>
 
-      {/* Table - Materialize inspired */}
+      {/* Table */}
       <Card className="border-border/50 shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
@@ -290,7 +207,7 @@ export default function Invoices() {
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => copyPublicLink(inv.public_token)} title="Copy link">
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openDetail(inv)} title="View">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => navigate(`/invoices/${inv.id}`)} title="View">
                       <Eye className="h-4 w-4" />
                     </Button>
                   </div>
@@ -300,127 +217,6 @@ export default function Invoices() {
           </TableBody>
         </Table>
       </Card>
-
-      {/* Create Sheet */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="overflow-y-auto sm:max-w-xl w-full">
-          <SheetHeader>
-            <SheetTitle>New Invoice</SheetTitle>
-            <SheetDescription>Create a GST invoice</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-5 mt-6">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Customer *</Label>
-              <Select value={formCustomerId} onValueChange={setFormCustomerId}>
-                <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-
-            {selectedCustomer && <CustomerCard name={selectedCustomer.name} email={selectedCustomer.email} phone={selectedCustomer.phone} address={selectedCustomer.address} gstNumber={selectedCustomer.gst_number} compact />}
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Due Date</Label>
-              <Input type="date" value={formDueDate} onChange={e => setFormDueDate(e.target.value)} />
-            </div>
-
-            <ItemsTable items={formItems} onItemsChange={setFormItems} products={products} />
-
-            {formItems.length > 0 && (
-              <TotalsPanel
-                items={formItems} gstInclusive={formGstInclusive}
-                globalDiscountType={formDiscountType} globalDiscountValue={formDiscountValue}
-                onGstInclusiveChange={setFormGstInclusive}
-                onGlobalDiscountTypeChange={setFormDiscountType}
-                onGlobalDiscountValueChange={setFormDiscountValue}
-              />
-            )}
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notes</Label>
-              <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} />
-            </div>
-            <Button className="w-full" onClick={handleSave}>Create Invoice</Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Detail Sheet */}
-      <Sheet open={!!detailSheet} onOpenChange={v => !v && setDetailSheet(null)}>
-        <SheetContent className="overflow-y-auto sm:max-w-xl w-full">
-          {detailSheet && (
-            <>
-              <SheetHeader>
-                <div className="flex items-center justify-between">
-                  <SheetTitle>{detailSheet.invoice_number}</SheetTitle>
-                  <div className="flex gap-1.5">
-                    <StatusBadge status={detailSheet.status} />
-                    <StatusBadge status={detailSheet.payment_status} />
-                  </div>
-                </div>
-                <SheetDescription>Created {new Date(detailSheet.created_at).toLocaleDateString("en-IN")}</SheetDescription>
-              </SheetHeader>
-              <div className="space-y-5 mt-6">
-                {detailSheet.customers && (
-                  <div className="rounded-lg border border-border p-3 bg-muted/20">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Customer</p>
-                    <CustomerCard name={detailSheet.customers.name} email={detailSheet.customers.email} phone={detailSheet.customers.phone} address={detailSheet.customers.address} gstNumber={detailSheet.customers.gst_number} compact />
-                  </div>
-                )}
-
-                {/* Payment Progress */}
-                {detailSheet.total > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Paid</span>
-                      <span className="font-medium">₹{detailSheet.paid_amount.toLocaleString("en-IN")} / ₹{detailSheet.total.toLocaleString("en-IN")}</span>
-                    </div>
-                    <Progress value={(detailSheet.paid_amount / detailSheet.total) * 100} className="h-2" />
-                  </div>
-                )}
-
-                <ItemsTable items={detailItems} onItemsChange={() => {}} products={[]} readOnly />
-
-                <TotalsPanel
-                  items={detailItems} gstInclusive={detailSheet.gst_inclusive || false}
-                  globalDiscountType={(detailSheet.discount_type as any) || "percentage"}
-                  globalDiscountValue={detailSheet.discount_value || 0}
-                  readOnly
-                />
-
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs shrink-0">Status:</Label>
-                  <Select value={detailSheet.status} onValueChange={async v => {
-                    const { error } = await supabase.from("invoices").update({ status: v }).eq("id", detailSheet.id);
-                    if (error) toast.error(error.message);
-                    else { toast.success("Updated"); setDetailSheet({ ...detailSheet, status: v }); fetchInvoices(); }
-                  }}>
-                    <SelectTrigger className="h-8 w-[120px] text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {["draft", "sent", "paid", "cancelled"].map(s => (
-                        <SelectItem key={s} value={s} className="capitalize text-xs">{s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <ActionButtons
-                  onPreview={() => setPreviewOpen(true)}
-                  onDownload={() => window.print()}
-                  onCopyLink={() => copyPublicLink(detailSheet.public_token)}
-                  onSendEmail={() => toast.info("Email integration coming soon")}
-                  onSendWhatsApp={() => toast.info("WhatsApp integration coming soon")}
-                  compact
-                />
-
-                {detailSheet.payment_status !== "paid" && (
-                  <Button className="w-full" onClick={() => openPayment(detailSheet)}>Record Payment</Button>
-                )}
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
 
       {/* Payment Sheet */}
       <Sheet open={paySheetOpen} onOpenChange={setPaySheetOpen}>
@@ -449,33 +245,6 @@ export default function Invoices() {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Preview */}
-      {detailSheet && (
-        <DocumentPreview
-          open={previewOpen}
-          onOpenChange={setPreviewOpen}
-          type="invoice"
-          number={detailSheet.invoice_number}
-          status={detailSheet.status}
-          customer={detailSheet.customers ? {
-            name: detailSheet.customers.name,
-            email: detailSheet.customers.email,
-            phone: detailSheet.customers.phone,
-            address: detailSheet.customers.address,
-            gstNumber: detailSheet.customers.gst_number,
-          } : null}
-          items={detailItems}
-          gstInclusive={detailSheet.gst_inclusive || false}
-          globalDiscountType={(detailSheet.discount_type as any) || "percentage"}
-          globalDiscountValue={detailSheet.discount_value || 0}
-          notes={detailSheet.notes}
-          dueDate={detailSheet.due_date}
-          createdAt={detailSheet.created_at}
-          signatureData={detailSheet.signature_data}
-          signatureName={detailSheet.signature_name}
-        />
-      )}
     </div>
   );
 }
