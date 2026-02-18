@@ -1,146 +1,243 @@
 
 
-# Invoice/Quotation Add/Edit Pages, Chat Audit, and Calendar Module
+# Comprehensive Enhancement Plan: Repair Workflow, Payments, WhatsApp, Notifications, and Cash Management
 
-## Overview
+## 1. Repair Module Overhaul
 
-Three areas of work: (1) Replace the current side-drawer (Sheet) forms for creating invoices and quotations with dedicated full-page Materialize-style add/edit pages matching the reference screenshots, (2) Audit and fix the Chat module so all roles can participate, and (3) Build a new Calendar module.
+### 1A. Device-Specific Checklists
 
----
+The current checklist is a single static list (DEFAULT_CHECKLIST) used for all devices. This needs to change so that selecting "Laptop" shows laptop-specific items, "iPhone" shows phone-specific items, etc.
 
-## Part 1: Materialize-Style Invoice/Quotation Add/Edit Pages
+**Changes to `src/pages/JobSheetCreate.tsx`:**
+- Replace `DEFAULT_CHECKLIST` with a `DEVICE_CHECKLISTS` map keyed by device type
+- Example checklists:
+  - **Mobile/iPhone**: Power, Display, Touch, Speaker, Mic, Front/Rear Camera, WiFi, Cellular, Bluetooth, Buttons, Charging Port, Fingerprint, Face ID, Accessories (Charger, Cable, Cover, SIM, Memory Card)
+  - **Laptop**: Power, Display, Keyboard, Trackpad, Speaker, Mic, Webcam, WiFi, Ethernet, Bluetooth, USB Ports, HDMI, Charging Port, Battery Health, Hinge, Fan Noise, Accessories (Charger, Bag, Mouse)
+  - **Tablet**: Power, Display, Touch, Speaker, Mic, Camera, WiFi, Cellular, Bluetooth, Buttons, Charging Port, Stylus Support, Accessories
+  - **Desktop**: Power, Monitor Output, Keyboard, Mouse, Speaker, USB Ports, Ethernet, WiFi, Fan/Cooling, Accessories
+- When user selects `device_type`, auto-load the matching checklist
+- Improve checklist UI: use a table-style layout with colored status pills (Yes = green, No = red, N/A = gray) instead of small badges
+- Add category progress bars with percentage completion
+- Keep the smart "Device turns ON = No" auto-set logic
 
-Currently, creating a new invoice or quotation opens a narrow Sheet (side drawer). The Materialize reference shows a full-page layout with:
-- Left column (70%): A white card containing the business header, invoice number, date fields, customer selector with auto-populated address, items table (Item, Cost, Qty, Price columns), salesperson field, note/message field, and totals summary
-- Right column (30%): Sticky sidebar with "Send Invoice" button, Preview button, Save button, Accept Payments dropdown, and toggle switches for Payment Terms, Client Notes, Payment Stub
+### 1B. Estimated Cost and Actual Cost Tracking
 
-### Changes
-
-**New file: `src/pages/InvoiceAdd.tsx`**
-- Full-page form matching Materialize `app-invoice-add` layout
-- Left card (70%):
-  - Business header (logo + company info) top-left, "Invoice" label + auto-generated number top-right
-  - Date Issued and Due Date fields
-  - "Invoice To:" customer dropdown with auto-populated address/phone/email below
-  - "Bill To:" section showing payment summary (Total Due, Bank details placeholder)
-  - Separator, then items table: Item (select), Cost (input), Qty (input), Price (computed), delete button, description textarea per item
-  - "+ Add Item" button
-  - Salesperson input field
-  - Message/thanks textarea
-  - Totals section (Subtotal, Discount, Tax, Total) aligned right
-  - Note section at bottom
-- Right sidebar (30%):
-  - "Send Invoice" primary button
-  - "Preview" outlined button
-  - "Save" outlined button
-  - "Accept payments via" dropdown (placeholder)
-  - Toggle switches: Payment Terms, Client Notes, Payment Stub
-- On save, inserts invoice + items to database, then navigates to `/invoices/:id`
-
-**New file: `src/pages/QuotationAdd.tsx`**
-- Same layout adapted for quotations
-- "Quotation" label instead of "Invoice"
-- "Valid Until" date instead of "Due Date"
-- GST inclusive toggle in sidebar
-- Right sidebar: "Send Quotation", Preview, Save buttons
-- On save, inserts quotation + items, then navigates to `/sales/:id`
-
-**Modified: `src/pages/Sales.tsx`**
-- Remove the create Sheet entirely (lines 305-358)
-- Remove the detail Sheet (lines 361-438) -- detail is already handled by QuotationPreview page
-- Remove DocumentPreview modal (lines 440-466)
-- Remove all form state variables (lines 66-74)
-- Change "New Quotation" button to navigate to `/sales/new`
-- Keep list view, KPIs, filters, and table as-is
-
-**Modified: `src/pages/Invoices.tsx`**
-- Remove the create Sheet (lines 304-346)
-- Remove the detail Sheet (lines 348-423)
-- Remove payment sheet (lines 425-451) -- payment is on InvoicePreview page
-- Remove DocumentPreview modal (lines 453-478)
-- Remove all form state variables (lines 64-77)
-- Change "New Invoice" button to navigate to `/invoices/new`
-- Keep list view, KPIs, filters, and table
-
-**Modified: `src/App.tsx`**
-- Add routes: `/invoices/new` -> InvoiceAdd, `/sales/new` -> QuotationAdd
-- Add route: `/calendar` -> Calendar
-
----
-
-## Part 2: Chat Module Audit
-
-Current issues found in code review:
-
-1. **RLS policies may be missing or too restrictive** -- The chat_conversations table uses `participant_ids uuid[]` but RLS policies need to check if `auth.uid()` is in the array. Need to verify existing policies work.
-
-2. **All roles should access chat** -- Currently sidebar shows Chat only for admin/staff nav. Technicians and customers cannot see it. Fix: Add Chat to `technicianNav` and `customerNav` in AppSidebar.
-
-3. **Profile lookup assumes `profiles` table exists** -- The chat fetches from `profiles` table. If profiles don't exist for all users, conversations show "User" instead of names.
-
-4. **No online status indicator** -- The Materialize reference shows green/red dots for online status. Add a simple "last seen" concept using presence or a timestamp.
-
-### Changes
-
-**Modified: `src/components/layout/AppSidebar.tsx`**
-- Add `{ title: "Chat", url: "/chat", icon: MessageCircle }` to `technicianNav` items
-- Add `{ title: "Chat", url: "/chat", icon: MessageCircle }` to `customerNav` items
-
-**Modified: `src/pages/Chat.tsx`**
-- Add "Chats" and "Contacts" section headers in left panel (matching Materialize reference)
-- Show online status dot (green/gray) next to avatars
-- Add empty state with chat bubble icon and "Select a contact to start a conversation" text
-- Improve the "New Chat" flow: Instead of a Sheet, show contacts list directly in left panel under "Contacts" heading
-
-**Verify RLS policies** on `chat_conversations` and `chat_messages`:
-- Users should only see conversations where their ID is in `participant_ids`
-- Users should only read/write messages for conversations they participate in
-- If policies are missing, create a migration to add them
-
----
-
-## Part 3: Calendar Module
-
-New full-page calendar matching the Materialize `app-calendar` reference.
-
-### Database
-
-**New table: `calendar_events`**
+**Database migration -- add columns to `job_sheets`:**
+```sql
+ALTER TABLE job_sheets ADD COLUMN actual_cost numeric DEFAULT NULL;
+ALTER TABLE job_sheets ADD COLUMN technician_payment numeric DEFAULT NULL;
+ALTER TABLE job_sheets ADD COLUMN technician_payment_status text DEFAULT 'pending';
+ALTER TABLE job_sheets ADD COLUMN technician_payment_date timestamptz DEFAULT NULL;
+ALTER TABLE job_sheets ADD COLUMN device_received_at timestamptz DEFAULT NULL;
+ALTER TABLE job_sheets ADD COLUMN device_sent_at timestamptz DEFAULT NULL;
+ALTER TABLE job_sheets ADD COLUMN device_received_by uuid DEFAULT NULL;
+ALTER TABLE job_sheets ADD COLUMN device_sent_by uuid DEFAULT NULL;
 ```
-id uuid PK
-title text NOT NULL
-description text
-start_date timestamptz NOT NULL
-end_date timestamptz
-all_day boolean DEFAULT false
-category text DEFAULT 'business' (personal, business, family, holiday, etc.)
-color text (for display)
-created_by uuid REFERENCES auth.users(id)
-created_at timestamptz DEFAULT now()
+
+**Changes to `src/pages/JobSheetDetail.tsx`:**
+- Add "Cost & Payment" card showing: Estimated Cost, Actual Cost (editable by technician/admin), Technician Payment, Payment Status
+- Add "Device Movement" card showing: Sent to Technician (date/by), Received from Technician (date/by)
+- Action buttons: "Send to Technician" (records device_sent_at + audit log), "Receive Device" (records device_received_at + audit log)
+- "Record Technician Payment" sheet: amount, payment method, date, notes -- inserts into `payments` table with type "technician_payment"
+
+### 1C. Enterprise Job Sheet PDF
+
+**Create new component `src/components/documents/JobSheetPDF.tsx`:**
+- Enterprise-grade PDF template using browser print/CSS
+- Header: Company logo + name + address + phone + email + GST number
+- Job number, date, priority badge, status badge
+- Customer details block: Name, Phone, Email, Address, GST
+- Device details block: Brand, Type, Model, Serial, IMEI, Color, Storage
+- Pre-repair checklist table: Category | Item | Status (with colored indicators)
+- Problem description and staff notes
+- Cost section: Estimated Cost, Actual Cost, Technician Payment
+- Device movement timeline
+- Signature area
+- Footer: Terms and conditions, company stamp area
+- Add "Download PDF" button to JobSheetDetail page
+
+### 1D. Enhanced UI/UX for Checklist
+
+- Use a proper data table layout instead of simple badges
+- Each row: Item name | Yes button | No button | N/A button (toggle-style, colored)
+- Category headers with progress percentage and colored progress bar
+- Collapsible categories with smooth animation
+- Visual indicator for auto-set items (small "Auto" tag)
+- Overall completion progress bar at the top
+
+---
+
+## 2. Razorpay India Integration with Payment Links
+
+### 2A. Razorpay Webhook Edge Function
+
+**New file: `supabase/functions/razorpay-webhook/index.ts`**
+- Receives Razorpay webhook events
+- Validates webhook signature using Razorpay secret
+- Handles `payment.captured`, `payment_link.paid` events
+- Updates `payments` table status to "completed"
+- Updates invoice `paid_amount` and `payment_status`
+- Inserts finance_audit_log entry
+
+**New file: `supabase/functions/create-payment-link/index.ts`**
+- Creates Razorpay payment link via API
+- Accepts: amount, customer name/email/phone, invoice_id, description
+- Returns payment link URL
+- Stores payment link ID in payments table
+
+**Secrets needed:**
+- `RAZORPAY_KEY_ID`
+- `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_WEBHOOK_SECRET`
+
+**UI Changes:**
+- Add "Send Payment Link" button on InvoicePreview page
+- Sheet form: amount (pre-filled from balance), customer details (auto-filled)
+- Show payment link status in payments list
+- Add Razorpay settings section in Settings > Integrations
+
+### 2B. Config
+
+```toml
+[functions.razorpay-webhook]
+verify_jwt = false
+
+[functions.create-payment-link]
+verify_jwt = false
 ```
-- RLS: authenticated users can CRUD their own events; admins can see all
 
-### UI
+---
 
-**New file: `src/pages/Calendar.tsx`**
-- Two-column layout matching reference:
-  - Left sidebar (25%):
-    - "+ Add Event" primary button at top
-    - Small month calendar (using existing Calendar component from react-day-picker)
-    - "Event Filters" section with color-coded checkboxes: View All, Personal, Business, Family, Holiday, ETC
-  - Right content (75%):
-    - Header: prev/next arrows, "February 2026" title, view toggle buttons (Month, Week, Day, List)
-    - Month view: 7-column grid (Sun-Sat), day cells showing event chips with category colors
-    - Events show as colored rounded pills with time + title text
-    - Click on event to edit, click on empty day to add
-- Add Event dialog/sheet: Title, Start date/time, End date/time, All Day toggle, Category select, Description textarea
-- Custom month grid built with date-fns (already installed)
+## 3. WhatsApp API Integration with Chat
 
-**Modified: `src/components/layout/AppSidebar.tsx`**
-- Add Calendar item under a new category or alongside Chat
+### 3A. WhatsApp Edge Function
 
-**Modified: `src/App.tsx`**
-- Add `/calendar` route
+**New file: `supabase/functions/send-whatsapp/index.ts`**
+- Sends WhatsApp messages via configured WhatsApp Business API
+- Uses `whatsapp_api_url`, `whatsapp_api_key`, `whatsapp_phone_id` from `business_settings`
+- Supports: text messages, template messages, media messages
+
+### 3B. Chat Module Integration
+
+**Changes to `src/pages/Chat.tsx`:**
+- Add conversation type "whatsapp" alongside "internal"
+- Add WhatsApp icon indicator on WhatsApp conversations
+- When sending a message in a WhatsApp conversation, call the `send-whatsapp` edge function
+- Add "Send via WhatsApp" button in conversation header for customer chats
+- Show delivery status indicators (sent, delivered, read) for WhatsApp messages
+
+**Database migration:**
+```sql
+ALTER TABLE chat_messages ADD COLUMN channel text DEFAULT 'internal';
+ALTER TABLE chat_messages ADD COLUMN whatsapp_message_id text DEFAULT NULL;
+ALTER TABLE chat_messages ADD COLUMN delivery_status text DEFAULT NULL;
+ALTER TABLE chat_conversations ADD COLUMN channel text DEFAULT 'internal';
+ALTER TABLE chat_conversations ADD COLUMN whatsapp_phone text DEFAULT NULL;
+```
+
+---
+
+## 4. Notification Bell System
+
+The notification bell in AppHeader currently does nothing -- it's a static icon with a red dot.
+
+### 4A. Database
+
+**New table: `notifications`**
+```sql
+CREATE TABLE notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  message text NOT NULL,
+  type text DEFAULT 'info',
+  read boolean DEFAULT false,
+  link text,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own notifications"
+  ON notifications FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Users can update own notifications"
+  ON notifications FOR UPDATE TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "System can insert notifications"
+  ON notifications FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+```
+
+### 4B. UI Changes to `src/components/layout/AppHeader.tsx`
+
+- Bell icon shows unread count badge (number instead of just a dot)
+- Click bell opens a dropdown/popover with notification list
+- Each notification: icon, title, message, time ago, read/unread indicator
+- "Mark all as read" button
+- Click notification navigates to linked page
+- Realtime subscription for live notification updates
+- Generate notifications on key events:
+  - New repair job assigned (technician)
+  - Repair status changed (admin/customer)
+  - Payment received (admin/staff)
+  - New chat message (all participants)
+  - Invoice created (customer)
+
+### 4C. Notification Helper
+
+**Create `src/lib/notifications.ts`:**
+- `createNotification(userId, title, message, type, link)` helper function
+- Called from relevant pages when actions occur (job assignment, payment, etc.)
+
+---
+
+## 5. Advanced Daily Cash Management
+
+The current Cash Control tab is very basic -- just opening/closing cash with a difference.
+
+### 5A. Database Enhancement
+
+```sql
+ALTER TABLE daily_cash_control ADD COLUMN notes text DEFAULT NULL;
+ALTER TABLE daily_cash_control ADD COLUMN denominations jsonb DEFAULT NULL;
+ALTER TABLE daily_cash_control ADD COLUMN pos_total numeric DEFAULT 0;
+ALTER TABLE daily_cash_control ADD COLUMN manual_income numeric DEFAULT 0;
+ALTER TABLE daily_cash_control ADD COLUMN manual_expense numeric DEFAULT 0;
+ALTER TABLE daily_cash_control ADD COLUMN expected_closing numeric DEFAULT NULL;
+ALTER TABLE daily_cash_control ADD COLUMN status text DEFAULT 'open';
+ALTER TABLE daily_cash_control ADD COLUMN closed_by uuid DEFAULT NULL;
+ALTER TABLE daily_cash_control ADD COLUMN closed_at timestamptz DEFAULT NULL;
+```
+
+### 5B. Enhanced Cash Control UI
+
+**Rewrite `CashControlTab` in `src/pages/Finance.tsx`:**
+
+- **Day Open workflow:**
+  - Staff enters opening cash amount
+  - Optional denomination breakdown (2000, 500, 200, 100, 50, 20, 10, 5, 2, 1 rupee notes/coins)
+  - Auto-calculates total from denominations
+  - Status changes to "open"
+
+- **Day Close workflow:**
+  - Auto-calculates expected closing: Opening + Day's Income - Day's Expenses
+  - Staff enters actual closing cash
+  - Optional closing denomination breakdown
+  - Shows variance (actual - expected) with color coding (green = match, red = short, yellow = over)
+  - Requires notes if variance exceeds threshold
+  - Status changes to "closed"
+  - Records closed_by and closed_at
+  - Inserts audit log entry
+
+- **Dashboard view:**
+  - Today's card at top: Status (Open/Closed), Opening, Expected Closing, Actual Closing, Variance
+  - 7-day history table with color-coded variance column
+  - Variance trend mini-chart
 
 ---
 
@@ -148,52 +245,40 @@ created_at timestamptz DEFAULT now()
 
 ### New Files
 ```
-src/pages/InvoiceAdd.tsx
-src/pages/QuotationAdd.tsx
-src/pages/Calendar.tsx
+supabase/functions/razorpay-webhook/index.ts
+supabase/functions/create-payment-link/index.ts
+supabase/functions/send-whatsapp/index.ts
+src/components/documents/JobSheetPDF.tsx
+src/lib/notifications.ts
 ```
 
 ### Modified Files
 ```
-src/App.tsx -- add routes for /invoices/new, /sales/new, /calendar
-src/pages/Sales.tsx -- remove Sheets, navigate to /sales/new
-src/pages/Invoices.tsx -- remove Sheets, navigate to /invoices/new
-src/components/layout/AppSidebar.tsx -- add Chat to all roles, add Calendar nav item
-src/pages/Chat.tsx -- Materialize UI improvements, Chats/Contacts sections
+src/pages/JobSheetCreate.tsx -- device-specific checklists, enhanced UI
+src/pages/JobSheetDetail.tsx -- cost tracking, device movement, PDF button
+src/pages/Chat.tsx -- WhatsApp channel support
+src/pages/Finance.tsx -- advanced cash control
+src/components/layout/AppHeader.tsx -- notification bell with dropdown
+src/pages/InvoicePreview.tsx -- Razorpay payment link button
+src/pages/Settings.tsx -- Razorpay settings section
 ```
 
-### Database Migration
-```sql
-CREATE TABLE calendar_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  title text NOT NULL,
-  description text,
-  start_date timestamptz NOT NULL,
-  end_date timestamptz,
-  all_day boolean DEFAULT false,
-  category text DEFAULT 'business',
-  color text,
-  created_by uuid REFERENCES auth.users(id),
-  created_at timestamptz DEFAULT now()
-);
+### Database Migrations
+1. `job_sheets` -- add actual_cost, technician_payment, device movement columns
+2. `chat_messages` and `chat_conversations` -- add WhatsApp channel columns
+3. `notifications` -- new table with RLS and realtime
+4. `daily_cash_control` -- add denomination, status, expected_closing columns
 
-ALTER TABLE calendar_events ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own events"
-  ON calendar_events FOR ALL TO authenticated
-  USING (created_by = auth.uid())
-  WITH CHECK (created_by = auth.uid());
-
-CREATE POLICY "Admins can view all events"
-  ON calendar_events FOR SELECT TO authenticated
-  USING (public.has_role(auth.uid(), 'admin'));
-```
+### Secrets Required
+- `RAZORPAY_KEY_ID` -- Razorpay API Key ID
+- `RAZORPAY_KEY_SECRET` -- Razorpay API Secret
+- `RAZORPAY_WEBHOOK_SECRET` -- Razorpay Webhook Secret
 
 ### Implementation Order
-1. Database migration (calendar_events table)
-2. InvoiceAdd and QuotationAdd full-page forms
-3. Simplify Sales.tsx and Invoices.tsx (remove Sheets)
-4. Route updates in App.tsx
-5. Chat audit (sidebar nav for all roles, UI improvements)
-6. Calendar page with month grid view
+1. Database migrations (all schema changes)
+2. Repair module (checklists, costs, device movement, PDF)
+3. Notification system (table + AppHeader + helper)
+4. Razorpay integration (edge functions + UI)
+5. WhatsApp integration (edge function + Chat UI)
+6. Advanced cash management (Finance.tsx rewrite)
 
