@@ -1,121 +1,97 @@
 
 
-# Fix Hikvision Sync - Device Access and Error Handling
+# Fix Hikvision Device Access - Customer Site Integration
 
-## Problem Identified
+## Root Cause
 
-The root cause of all sync failures (employees, departments, photos, attendance returning 0 records) is:
-
-**Device FF6426490 (DS-K1T343EFWX) is NOT accessible via the current Hik-Partner Pro API credentials.**
+Device FF6426490 is under the **ALVStore** site which is a "Customer Site" in Hik-Partner Pro. The current `device/list` API call does NOT include a `siteId` filter, so it only returns devices from the installer's own sites ("RAJAT LEKHARI" and "Site_919414155987"). ALVStore's devices are excluded.
 
 Evidence:
-- `list-devices` API returns 4 devices, none with serial FF6426490
-- `test` action returns `LAP034000: device not belong to account`
-- All sync operations report "success" with 0 records (hiding the real error)
+- `POST /api/hpcgw/v1/device/list` returns 4 devices: C29173942, 714635514, F97500719, Q25759169 -- none from ALVStore
+- Transparent ISAPI calls for FF6426490 fail with `LAP034000: device not belong to account`
+- ALVStore site ID from portal: `da31347fcdc249809c910ff6c956c479`
 
-The API credentials access sites "RAJAT LEKHARI" and "Site_919414155987", but the device is under site "ALVStore" which appears to be on a different account or API key.
+## Plan
 
----
+### Step 1: Add `site-search` action to edge function
 
-## Step 1: Fix API Credentials (User Action Required)
+Add a new action that calls `POST /api/hpcgw/v1/site/search` to discover all sites (including customer sites). This will return site IDs that can be used to filter the device list.
 
-The user needs to verify that the `HIK_PARTNER_APP_KEY` and `HIK_PARTNER_SECRET_KEY` secrets belong to the account that owns the ALVStore site. If they don't match, update the secrets with the correct credentials.
+- Request: `POST {areaDomain}/api/hpcgw/v1/site/search` with `{ page: 1, pageSize: 100 }`
+- Response includes `rows[]` with `id`, `siteName`, `sharedInfo.shareType` etc.
+- Log all discovered sites for debugging
 
----
+### Step 2: Modify `list-devices` / `list-cloud-devices` action
 
-## Step 2: Fix Edge Function Error Handling
+Update the device list call to:
+1. First call `site/search` to get ALL site IDs
+2. For each site, call `device/list` with `{ siteId: siteId, page: 1, pageSize: 100 }` 
+3. Merge all devices from all sites into one combined list
+4. This ensures ALVStore devices (including FF6426490) are included
 
-The current edge function has a critical bug: it reports "success" even when the Hik-Partner API returns errors. This must be fixed across all actions.
+### Step 3: Deploy and test site discovery
 
-Changes to `supabase/functions/hikvision-sync/index.ts`:
+- Deploy edge function
+- Test `site-search` to confirm ALVStore appears with its site ID
+- Test `list-cloud-devices` to confirm FF6426490 now appears in the combined device list
 
-### 2a. Fix `isapi()` helper to detect API-level errors
-- After receiving a response, check if the response body contains an `errorCode` field
-- If errorCode is present and not "0", treat it as an error and throw
+### Step 4: Test transparent ISAPI with FF6426490
 
-### 2b. Fix `test` action
-- Currently returns `success: true` even when device returns LAP034000
-- Parse the response body and check for errorCode before reporting success
+Once the device is confirmed accessible via the API:
+- Test `device-info` action for FF6426490
+- Test `sync-employees` action
+- Test `sync-departments` action
+- Test `sync-attendance` action
 
-### 2c. Fix `sync-employees` action  
-- Add console.log of the raw ISAPI response for debugging
-- If the response contains an error, throw with the error message instead of silently returning 0
+If transparent ISAPI still fails for customer site devices, fall back to the Cloud Attendance APIs:
+- `POST /api/hpcgw/v1/person/add` (person management)
+- `POST /api/hpcgw/v1/acs/privilege/config` (apply privileges)
+- `POST /api/hpcgw/v1/person/synchronize` (sync persons)
 
-### 2d. Fix `sync-departments` action
-- Same error detection as sync-employees
-- Log the raw response body
+### Step 5: Update Import from Cloud UI
 
-### 2e. Fix `sync-attendance` action
-- Same error detection pattern
-
-### 2f. Add `list-cloud-devices` action
-- New action that calls `list-devices` and returns results
-- Also provides an "import" feature to create/update `hikvision_devices` records from cloud device list
-
----
-
-## Step 3: UI Improvements
-
-### Attendance Page - Devices Tab
-- Add "Import from Cloud" button that calls `list-cloud-devices` and shows available cloud devices
-- Auto-populate device serial from cloud device list
-- Show clear error messages when sync fails (instead of showing 0 records with no error)
-
-### Attendance Page - Employee Mapping Tab
-- Add "Sync Employees" button with a device dropdown (only show devices that are verified)
-- Show error state clearly when sync returns errors
-
----
-
-## Step 4: Add Debug Logging
-
-Add `console.log` statements in the edge function for:
-- Token acquisition (areaDomain returned)
-- Device serial being used for each ISAPI call
-- Raw response status and body from each ISAPI call
-- Number of records parsed from response
-
-This will make future debugging much easier via function logs.
-
----
-
-## Implementation Order
-
-1. Update API credentials (user action)
-2. Rewrite edge function error handling and add debug logging
-3. Deploy and test with correct credentials
-4. Update UI to show errors and add cloud device import
+Update the Attendance page Devices tab:
+- "Import from Cloud" now shows devices from ALL sites including customer sites
+- Display site name alongside each device
+- Pre-select FF6426490 if available
 
 ---
 
 ## Technical Details
 
-### Error Detection Pattern
+### Edge Function Changes (`supabase/functions/hikvision-sync/index.ts`)
 
-```text
-// After ISAPI call:
-const resp = await isapi(...)
-const text = await resp.text()
+**New helper function: `getAllSites()`**
+- Calls `POST {areaDomain}/api/hpcgw/v1/site/search` 
+- Returns array of `{ id, siteName, shareType }`
+- Logs all discovered sites
 
-// Check for Hik-Partner API error wrapper
-try {
-  const parsed = JSON.parse(text)
-  if (parsed.errorCode && parsed.errorCode !== "0") {
-    throw new Error(`Hik API error: ${parsed.message || parsed.errorCode}`)
-  }
-} catch (parseErr) {
-  // Not JSON - might be XML (deviceInfo), continue normally
-}
-```
+**New action: `site-search`**
+- Exposes `getAllSites()` result to frontend
+- Returns `{ success: true, sites: [...] }`
 
-### Cloud Device Import Flow
+**Modified action: `list-devices` / `list-cloud-devices`**
+- Current code: calls `device/list` once with `{ page: 1, pageSize: 100 }`
+- New code: calls `getAllSites()` first, then calls `device/list` for each site using `{ siteId, page: 1, pageSize: 100 }`, merges results
+- Falls back to current behavior (no siteId) if site-based listing fails
 
-```text
-1. Call list-devices API
-2. Return device list to frontend
-3. User selects device to import
-4. Create/update hikvision_devices record with correct serial
-5. Test connection with imported serial
-6. If successful, enable sync buttons
-```
+**Modified action: `device-info` / `sync-employees` / `sync-departments` / `sync-attendance`**
+- No changes needed to these -- they use transparent ISAPI which should work once the device is properly registered under the account
+- If transparent ISAPI still fails for customer site devices, add a fallback using Cloud Attendance APIs
+
+### Testing Sequence
+
+1. Deploy updated edge function
+2. Call `site-search` -- verify ALVStore appears
+3. Call `list-cloud-devices` -- verify FF6426490 appears
+4. Call `test` with FF6426490 -- verify transparent ISAPI works
+5. Call `sync-employees` with FF6426490 -- verify employees sync
+6. Call `sync-departments` with FF6426490 -- verify departments sync
+7. Call `sync-attendance` with FF6426490 -- verify attendance logs sync
+
+### Fallback: Cloud Attendance APIs
+
+If transparent ISAPI fails for customer site devices despite being listed, the edge function will use dedicated Cloud APIs instead:
+- Person list: `POST /api/hpcgw/v1/person/synchronize` (get persons synced to device)
+- Attendance events: Use message queue subscription `POST /api/hpcgw/v1/mq/messages` instead of ISAPI AcsEvent search
 
