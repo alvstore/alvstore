@@ -234,7 +234,7 @@ export default function InvoicePreview() {
                   <Button variant="outline" size="sm" onClick={() => window.print()}>
                     <Printer className="h-4 w-4 mr-1.5" /> Print
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => navigate(`/invoices`)}>
+                  <Button variant="outline" size="sm" onClick={() => navigate(`/invoices/${id}/edit`)}>
                     <Pencil className="h-4 w-4 mr-1.5" /> Edit
                   </Button>
                 </div>

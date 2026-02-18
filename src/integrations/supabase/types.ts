@@ -448,6 +448,7 @@ export type Database = {
           designation: string | null
           device_employee_code: string | null
           email: string | null
+          employee_type: string | null
           id: string
           joining_date: string | null
           name: string
@@ -466,6 +467,7 @@ export type Database = {
           designation?: string | null
           device_employee_code?: string | null
           email?: string | null
+          employee_type?: string | null
           id?: string
           joining_date?: string | null
           name: string
@@ -484,6 +486,7 @@ export type Database = {
           designation?: string | null
           device_employee_code?: string | null
           email?: string | null
+          employee_type?: string | null
           id?: string
           joining_date?: string | null
           name?: string

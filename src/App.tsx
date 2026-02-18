@@ -46,6 +46,8 @@ import ProductAdd from "./pages/ProductAdd";
 import InvoiceAdd from "./pages/InvoiceAdd";
 import QuotationAdd from "./pages/QuotationAdd";
 import CalendarPage from "./pages/CalendarPage";
+import BarcodeManager from "./pages/BarcodeManager";
+import FollowUps from "./pages/FollowUps";
 
 const queryClient = new QueryClient();
 
@@ -78,9 +80,11 @@ const App = () => (
               <Route path="/leads" element={<Leads />} />
               <Route path="/sales" element={<Sales />} />
               <Route path="/sales/new" element={<QuotationAdd />} />
+              <Route path="/sales/:id/edit" element={<QuotationAdd />} />
               <Route path="/sales/:id" element={<QuotationPreview />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/invoices/new" element={<InvoiceAdd />} />
+              <Route path="/invoices/:id/edit" element={<InvoiceAdd />} />
               <Route path="/invoices/:id" element={<InvoicePreview />} />
               <Route path="/customers/:id" element={<CustomerProfile />} />
               <Route path="/pos" element={<POS />} />
@@ -102,6 +106,8 @@ const App = () => (
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/audit-logs" element={<AuditLogs />} />
               <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/barcodes" element={<BarcodeManager />} />
+              <Route path="/follow-ups" element={<FollowUps />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/templates" element={<Navigate to="/settings" replace />} />
               <Route path="/staff" element={<Navigate to="/employees" replace />} />

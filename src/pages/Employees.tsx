@@ -40,7 +40,7 @@ interface Employee {
 
 const emptyForm = {
   name: "", email: "", phone: "", role: "staff", department: "", designation: "",
-  salary: "0", joining_date: "", password: "",
+  salary: "0", joining_date: "", password: "", employee_type: "internal",
 };
 
 const roleColors: Record<string, string> = {
@@ -81,6 +81,7 @@ export default function Employees() {
       name: e.name, email: e.email || "", phone: e.phone || "", role: e.role,
       department: e.department || "", designation: e.designation || "",
       salary: String(e.salary), joining_date: e.joining_date || "", password: "",
+      employee_type: (e as any).employee_type || "internal",
     });
     setSheetOpen(true);
   };
@@ -97,7 +98,8 @@ export default function Employees() {
           designation: form.designation || null,
           salary: parseFloat(form.salary) || 0,
           joining_date: form.joining_date || null,
-        }).eq("id", editId);
+          employee_type: form.employee_type,
+        } as any).eq("id", editId);
         if (error) throw error;
 
         // Also update auth user if linked and password provided
@@ -127,7 +129,8 @@ export default function Employees() {
           user_id: userId, name: form.name, phone: form.phone || null, email: form.email || null,
           role: form.role, department: form.department || null, designation: form.designation || null,
           salary: parseFloat(form.salary) || 0, joining_date: form.joining_date || null,
-        });
+          employee_type: form.employee_type,
+        } as any);
         if (error) throw error;
         toast.success("Employee created");
       }
@@ -223,7 +226,14 @@ export default function Employees() {
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{e.phone || e.email || "—"}</TableCell>
-                  <TableCell><Badge className={roleColors[e.role] || "bg-muted text-muted-foreground"}>{e.role}</Badge></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Badge className={roleColors[e.role] || "bg-muted text-muted-foreground"}>{e.role}</Badge>
+                      {(e as any).employee_type === "external" && (
+                        <Badge variant="outline" className="text-[10px] border-warning/40 text-warning">External</Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="hidden md:table-cell text-sm">{e.department || "—"}</TableCell>
                   <TableCell className="text-right hidden lg:table-cell">₹{e.salary.toLocaleString()}</TableCell>
                   <TableCell><Badge variant={e.status === "active" ? "default" : "secondary"}>{e.status}</Badge></TableCell>
@@ -264,7 +274,20 @@ export default function Employees() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1.5">
+                <Label>Type</Label>
+                <Select value={form.employee_type} onValueChange={v => setForm(p => ({ ...p, employee_type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="internal">Internal</SelectItem>
+                    <SelectItem value="external">External / Outsourced</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Department</Label><Input value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} /></div>
+              <div className="space-y-1.5"><Label>Designation</Label><Input value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Designation</Label><Input value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} /></div>

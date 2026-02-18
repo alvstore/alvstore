@@ -132,7 +132,7 @@ export default function Dashboard() {
   ];
 
   const statCards = [
-    { label: "Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", icon: DollarSign, color: "text-primary" },
+    { label: "POS Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", icon: DollarSign, color: "text-primary" },
     { label: "Low Stock", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-destructive" },
     { label: "Active Repairs", value: kpis ? String(kpis.activeRepairs) : "—", icon: Wrench, color: "text-accent" },
     { label: "Completed Today", value: kpis ? String(kpis.completedToday) : "—", icon: CheckCircle, color: "text-success" },

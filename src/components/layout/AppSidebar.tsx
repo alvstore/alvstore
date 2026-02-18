@@ -32,6 +32,7 @@ const adminStaffNav: NavCategory[] = [
     items: [
       { title: "Leads", url: "/leads", icon: Target },
       { title: "Customers", url: "/customers", icon: Users },
+      { title: "Follow-Ups", url: "/follow-ups", icon: Clock },
     ],
   },
   {
@@ -47,6 +48,7 @@ const adminStaffNav: NavCategory[] = [
     items: [
       { title: "Products", url: "/inventory", icon: Package },
       { title: "POS Terminal", url: "/pos", icon: Monitor },
+      { title: "Barcode Manager", url: "/barcodes", icon: Receipt },
     ],
   },
   {

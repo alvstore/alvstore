@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,13 @@ interface BusinessSettings { company_name: string | null; company_address: strin
 
 export default function InvoiceAdd() {
   const { user } = useAuth();
+  const { id: editId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [business, setBusiness] = useState<BusinessSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const isEditing = !!editId;
 
   // Form state
   const [customerId, setCustomerId] = useState("");
@@ -53,6 +55,33 @@ export default function InvoiceAdd() {
       if (b.data) setBusiness(b.data);
     });
   }, []);
+
+  // Load existing invoice for editing
+  useEffect(() => {
+    if (!editId) return;
+    const loadInvoice = async () => {
+      const { data: inv } = await supabase.from("invoices").select("*").eq("id", editId).single();
+      if (inv) {
+        setCustomerId(inv.customer_id || "");
+        setDueDate(inv.due_date || "");
+        setNotes(inv.notes || "");
+        setGstInclusive(inv.gst_inclusive || false);
+        setDiscountType((inv.discount_type as "percentage" | "fixed") || "percentage");
+        setDiscountValue(inv.discount_value || 0);
+      }
+      const { data: itms } = await supabase.from("invoice_items").select("*").eq("invoice_id", editId);
+      if (itms) {
+        setItems(itms.map((i: any) => ({
+          id: i.id, product_id: i.product_id, product_name: i.product_name,
+          description: i.description || "", hsn_code: i.hsn_code || "",
+          quantity: i.quantity, unit_price: i.unit_price,
+          discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
+          gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+        })));
+      }
+    };
+    loadInvoice();
+  }, [editId]);
 
   const selectedCustomer = customerId ? customers.find(c => c.id === customerId) : null;
   const totals = calculateTotals(items, gstInclusive, discountType, discountValue);
@@ -87,26 +116,45 @@ export default function InvoiceAdd() {
     if (items.length === 0) { toast.error("Add at least one item"); return; }
     setSaving(true);
 
-    const { data: inv, error: invErr } = await supabase.from("invoices").insert({
-      customer_id: customerId, subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount,
-      total: totals.grandTotal, notes: notes || null, due_date: dueDate || null,
-      discount_type: discountType, discount_value: discountValue,
-      gst_inclusive: gstInclusive, created_by: user?.id,
-    }).select().single();
+    if (isEditing) {
+      const { error: invErr } = await supabase.from("invoices").update({
+        customer_id: customerId, subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount,
+        total: totals.grandTotal, notes: notes || null, due_date: dueDate || null,
+        discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
+      }).eq("id", editId);
+      if (invErr) { toast.error(invErr.message); setSaving(false); return; }
 
-    if (invErr) { toast.error(invErr.message); setSaving(false); return; }
+      await supabase.from("invoice_items").delete().eq("invoice_id", editId);
+      const invItems = items.map(i => ({
+        invoice_id: editId, product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
+        description: i.description || null, hsn_code: i.hsn_code || null,
+        discount_type: i.discount_type, discount_value: i.discount_value,
+      }));
+      await supabase.from("invoice_items").insert(invItems);
+      setSaving(false);
+      toast.success("Invoice updated");
+      navigate(`/invoices/${editId}`);
+    } else {
+      const { data: inv, error: invErr } = await supabase.from("invoices").insert({
+        customer_id: customerId, subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount,
+        total: totals.grandTotal, notes: notes || null, due_date: dueDate || null,
+        discount_type: discountType, discount_value: discountValue,
+        gst_inclusive: gstInclusive, created_by: user?.id,
+      }).select().single();
+      if (invErr) { toast.error(invErr.message); setSaving(false); return; }
 
-    const invItems = items.map(i => ({
-      invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
-      quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
-      description: i.description || null, hsn_code: i.hsn_code || null,
-      discount_type: i.discount_type, discount_value: i.discount_value,
-    }));
-
-    const { error: iErr } = await supabase.from("invoice_items").insert(invItems);
-    setSaving(false);
-    if (iErr) toast.error(iErr.message);
-    else { toast.success("Invoice created — " + inv.invoice_number); navigate(`/invoices/${inv.id}`); }
+      const invItems = items.map(i => ({
+        invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
+        description: i.description || null, hsn_code: i.hsn_code || null,
+        discount_type: i.discount_type, discount_value: i.discount_value,
+      }));
+      const { error: iErr } = await supabase.from("invoice_items").insert(invItems);
+      setSaving(false);
+      if (iErr) toast.error(iErr.message);
+      else { toast.success("Invoice created — " + inv.invoice_number); navigate(`/invoices/${inv.id}`); }
+    }
   };
 
   return (
@@ -117,8 +165,8 @@ export default function InvoiceAdd() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Add Invoice</h1>
-          <p className="text-sm text-muted-foreground">Create a new GST invoice</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{isEditing ? "Edit Invoice" : "Add Invoice"}</h1>
+          <p className="text-sm text-muted-foreground">{isEditing ? "Update invoice details" : "Create a new GST invoice"}</p>
         </div>
       </div>
 
