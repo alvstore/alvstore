@@ -1,179 +1,121 @@
 
 
-# Hikvision Full Sync Integration Module
+# Fix Hikvision Sync - Device Access and Error Handling
 
-## Overview
+## Problem Identified
 
-This plan extends the existing Hik-Partner Pro Cloud integration to build a complete device-to-ERP synchronization system covering device info, employees, photos/avatars, departments, attendance logs, employee mapping, and automated scheduling.
+The root cause of all sync failures (employees, departments, photos, attendance returning 0 records) is:
 
-All ISAPI commands are proxied through the Hik-Partner Pro Cloud gateway (already working) using the transparent API endpoint pattern.
+**Device FF6426490 (DS-K1T343EFWX) is NOT accessible via the current Hik-Partner Pro API credentials.**
 
----
+Evidence:
+- `list-devices` API returns 4 devices, none with serial FF6426490
+- `test` action returns `LAP034000: device not belong to account`
+- All sync operations report "success" with 0 records (hiding the real error)
 
-## Current State
-
-- Edge function `hikvision-sync` already handles: `test`, `sync` (attendance), `list-devices`, `subscribe-events`
-- Device `DS-K1T343EFWX` (serial `FF6426490`) is registered and active in the database
-- Tables exist: `hikvision_devices`, `hikvision_attendance_logs`, `hikvision_employee_mapping`, `hikvision_sync_log`
-- Hik-Partner Pro API credentials are configured
+The API credentials access sites "RAJAT LEKHARI" and "Site_919414155987", but the device is under site "ALVStore" which appears to be on a different account or API key.
 
 ---
 
-## Database Changes
+## Step 1: Fix API Credentials (User Action Required)
 
-### 1. New Table: `departments`
-
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| name | text | Department name |
-| device_department_id | text | ID from Hikvision device |
-| parent_id | uuid | Self-reference for hierarchy |
-| device_id | uuid | Which device synced this |
-| created_at | timestamptz | Auto |
-
-RLS: Admin full access, staff/technician can view.
-
-### 2. Alter `employees` table
-
-- Add `avatar_url text` column
-- Add `department_id uuid` referencing `departments`
-- Add `device_employee_code text` for auto-mapping
-
-### 3. Alter `hikvision_devices` table
-
-- Add `device_model text`
-- Add `device_version text`
-- Add `device_serial text` (proper column instead of reusing `ip_address`)
-
-### 4. Alter `hikvision_employee_mapping` table
-
-- Add `card_number text`
-- Add `department_name text`
-- Add `synced_at timestamptz`
-- Add `avatar_synced boolean default false`
-
-### 5. Alter `hikvision_sync_log` table
-
-- Add `sync_type text` (device_info, employee, photo, department, attendance)
+The user needs to verify that the `HIK_PARTNER_APP_KEY` and `HIK_PARTNER_SECRET_KEY` secrets belong to the account that owns the ALVStore site. If they don't match, update the secrets with the correct credentials.
 
 ---
 
-## Edge Function Changes (`hikvision-sync/index.ts`)
+## Step 2: Fix Edge Function Error Handling
 
-Add new actions to the existing edge function:
+The current edge function has a critical bug: it reports "success" even when the Hik-Partner API returns errors. This must be fixed across all actions.
 
-### Action: `device-info`
-- GET `/ISAPI/System/deviceInfo` via transparent proxy
-- Parse XML response for device name, model, serial, firmware version
-- Update `hikvision_devices` record with fetched info
+Changes to `supabase/functions/hikvision-sync/index.ts`:
 
-### Action: `sync-employees`
-- POST `/ISAPI/AccessControl/UserInfo/Search?format=json` via transparent proxy
-- Iterate through all users (paginated with `searchResultPosition`)
-- Upsert into `hikvision_employee_mapping`
-- Auto-create `employees` records for unmapped users
-- Auto-map by employee code match
+### 2a. Fix `isapi()` helper to detect API-level errors
+- After receiving a response, check if the response body contains an `errorCode` field
+- If errorCode is present and not "0", treat it as an error and throw
 
-### Action: `sync-photos`
-- For each mapped employee, GET `/ISAPI/Intelligent/FDLib/FDSearch?format=json` or use the face picture download endpoint via transparent proxy
-- Download face image binary
-- Upload to storage bucket `uploads` under `avatars/` path
-- Update `employees.avatar_url` and `hikvision_employee_mapping.avatar_synced`
+### 2b. Fix `test` action
+- Currently returns `success: true` even when device returns LAP034000
+- Parse the response body and check for errorCode before reporting success
 
-### Action: `sync-departments`
-- GET `/ISAPI/AccessControl/Department?format=json` via transparent proxy
-- Upsert into `departments` table
-- Link employees to departments
+### 2c. Fix `sync-employees` action  
+- Add console.log of the raw ISAPI response for debugging
+- If the response contains an error, throw with the error message instead of silently returning 0
 
-### Action: `sync-attendance` (enhance existing `sync`)
-- Same as current `sync` but with improved pagination (loop until all events fetched)
-- Better event type detection (check `major`/`minor` event codes)
+### 2d. Fix `sync-departments` action
+- Same error detection as sync-employees
+- Log the raw response body
 
-### Action: `full-sync`
-- Orchestrator that runs: device-info, sync-departments, sync-employees, sync-photos, sync-attendance in sequence
-- Returns combined results
+### 2e. Fix `sync-attendance` action
+- Same error detection pattern
+
+### 2f. Add `list-cloud-devices` action
+- New action that calls `list-devices` and returns results
+- Also provides an "import" feature to create/update `hikvision_devices` records from cloud device list
 
 ---
 
-## Auto-Sync Scheduler (pg_cron)
+## Step 3: UI Improvements
 
-Set up cron jobs using `pg_cron` + `pg_net`:
+### Attendance Page - Devices Tab
+- Add "Import from Cloud" button that calls `list-cloud-devices` and shows available cloud devices
+- Auto-populate device serial from cloud device list
+- Show clear error messages when sync fails (instead of showing 0 records with no error)
 
-| Sync Type | Interval | Action |
-|-----------|----------|--------|
-| Attendance | Every 5 minutes | `sync-attendance` |
-| Employees | Every 12 hours | `sync-employees` |
-| Photos | Every 24 hours | `sync-photos` |
-| Device Info | Every 24 hours | `device-info` |
-
-Note: 30-second attendance sync is not feasible with cron (minimum 1 minute) and would be excessive for cloud API calls. 5-minute intervals provide near-real-time data without overloading the API.
+### Attendance Page - Employee Mapping Tab
+- Add "Sync Employees" button with a device dropdown (only show devices that are verified)
+- Show error state clearly when sync returns errors
 
 ---
 
-## UI Changes
+## Step 4: Add Debug Logging
 
-### Attendance Page (`src/pages/Attendance.tsx`)
+Add `console.log` statements in the edge function for:
+- Token acquisition (areaDomain returned)
+- Device serial being used for each ISAPI call
+- Raw response status and body from each ISAPI call
+- Number of records parsed from response
 
-Enhance existing tabs:
-
-1. **Devices Tab** - Add "Fetch Device Info" button, show model/version/serial columns
-2. **Employee Mapping Tab** - Add "Auto Map" button, "Sync Employees from Device" button, show card number and department
-3. **New Tab: Departments** - Show synced departments with hierarchy
-4. **Sync Logs Tab** - Add sync_type filter column
-
-### Employees Page (`src/pages/Employees.tsx`)
-
-- Display avatar image in employee table (from `avatar_url`)
-- Show department from `departments` table
-- Add "Sync from Device" indicator badge
-
-### Settings Page (Hikvision tab)
-
-- Add auto-sync toggle and interval configuration
-- Show cron job status
+This will make future debugging much easier via function logs.
 
 ---
 
 ## Implementation Order
 
-1. **Database migrations** - New tables, column additions, RLS policies
-2. **Edge function rewrite** - Add all new actions (device-info, sync-employees, sync-photos, sync-departments, full-sync)
-3. **Attendance page UI** - Enhanced tabs with new sync buttons and department tab
-4. **Employees page UI** - Avatar display and department column
-5. **Auto-sync setup** - pg_cron jobs for scheduled syncing
-6. **Testing** - Test each sync action via the UI
+1. Update API credentials (user action)
+2. Rewrite edge function error handling and add debug logging
+3. Deploy and test with correct credentials
+4. Update UI to show errors and add cloud device import
 
 ---
 
 ## Technical Details
 
-### ISAPI Endpoints (via Transparent Proxy)
+### Error Detection Pattern
 
-All requests go through: `{areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/...`
-
-Headers required:
 ```text
-Authorization: Bearer {accessToken}
-x-devserial: {deviceSerial}
-Content-Type: application/json
+// After ISAPI call:
+const resp = await isapi(...)
+const text = await resp.text()
+
+// Check for Hik-Partner API error wrapper
+try {
+  const parsed = JSON.parse(text)
+  if (parsed.errorCode && parsed.errorCode !== "0") {
+    throw new Error(`Hik API error: ${parsed.message || parsed.errorCode}`)
+  }
+} catch (parseErr) {
+  // Not JSON - might be XML (deviceInfo), continue normally
+}
 ```
 
-Key endpoints:
-- Device info: `GET .../System/deviceInfo`
-- User search: `POST .../AccessControl/UserInfo/Search?format=json`
-- Department list: `GET .../AccessControl/Department?format=json`
-- Face picture: `GET .../Intelligent/FDLib/FDSearch?format=json` or `POST .../AccessControl/UserInfo/FaceInfo/Search`
-- ACS Events: `POST .../AccessControl/AcsEvent?format=json`
+### Cloud Device Import Flow
 
-### Photo Storage
-
-- Photos stored in existing `uploads` bucket under `avatars/{employee_id}.jpg`
-- Public URL generated and saved to `employees.avatar_url`
-
-### Deduplication Strategy
-
-- Employees: unique on `(device_employee_code, device_id)` in mapping table
-- Attendance: unique on `(device_id, employee_code, event_time)` (already exists)
-- Departments: unique on `(device_department_id, device_id)`
+```text
+1. Call list-devices API
+2. Return device list to frontend
+3. User selects device to import
+4. Create/update hikvision_devices record with correct serial
+5. Test connection with imported serial
+6. If successful, enable sync buttons
+```
 
