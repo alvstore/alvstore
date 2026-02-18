@@ -1,243 +1,190 @@
 
 
-# Comprehensive Enhancement Plan: Repair Workflow, Payments, WhatsApp, Notifications, and Cash Management
+# Comprehensive Fix and Enhancement Plan -- 10 Issues
 
-## 1. Repair Module Overhaul
+## Overview
 
-### 1A. Device-Specific Checklists
-
-The current checklist is a single static list (DEFAULT_CHECKLIST) used for all devices. This needs to change so that selecting "Laptop" shows laptop-specific items, "iPhone" shows phone-specific items, etc.
-
-**Changes to `src/pages/JobSheetCreate.tsx`:**
-- Replace `DEFAULT_CHECKLIST` with a `DEVICE_CHECKLISTS` map keyed by device type
-- Example checklists:
-  - **Mobile/iPhone**: Power, Display, Touch, Speaker, Mic, Front/Rear Camera, WiFi, Cellular, Bluetooth, Buttons, Charging Port, Fingerprint, Face ID, Accessories (Charger, Cable, Cover, SIM, Memory Card)
-  - **Laptop**: Power, Display, Keyboard, Trackpad, Speaker, Mic, Webcam, WiFi, Ethernet, Bluetooth, USB Ports, HDMI, Charging Port, Battery Health, Hinge, Fan Noise, Accessories (Charger, Bag, Mouse)
-  - **Tablet**: Power, Display, Touch, Speaker, Mic, Camera, WiFi, Cellular, Bluetooth, Buttons, Charging Port, Stylus Support, Accessories
-  - **Desktop**: Power, Monitor Output, Keyboard, Mouse, Speaker, USB Ports, Ethernet, WiFi, Fan/Cooling, Accessories
-- When user selects `device_type`, auto-load the matching checklist
-- Improve checklist UI: use a table-style layout with colored status pills (Yes = green, No = red, N/A = gray) instead of small badges
-- Add category progress bars with percentage completion
-- Keep the smart "Device turns ON = No" auto-set logic
-
-### 1B. Estimated Cost and Actual Cost Tracking
-
-**Database migration -- add columns to `job_sheets`:**
-```sql
-ALTER TABLE job_sheets ADD COLUMN actual_cost numeric DEFAULT NULL;
-ALTER TABLE job_sheets ADD COLUMN technician_payment numeric DEFAULT NULL;
-ALTER TABLE job_sheets ADD COLUMN technician_payment_status text DEFAULT 'pending';
-ALTER TABLE job_sheets ADD COLUMN technician_payment_date timestamptz DEFAULT NULL;
-ALTER TABLE job_sheets ADD COLUMN device_received_at timestamptz DEFAULT NULL;
-ALTER TABLE job_sheets ADD COLUMN device_sent_at timestamptz DEFAULT NULL;
-ALTER TABLE job_sheets ADD COLUMN device_received_by uuid DEFAULT NULL;
-ALTER TABLE job_sheets ADD COLUMN device_sent_by uuid DEFAULT NULL;
-```
-
-**Changes to `src/pages/JobSheetDetail.tsx`:**
-- Add "Cost & Payment" card showing: Estimated Cost, Actual Cost (editable by technician/admin), Technician Payment, Payment Status
-- Add "Device Movement" card showing: Sent to Technician (date/by), Received from Technician (date/by)
-- Action buttons: "Send to Technician" (records device_sent_at + audit log), "Receive Device" (records device_received_at + audit log)
-- "Record Technician Payment" sheet: amount, payment method, date, notes -- inserts into `payments` table with type "technician_payment"
-
-### 1C. Enterprise Job Sheet PDF
-
-**Create new component `src/components/documents/JobSheetPDF.tsx`:**
-- Enterprise-grade PDF template using browser print/CSS
-- Header: Company logo + name + address + phone + email + GST number
-- Job number, date, priority badge, status badge
-- Customer details block: Name, Phone, Email, Address, GST
-- Device details block: Brand, Type, Model, Serial, IMEI, Color, Storage
-- Pre-repair checklist table: Category | Item | Status (with colored indicators)
-- Problem description and staff notes
-- Cost section: Estimated Cost, Actual Cost, Technician Payment
-- Device movement timeline
-- Signature area
-- Footer: Terms and conditions, company stamp area
-- Add "Download PDF" button to JobSheetDetail page
-
-### 1D. Enhanced UI/UX for Checklist
-
-- Use a proper data table layout instead of simple badges
-- Each row: Item name | Yes button | No button | N/A button (toggle-style, colored)
-- Category headers with progress percentage and colored progress bar
-- Collapsible categories with smooth animation
-- Visual indicator for auto-set items (small "Auto" tag)
-- Overall completion progress bar at the top
+Addressing all 10 issues reported: Dashboard KPI fix, barcode management, chat user selector, settings redesign, WhatsApp webhook config, quotation editing, item-wise GST, POS walk-in customer, calendar event display sync, and external technician management.
 
 ---
 
-## 2. Razorpay India Integration with Payment Links
+## Issue 1: Dashboard "Sales Today" Shows Quotation Value + Follow-Up Widget
 
-### 2A. Razorpay Webhook Edge Function
+**Problem**: "Sales Today" KPI queries `pos_transactions` only. The displayed value may be confusing. User wants a follow-up widget for pending quotations and repairs.
 
-**New file: `supabase/functions/razorpay-webhook/index.ts`**
-- Receives Razorpay webhook events
-- Validates webhook signature using Razorpay secret
-- Handles `payment.captured`, `payment_link.paid` events
-- Updates `payments` table status to "completed"
-- Updates invoice `paid_amount` and `payment_status`
-- Inserts finance_audit_log entry
+**Changes to `src/pages/Dashboard.tsx`:**
+- Rename "Sales Today" KPI to "POS Sales Today" for clarity
+- Add a new "Follow-Up" widget card below the charts section showing:
+  - Pending Quotations (status = draft or sent) with customer name, amount, days since created, and a "Call" button that creates a task + calendar event
+  - Pending Repairs (status not completed/delivered) with customer name, job number, status
+- Each follow-up row has action buttons: "Schedule Call" (creates a task linked to the entity and a calendar event), "View" (navigates to detail page)
+- Add a new "Follow-Ups" page (`src/pages/FollowUps.tsx`) accessible from sidebar for dedicated follow-up management with filters for quotations, repairs, and invoices
 
-**New file: `supabase/functions/create-payment-link/index.ts`**
-- Creates Razorpay payment link via API
-- Accepts: amount, customer name/email/phone, invoice_id, description
-- Returns payment link URL
-- Stores payment link ID in payments table
+**Changes to `src/components/layout/AppSidebar.tsx`:**
+- Add "Follow-Ups" nav item under CRM category
 
-**Secrets needed:**
-- `RAZORPAY_KEY_ID`
-- `RAZORPAY_KEY_SECRET`
-- `RAZORPAY_WEBHOOK_SECRET`
-
-**UI Changes:**
-- Add "Send Payment Link" button on InvoicePreview page
-- Sheet form: amount (pre-filled from balance), customer details (auto-filled)
-- Show payment link status in payments list
-- Add Razorpay settings section in Settings > Integrations
-
-### 2B. Config
-
-```toml
-[functions.razorpay-webhook]
-verify_jwt = false
-
-[functions.create-payment-link]
-verify_jwt = false
-```
+**Changes to `src/App.tsx`:**
+- Add route `/follow-ups` pointing to FollowUps page
 
 ---
 
-## 3. WhatsApp API Integration with Chat
+## Issue 2: Barcode Generator as Separate Menu
 
-### 3A. WhatsApp Edge Function
+**Problem**: No standalone barcode generation page. User wants to generate, print, and assign barcodes to products.
 
-**New file: `supabase/functions/send-whatsapp/index.ts`**
-- Sends WhatsApp messages via configured WhatsApp Business API
-- Uses `whatsapp_api_url`, `whatsapp_api_key`, `whatsapp_phone_id` from `business_settings`
-- Supports: text messages, template messages, media messages
+**New file: `src/pages/BarcodeManager.tsx`**
+- Page with two sections:
+  - **Generate Barcodes**: Select products (multi-select), choose barcode format (CODE128/EAN-13), set label size, quantity per product
+  - **Print Labels**: Preview barcode labels in a grid, print button opens print-optimized view
+  - **Assign Barcode**: If a product has no barcode, auto-generate one and update the product record
+- Uses existing `jsbarcode` dependency (already installed)
+- Each label shows: barcode image, product name, SKU, price
 
-### 3B. Chat Module Integration
+**Changes to `src/components/layout/AppSidebar.tsx`:**
+- Add "Barcode Manager" under ECOMMERCE category
+
+**Changes to `src/App.tsx`:**
+- Add route `/barcodes` pointing to BarcodeManager
+
+---
+
+## Issue 3: Chat "Select User" Not Showing Staff/Customer
+
+**Problem**: `fetchAllProfiles` queries `profiles` table but only gets users whose profile exists. The dropdown shows nothing because profiles may not have `full_name` populated, or RLS policies restrict visibility.
 
 **Changes to `src/pages/Chat.tsx`:**
-- Add conversation type "whatsapp" alongside "internal"
-- Add WhatsApp icon indicator on WhatsApp conversations
-- When sending a message in a WhatsApp conversation, call the `send-whatsapp` edge function
-- Add "Send via WhatsApp" button in conversation header for customer chats
-- Show delivery status indicators (sent, delivered, read) for WhatsApp messages
+- Fix `fetchAllProfiles` to also fetch the user's role from `user_roles` table so the dropdown shows "Name (Role)" format
+- For WhatsApp tab, also load customers from `customers` table so user can pick a customer to chat with (auto-fills phone number)
+- Add search/filter in the user dropdown
+- Show role badge (Admin, Staff, Technician, Customer) next to each user name
+- Ensure the Select component renders properly with actual data
+
+---
+
+## Issue 4: Settings Page Redesign
+
+**Problem**: Settings page is messy with too many tabs in a single row. No payment gateway settings. Profile not properly linked.
+
+**Changes to `src/pages/Settings.tsx` -- Full redesign:**
+- Replace horizontal tabs with a vertical sidebar navigation (left panel 25%, content 75%) matching Materialize settings pattern
+- Group settings into sections:
+  - **Account**: Profile (linked to current user profile), Change Password
+  - **Organization**: Business Info, GST Settings
+  - **Integrations**: Email/SMTP, SMS, WhatsApp (with webhook URL field and Facebook App ID/Secret fields), Razorpay (Key ID, Key Secret, Webhook Secret, Webhook URL display), Hikvision
+  - **System**: User Management, Templates
+- Each section is a card with clear labels and descriptions
+- Add Razorpay payment gateway configuration section with:
+  - Key ID, Key Secret, Webhook Secret fields
+  - Display the webhook URL that needs to be configured in Razorpay dashboard
+  - Test connection button
+
+---
+
+## Issue 5: WhatsApp Webhook URL + Facebook Developer Config
+
+**Problem**: WhatsApp settings don't show the webhook URL for Facebook developer portal. No field for Facebook App Secret for webhook verification.
+
+**Changes to Settings WhatsApp section:**
+- Add fields for:
+  - Facebook App ID
+  - Facebook App Secret (for webhook signature verification)
+  - Webhook Verify Token (auto-generated, copyable)
+  - Display the Webhook URL (read-only, copyable) that user enters in Facebook Developer portal
+- Similarly for Razorpay, display webhook URL for Razorpay dashboard
+
+**Changes to `supabase/functions/send-whatsapp/index.ts`:**
+- Add webhook verification support (GET request handling for Facebook webhook verification challenge)
+
+---
+
+## Issue 6: No Option to Edit Quotation
+
+**Problem**: QuotationPreview has an "Edit" button that just navigates to `/sales` (list page). There's no edit functionality.
+
+**Changes to `src/App.tsx`:**
+- Add route `/sales/:id/edit` pointing to QuotationAdd
+
+**Changes to `src/pages/QuotationAdd.tsx`:**
+- Accept optional `id` param from URL
+- If `id` is present, load existing quotation data + items and pre-fill the form
+- Change save logic: if editing, update existing quotation + delete old items + insert new items
+- Change page title to "Edit Quotation" when editing
+
+**Changes to `src/pages/QuotationPreview.tsx`:**
+- Fix "Edit" button to navigate to `/sales/${id}/edit` instead of `/sales`
+
+**Same pattern for InvoiceAdd:**
+- Add route `/invoices/:id/edit`
+- Update InvoiceAdd to support edit mode
+- Fix InvoicePreview edit button
+
+---
+
+## Issue 7: Item-Wise GST Control (Inclusive/Exclusive per Item)
+
+**Problem**: GST is only at the overall invoice/quotation level. User wants per-item GST control -- some items with GST, some without, some inclusive, some exclusive.
+
+**Changes to `src/components/documents/ItemsTable.tsx`:**
+- The `DocumentItem` interface already has `gst_enabled` and `gst_percentage` fields
+- Add a visible toggle per item row: "GST" switch (on/off) and GST% input
+- When GST is disabled for an item, `gst_percentage` is set to 0
+- Add "Inclusive" toggle per item (new field `gst_inclusive` on DocumentItem)
+
+**Changes to `src/components/documents/TotalsPanel.tsx`:**
+- Update calculation to respect per-item `gst_enabled` and per-item `gst_inclusive` settings
+- Show breakdown: "Items with GST" subtotal vs "Items without GST" subtotal
+
+**Database**: No schema change needed -- `gst_percentage` per item already exists in `quotation_items` and `invoice_items`
+
+---
+
+## Issue 8: POS Walk-In Customer Capture
+
+**Problem**: POS has no way to record customer details (name, phone, email, address) and send receipt via WhatsApp/SMS/Email.
+
+**Changes to `src/pages/POS.tsx`:**
+- Add "Customer" section in the cart panel (right side), above payment method:
+  - "Walk-in" toggle (default) vs "Select Customer" dropdown
+  - If toggle off: show customer search/select from existing customers
+  - If walk-in: show inline fields for Name, Phone, Email (optional quick-capture)
+  - "Save as Customer" checkbox -- if checked, creates a new customer record on sale completion
+- On sale completion:
+  - If customer selected/created, link `customer_id` to `pos_transactions`
+  - Receipt dialog: "Send WhatsApp" button uses `send-whatsapp` function, "Send Email" uses `send-email` function, "Send SMS" uses `send-sms` function
+  - Pre-fill phone/email from customer record
+
+---
+
+## Issue 9: Calendar Events Not Visible + Task Sync
+
+**Problem**: After creating a calendar event, it's not visible on the grid. Only edit/delete buttons show. Events should sync with Tasks.
+
+**Changes to `src/pages/CalendarPage.tsx`:**
+- Bug fix: Events are fetched but the grid click handler always opens "Add Event" dialog. When clicking on an event chip, `e.stopPropagation()` is already used but the event chip might be too small or covered
+- Make event chips taller (min-height) and more visible with better contrast
+- Add "Link to Task" option in event dialog -- when checked, also creates/updates a task in `tasks` table with same title, date, and linked entity
+- Show task-linked events with a small task icon indicator
+- Fetch tasks from `tasks` table and display them on the calendar grid as well (different style -- dashed border)
+- Two-way sync: When a task with a due date is created/updated, also create/update a calendar event
+
+---
+
+## Issue 10: External Technician Management
+
+**Problem**: Technicians are sometimes outsourced (not employees). Currently shown under Employees which is incorrect.
+
+**Changes to `src/pages/Employees.tsx`:**
+- Add a "Type" field to employee form: "Internal" or "External/Outsourced"
+- Add filter tab: All / Internal / External
+- External technicians show a different badge/indicator
 
 **Database migration:**
-```sql
-ALTER TABLE chat_messages ADD COLUMN channel text DEFAULT 'internal';
-ALTER TABLE chat_messages ADD COLUMN whatsapp_message_id text DEFAULT NULL;
-ALTER TABLE chat_messages ADD COLUMN delivery_status text DEFAULT NULL;
-ALTER TABLE chat_conversations ADD COLUMN channel text DEFAULT 'internal';
-ALTER TABLE chat_conversations ADD COLUMN whatsapp_phone text DEFAULT NULL;
-```
+- Add `employee_type` column to `employees` table: `text DEFAULT 'internal'`
+- Values: 'internal', 'external'
 
----
-
-## 4. Notification Bell System
-
-The notification bell in AppHeader currently does nothing -- it's a static icon with a red dot.
-
-### 4A. Database
-
-**New table: `notifications`**
-```sql
-CREATE TABLE notifications (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  title text NOT NULL,
-  message text NOT NULL,
-  type text DEFAULT 'info',
-  read boolean DEFAULT false,
-  link text,
-  created_at timestamptz DEFAULT now()
-);
-
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view own notifications"
-  ON notifications FOR SELECT TO authenticated
-  USING (user_id = auth.uid());
-
-CREATE POLICY "Users can update own notifications"
-  ON notifications FOR UPDATE TO authenticated
-  USING (user_id = auth.uid());
-
-CREATE POLICY "System can insert notifications"
-  ON notifications FOR INSERT TO authenticated
-  WITH CHECK (true);
-
-ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
-```
-
-### 4B. UI Changes to `src/components/layout/AppHeader.tsx`
-
-- Bell icon shows unread count badge (number instead of just a dot)
-- Click bell opens a dropdown/popover with notification list
-- Each notification: icon, title, message, time ago, read/unread indicator
-- "Mark all as read" button
-- Click notification navigates to linked page
-- Realtime subscription for live notification updates
-- Generate notifications on key events:
-  - New repair job assigned (technician)
-  - Repair status changed (admin/customer)
-  - Payment received (admin/staff)
-  - New chat message (all participants)
-  - Invoice created (customer)
-
-### 4C. Notification Helper
-
-**Create `src/lib/notifications.ts`:**
-- `createNotification(userId, title, message, type, link)` helper function
-- Called from relevant pages when actions occur (job assignment, payment, etc.)
-
----
-
-## 5. Advanced Daily Cash Management
-
-The current Cash Control tab is very basic -- just opening/closing cash with a difference.
-
-### 5A. Database Enhancement
-
-```sql
-ALTER TABLE daily_cash_control ADD COLUMN notes text DEFAULT NULL;
-ALTER TABLE daily_cash_control ADD COLUMN denominations jsonb DEFAULT NULL;
-ALTER TABLE daily_cash_control ADD COLUMN pos_total numeric DEFAULT 0;
-ALTER TABLE daily_cash_control ADD COLUMN manual_income numeric DEFAULT 0;
-ALTER TABLE daily_cash_control ADD COLUMN manual_expense numeric DEFAULT 0;
-ALTER TABLE daily_cash_control ADD COLUMN expected_closing numeric DEFAULT NULL;
-ALTER TABLE daily_cash_control ADD COLUMN status text DEFAULT 'open';
-ALTER TABLE daily_cash_control ADD COLUMN closed_by uuid DEFAULT NULL;
-ALTER TABLE daily_cash_control ADD COLUMN closed_at timestamptz DEFAULT NULL;
-```
-
-### 5B. Enhanced Cash Control UI
-
-**Rewrite `CashControlTab` in `src/pages/Finance.tsx`:**
-
-- **Day Open workflow:**
-  - Staff enters opening cash amount
-  - Optional denomination breakdown (2000, 500, 200, 100, 50, 20, 10, 5, 2, 1 rupee notes/coins)
-  - Auto-calculates total from denominations
-  - Status changes to "open"
-
-- **Day Close workflow:**
-  - Auto-calculates expected closing: Opening + Day's Income - Day's Expenses
-  - Staff enters actual closing cash
-  - Optional closing denomination breakdown
-  - Shows variance (actual - expected) with color coding (green = match, red = short, yellow = over)
-  - Requires notes if variance exceeds threshold
-  - Status changes to "closed"
-  - Records closed_by and closed_at
-  - Inserts audit log entry
-
-- **Dashboard view:**
-  - Today's card at top: Status (Open/Closed), Opening, Expected Closing, Actual Closing, Variance
-  - 7-day history table with color-coded variance column
-  - Variance trend mini-chart
+**Changes to `src/pages/JobSheetCreate.tsx` and `src/pages/JobSheetDetail.tsx`:**
+- When assigning technician, show type badge (Internal/External) next to name
+- For external technicians, show payment terms more prominently since they're paid per job
 
 ---
 
@@ -245,40 +192,45 @@ ALTER TABLE daily_cash_control ADD COLUMN closed_at timestamptz DEFAULT NULL;
 
 ### New Files
 ```
-supabase/functions/razorpay-webhook/index.ts
-supabase/functions/create-payment-link/index.ts
-supabase/functions/send-whatsapp/index.ts
-src/components/documents/JobSheetPDF.tsx
-src/lib/notifications.ts
+src/pages/FollowUps.tsx -- Follow-up management for pending quotations/repairs
+src/pages/BarcodeManager.tsx -- Barcode generation and label printing
 ```
 
 ### Modified Files
 ```
-src/pages/JobSheetCreate.tsx -- device-specific checklists, enhanced UI
-src/pages/JobSheetDetail.tsx -- cost tracking, device movement, PDF button
-src/pages/Chat.tsx -- WhatsApp channel support
-src/pages/Finance.tsx -- advanced cash control
-src/components/layout/AppHeader.tsx -- notification bell with dropdown
-src/pages/InvoicePreview.tsx -- Razorpay payment link button
-src/pages/Settings.tsx -- Razorpay settings section
+src/pages/Dashboard.tsx -- Fix KPI label, add follow-up widget
+src/pages/Chat.tsx -- Fix user selector to show staff/customers with roles
+src/pages/Settings.tsx -- Full redesign with vertical sidebar layout, add Razorpay + WhatsApp webhook config
+src/pages/QuotationAdd.tsx -- Support edit mode via URL param
+src/pages/QuotationPreview.tsx -- Fix edit button navigation
+src/pages/InvoiceAdd.tsx -- Support edit mode via URL param  
+src/pages/InvoicePreview.tsx -- Fix edit button navigation
+src/components/documents/ItemsTable.tsx -- Per-item GST toggle (on/off + percentage)
+src/components/documents/TotalsPanel.tsx -- Updated calculations for item-wise GST
+src/pages/POS.tsx -- Walk-in customer capture with contact fields
+src/pages/CalendarPage.tsx -- Fix event visibility, task sync
+src/pages/Employees.tsx -- Internal/External technician type
+src/pages/JobSheetCreate.tsx -- Show technician type badge
+src/pages/JobSheetDetail.tsx -- Show technician type badge
+src/components/layout/AppSidebar.tsx -- Add Follow-Ups, Barcode Manager nav items
+src/App.tsx -- Add routes for /follow-ups, /barcodes, /sales/:id/edit, /invoices/:id/edit
+supabase/functions/send-whatsapp/index.ts -- Add webhook verification handler
 ```
 
-### Database Migrations
-1. `job_sheets` -- add actual_cost, technician_payment, device movement columns
-2. `chat_messages` and `chat_conversations` -- add WhatsApp channel columns
-3. `notifications` -- new table with RLS and realtime
-4. `daily_cash_control` -- add denomination, status, expected_closing columns
-
-### Secrets Required
-- `RAZORPAY_KEY_ID` -- Razorpay API Key ID
-- `RAZORPAY_KEY_SECRET` -- Razorpay API Secret
-- `RAZORPAY_WEBHOOK_SECRET` -- Razorpay Webhook Secret
+### Database Migration
+```sql
+ALTER TABLE employees ADD COLUMN employee_type text DEFAULT 'internal';
+```
 
 ### Implementation Order
-1. Database migrations (all schema changes)
-2. Repair module (checklists, costs, device movement, PDF)
-3. Notification system (table + AppHeader + helper)
-4. Razorpay integration (edge functions + UI)
-5. WhatsApp integration (edge function + Chat UI)
-6. Advanced cash management (Finance.tsx rewrite)
+1. Database migration (employee_type)
+2. Settings page redesign (Issue 4 + 5 -- Razorpay and WhatsApp webhook config)
+3. Chat user selector fix (Issue 3)
+4. Quotation/Invoice edit mode (Issue 6)
+5. Item-wise GST (Issue 7)
+6. POS walk-in customer (Issue 8)
+7. Calendar fix + task sync (Issue 9)
+8. External technician type (Issue 10)
+9. Barcode Manager page (Issue 2)
+10. Dashboard follow-up widget + page (Issue 1)
 
