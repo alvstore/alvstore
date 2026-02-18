@@ -23,7 +23,8 @@ async function fetchKpis() {
   const today = startOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
 
-  const [salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers] = await Promise.all([
+  const [salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers,
+    quotationsToday, quotationsMonth, invoicesToday, invoicesMonth] = await Promise.all([
     supabase.from("pos_transactions").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
     supabase.from("pos_transactions").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
     supabase.from("payments").select("amount").eq("status", "pending").then(r => r.data?.reduce((s, p) => s + Number(p.amount), 0) ?? 0),
@@ -34,9 +35,16 @@ async function fetchKpis() {
     supabase.from("repair_tickets").select("id", { count: "exact", head: true }).not("status", "in", '("completed","delivered")').then(r => r.count ?? 0),
     supabase.from("repair_status_history").select("id", { count: "exact", head: true }).eq("new_status", "completed").gte("created_at", today).then(r => r.count ?? 0),
     supabase.from("customers").select("id", { count: "exact", head: true }).then(r => r.count ?? 0),
+    // Quotations
+    supabase.from("quotations").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
+    supabase.from("quotations").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
+    // Invoices
+    supabase.from("invoices").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
+    supabase.from("invoices").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
   ]);
 
-  return { salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers };
+  return { salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers,
+    quotationsToday, quotationsMonth, invoicesToday, invoicesMonth };
 }
 
 async function fetchIncomeExpenseTrend() {
@@ -131,8 +139,13 @@ export default function Dashboard() {
     { label: "Total Customers", value: kpis ? String(kpis.totalCustomers) : "—", icon: Users, bg: "bg-info/10", iconColor: "text-info", trend: "+22%", up: true },
   ];
 
+  const salesWidgets = [
+    { label: "POS Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", sub: kpis ? `This Month: ${fmt(kpis.salesMonth)}` : "", icon: ShoppingCart, bg: "bg-primary/10", iconColor: "text-primary" },
+    { label: "Quotations Today", value: kpis ? fmt(kpis.quotationsToday) : "—", sub: kpis ? `This Month: ${fmt(kpis.quotationsMonth)}` : "", icon: Clock, bg: "bg-warning/10", iconColor: "text-warning" },
+    { label: "Invoices Today", value: kpis ? fmt(kpis.invoicesToday) : "—", sub: kpis ? `This Month: ${fmt(kpis.invoicesMonth)}` : "", icon: CreditCard, bg: "bg-success/10", iconColor: "text-success" },
+  ];
+
   const statCards = [
-    { label: "POS Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", icon: DollarSign, color: "text-primary" },
     { label: "Low Stock", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-destructive" },
     { label: "Active Repairs", value: kpis ? String(kpis.activeRepairs) : "—", icon: Wrench, color: "text-accent" },
     { label: "Completed Today", value: kpis ? String(kpis.completedToday) : "—", icon: CheckCircle, color: "text-success" },
@@ -203,8 +216,32 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Sales / Quotations / Invoices Widgets */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {salesWidgets.map((w) => (
+          <Card key={w.label} className="border-border/50 shadow-sm">
+            <CardContent className="p-5">
+              {kpiLoading ? (
+                <div className="space-y-3"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-32" /></div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{w.label}</p>
+                    <p className="text-2xl font-bold text-foreground">{w.value}</p>
+                    <p className="text-[11px] text-muted-foreground">{w.sub}</p>
+                  </div>
+                  <div className={`h-11 w-11 rounded-xl ${w.bg} flex items-center justify-center`}>
+                    <w.icon className={`h-5 w-5 ${w.iconColor}`} />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       {/* Secondary stat row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {statCards.map((s) => (
           <Card key={s.label} className="border-border/50">
             <CardContent className="p-4 flex items-center gap-3">

@@ -15,6 +15,9 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -295,8 +298,34 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
   staffName: string; userId?: string; onRefresh: () => void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptTx, setReceiptTx] = useState<FinanceTransaction | null>(null);
   const [search, setSearch] = useState("");
-  const filtered = transactions.filter(t => t.type === type && (!search || t.transaction_id.toLowerCase().includes(search.toLowerCase()) || t.description?.toLowerCase().includes(search.toLowerCase())));
+  const [dateFilter, setDateFilter] = useState("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  const filtered = transactions.filter(t => {
+    if (t.type !== type) return false;
+    // Date filter
+    if (dateFilter === "today" && t.date !== format(new Date(), "yyyy-MM-dd")) return false;
+    if (dateFilter === "7days" && new Date(t.date) < new Date(Date.now() - 7 * 86400000)) return false;
+    if (dateFilter === "month" && new Date(t.date) < startOfMonth(new Date())) return false;
+    if (dateFilter === "custom" && customFrom && t.date < customFrom) return false;
+    if (dateFilter === "custom" && customTo && t.date > customTo) return false;
+    // Search filter
+    if (search) {
+      const q = search.toLowerCase();
+      return t.transaction_id.toLowerCase().includes(q) ||
+        t.description?.toLowerCase().includes(q) ||
+        t.staff_name?.toLowerCase().includes(q) ||
+        t.reference?.toLowerCase().includes(q) ||
+        t.payment_mode?.toLowerCase().includes(q) ||
+        format(new Date(t.date), "dd MMM yyyy").toLowerCase().includes(q) ||
+        String(t.amount).includes(q);
+    }
+    return true;
+  });
 
   const [form, setForm] = useState({
     date: format(new Date(), "yyyy-MM-dd"), amount: "", payment_mode: "cash",
@@ -319,14 +348,36 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search ID, date, amount, reference, staff..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <Button onClick={() => { setForm({ date: format(new Date(), "yyyy-MM-dd"), amount: "", payment_mode: "cash", account_id: "", category_id: "", customer_name: "", reference: "", description: "" }); setSheetOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />Add {type === "income" ? "Income" : "Expense"}
+          </Button>
         </div>
-        <Button onClick={() => { setForm({ date: format(new Date(), "yyyy-MM-dd"), amount: "", payment_mode: "cash", account_id: "", category_id: "", customer_name: "", reference: "", description: "" }); setSheetOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />Add {type === "income" ? "Income" : "Expense"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { key: "all", label: "All" },
+            { key: "today", label: "Today" },
+            { key: "7days", label: "7 Days" },
+            { key: "month", label: "This Month" },
+            { key: "custom", label: "Custom" },
+          ].map(f => (
+            <Button key={f.key} variant={dateFilter === f.key ? "default" : "outline"} size="sm" onClick={() => setDateFilter(f.key)}>
+              {f.label}
+            </Button>
+          ))}
+          {dateFilter === "custom" && (
+            <>
+              <Input type="date" className="w-36 h-8" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+              <span className="text-xs text-muted-foreground">to</span>
+              <Input type="date" className="w-36 h-8" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+            </>
+          )}
+        </div>
       </div>
 
       <div className="rounded-lg border bg-card">
@@ -339,11 +390,12 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Reference</TableHead>
               <TableHead>Staff</TableHead>
+              <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No {type} entries</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No {type} entries</TableCell></TableRow>
             ) : filtered.map(t => (
               <TableRow key={t.id}>
                 <TableCell className="font-mono text-xs">{t.transaction_id}</TableCell>
@@ -352,11 +404,33 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
                 <TableCell className="text-right font-medium">₹{t.amount.toLocaleString()}</TableCell>
                 <TableCell className="text-muted-foreground">{t.reference || "—"}</TableCell>
                 <TableCell className="text-muted-foreground">{t.staff_name || "—"}</TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setReceiptTx(t); setReceiptOpen(true); }} title="View Receipt">
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+
+      {/* Receipt Dialog */}
+      <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
+        <DialogContent className="sm:max-w-md print:max-w-full print:shadow-none">
+          <DialogHeader>
+            <DialogTitle>Receipt Slip</DialogTitle>
+          </DialogHeader>
+          {receiptTx && (
+            <ReceiptSlip transaction={receiptTx} accounts={accounts} categories={categories} />
+          )}
+          <div className="flex gap-2 justify-end print:hidden">
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <Download className="h-3.5 w-3.5 mr-1.5" />Print / PDF
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent>
@@ -1012,7 +1086,16 @@ function CashControlTab({ records, staffName, userId, onRefresh }: {
 // ─── Audit Log Tab ────────────────────────────
 function AuditLogTab({ entries }: { entries: AuditEntry[] }) {
   const [search, setSearch] = useState("");
-  const filtered = entries.filter(e => !search || e.action.toLowerCase().includes(search.toLowerCase()) || e.details?.toLowerCase().includes(search.toLowerCase()));
+  const filtered = entries.filter(e => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return e.action.toLowerCase().includes(q) ||
+      e.details?.toLowerCase().includes(q) ||
+      e.staff_name?.toLowerCase().includes(q) ||
+      e.user_role?.toLowerCase().includes(q) ||
+      e.entity_type?.toLowerCase().includes(q) ||
+      format(new Date(e.created_at), "dd MMM yyyy HH:mm").toLowerCase().includes(q);
+  });
 
   return (
     <div className="space-y-4">
@@ -1037,6 +1120,94 @@ function AuditLogTab({ entries }: { entries: AuditEntry[] }) {
             ))}
           </TableBody>
         </Table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Receipt Slip Component ──────────────────
+function ReceiptSlip({ transaction, accounts, categories }: {
+  transaction: FinanceTransaction;
+  accounts: FinanceAccount[];
+  categories: FinanceCategory[];
+}) {
+  const acctName = accounts.find(a => a.id === transaction.account_id)?.name || "—";
+  const catName = categories.find(c => c.id === transaction.category_id)?.name || "—";
+
+  const numberToWords = (n: number): string => {
+    if (n === 0) return "Zero";
+    const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+    const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n/10)] + (n%10 ? " " + ones[n%10] : "");
+    if (n < 1000) return ones[Math.floor(n/100)] + " Hundred" + (n%100 ? " and " + numberToWords(n%100) : "");
+    if (n < 100000) return numberToWords(Math.floor(n/1000)) + " Thousand" + (n%1000 ? " " + numberToWords(n%1000) : "");
+    if (n < 10000000) return numberToWords(Math.floor(n/100000)) + " Lakh" + (n%100000 ? " " + numberToWords(n%100000) : "");
+    return numberToWords(Math.floor(n/10000000)) + " Crore" + (n%10000000 ? " " + numberToWords(n%10000000) : "");
+  };
+
+  return (
+    <div className="space-y-4 print:p-6" id="receipt-slip">
+      <div className="text-center border-b border-dashed border-border pb-3">
+        <h3 className="text-lg font-bold text-foreground">
+          {transaction.type === "income" ? "RECEIPT" : "PAYMENT VOUCHER"}
+        </h3>
+        <p className="text-xs text-muted-foreground">#{transaction.transaction_id}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <p className="text-xs text-muted-foreground">Date</p>
+          <p className="font-medium">{format(new Date(transaction.date), "dd MMM yyyy")}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Payment Mode</p>
+          <p className="font-medium capitalize">{transaction.payment_mode || "—"}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Account</p>
+          <p className="font-medium">{acctName}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Category</p>
+          <p className="font-medium">{catName}</p>
+        </div>
+      </div>
+
+      <div className="bg-muted/50 rounded-lg p-4 text-center">
+        <p className="text-xs text-muted-foreground mb-1">Amount</p>
+        <p className="text-3xl font-bold text-foreground">₹{transaction.amount.toLocaleString()}</p>
+        <p className="text-xs text-muted-foreground mt-1 italic">
+          {numberToWords(Math.floor(transaction.amount))} Rupees Only
+        </p>
+      </div>
+
+      {transaction.reference && (
+        <div className="text-sm">
+          <p className="text-xs text-muted-foreground">Reference</p>
+          <p className="font-medium">{transaction.reference}</p>
+        </div>
+      )}
+      {transaction.description && (
+        <div className="text-sm">
+          <p className="text-xs text-muted-foreground">Description</p>
+          <p>{transaction.description}</p>
+        </div>
+      )}
+      <div className="text-sm">
+        <p className="text-xs text-muted-foreground">Recorded By</p>
+        <p className="font-medium">{transaction.staff_name || "—"}</p>
+      </div>
+
+      <div className="flex justify-between pt-8 border-t border-dashed border-border mt-4">
+        <div className="text-center">
+          <div className="w-32 border-t border-foreground/30 mt-8"></div>
+          <p className="text-xs text-muted-foreground mt-1">{transaction.type === "income" ? "Received By" : "Paid By"}</p>
+        </div>
+        <div className="text-center">
+          <div className="w-32 border-t border-foreground/30 mt-8"></div>
+          <p className="text-xs text-muted-foreground mt-1">Authorized Signature</p>
+        </div>
       </div>
     </div>
   );
