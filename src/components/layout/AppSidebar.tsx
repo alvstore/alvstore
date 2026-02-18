@@ -39,26 +39,21 @@ const adminStaffNav: NavCategory[] = [
     items: [
       { title: "Quotations", url: "/sales", icon: ShoppingCart },
       { title: "Invoices", url: "/invoices", icon: Receipt },
+      { title: "Payments", url: "/finance", icon: Wallet },
     ],
   },
   {
-    label: "POS",
-    items: [{ title: "POS Terminal", url: "/pos", icon: Monitor }],
-  },
-  {
-    label: "INVENTORY",
+    label: "ECOMMERCE",
     items: [
       { title: "Products", url: "/inventory", icon: Package },
-      { title: "Stock Movements", url: "/inventory?tab=movements", icon: ArrowRightLeft },
+      { title: "POS Terminal", url: "/pos", icon: Monitor },
     ],
-  },
-  {
-    label: "REPAIR",
-    items: [{ title: "Repair Management", url: "/repairs", icon: Wrench }],
   },
   {
     label: "FINANCE",
-    items: [{ title: "Finance", url: "/finance", icon: CreditCard }],
+    items: [
+      { title: "Transactions", url: "/finance", icon: CreditCard },
+    ],
   },
   {
     label: "HRM",
@@ -67,6 +62,10 @@ const adminStaffNav: NavCategory[] = [
       { title: "Attendance", url: "/attendance", icon: Clock },
       { title: "Payroll", url: "/payroll", icon: Wallet },
     ],
+  },
+  {
+    label: "REPAIR",
+    items: [{ title: "Repair Management", url: "/repairs", icon: Wrench }],
   },
   {
     label: "TASKS",

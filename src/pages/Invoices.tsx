@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ interface Customer { id: string; name: string; email: string | null; phone: stri
 
 export default function Invoices() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -247,7 +249,7 @@ export default function Invoices() {
                 <p className="text-sm">No invoices found</p>
               </TableCell></TableRow>
             ) : invoices.map(inv => (
-              <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/30 border-border/50 transition-colors" onClick={() => openDetail(inv)}>
+              <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/30 border-border/50 transition-colors" onClick={() => navigate(`/invoices/${inv.id}`)}>
                 <TableCell className="font-semibold text-sm text-primary">{inv.invoice_number}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-3">

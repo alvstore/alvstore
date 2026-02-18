@@ -34,6 +34,9 @@ import NotFound from "./pages/NotFound";
 // New Phase 10 pages
 import Leads from "./pages/Leads";
 import Invoices from "./pages/Invoices";
+import InvoicePreview from "./pages/InvoicePreview";
+import QuotationPreview from "./pages/QuotationPreview";
+import CustomerProfile from "./pages/CustomerProfile";
 import Tasks from "./pages/Tasks";
 import Employees from "./pages/Employees";
 import Payroll from "./pages/Payroll";
@@ -69,7 +72,10 @@ const App = () => (
               <Route path="/crm" element={<CRM />} />
               <Route path="/leads" element={<Leads />} />
               <Route path="/sales" element={<Sales />} />
+              <Route path="/sales/:id" element={<QuotationPreview />} />
               <Route path="/invoices" element={<Invoices />} />
+              <Route path="/invoices/:id" element={<InvoicePreview />} />
+              <Route path="/customers/:id" element={<CustomerProfile />} />
               <Route path="/pos" element={<POS />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/repairs" element={<JobSheets />} />
