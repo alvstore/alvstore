@@ -43,11 +43,19 @@ export default function AuditLogs() {
     let combined = [...finLogs, ...sysLogs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     if (moduleFilter !== "all") combined = combined.filter(l => l.module === moduleFilter);
-    if (search) combined = combined.filter(l =>
-      l.action.toLowerCase().includes(search.toLowerCase()) ||
-      l.details?.toLowerCase().includes(search.toLowerCase()) ||
-      l.staff_name?.toLowerCase().includes(search.toLowerCase())
-    );
+    if (search) {
+      const q = search.toLowerCase();
+      combined = combined.filter(l =>
+        l.action.toLowerCase().includes(q) ||
+        l.details?.toLowerCase().includes(q) ||
+        l.staff_name?.toLowerCase().includes(q) ||
+        l.user_role?.toLowerCase().includes(q) ||
+        l.entity_type?.toLowerCase().includes(q) ||
+        l.entity_id?.toLowerCase().includes(q) ||
+        l.module?.toLowerCase().includes(q) ||
+        new Date(l.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }).toLowerCase().includes(q)
+      );
+    }
 
     setLogs(combined);
     setLoading(false);
