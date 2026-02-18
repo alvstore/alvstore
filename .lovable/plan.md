@@ -1,148 +1,179 @@
 
 
-# Hikvision Attendance Sync Module
+# Hikvision Full Sync Integration Module
 
-## Architecture Overview
+## Overview
 
-The Hikvision device at 10.0.1.116 uses the ISAPI protocol. Since the ERP runs on Lovable Cloud, a backend function will proxy requests to the device. The device must be reachable from the internet (via port forwarding or VPN) for automatic sync to work. The module includes device management, attendance log storage, employee mapping, and audit logging.
+This plan extends the existing Hik-Partner Pro Cloud integration to build a complete device-to-ERP synchronization system covering device info, employees, photos/avatars, departments, attendance logs, employee mapping, and automated scheduling.
 
-## 1. Database Changes
+All ISAPI commands are proxied through the Hik-Partner Pro Cloud gateway (already working) using the transparent API endpoint pattern.
 
-### New Tables
+---
 
-**`hikvision_devices`** -- Stores configured Hikvision devices
+## Current State
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| name | TEXT NOT NULL | e.g., "Office Controller" |
-| ip_address | TEXT NOT NULL | |
-| port | INTEGER DEFAULT 80 | |
-| username | TEXT | |
-| password | TEXT | encrypted in integrations JSONB |
-| status | TEXT DEFAULT 'active' | active/inactive |
-| last_sync_at | TIMESTAMPTZ | |
-| created_by | UUID | |
-| created_at | TIMESTAMPTZ | now() |
+- Edge function `hikvision-sync` already handles: `test`, `sync` (attendance), `list-devices`, `subscribe-events`
+- Device `DS-K1T343EFWX` (serial `FF6426490`) is registered and active in the database
+- Tables exist: `hikvision_devices`, `hikvision_attendance_logs`, `hikvision_employee_mapping`, `hikvision_sync_log`
+- Hik-Partner Pro API credentials are configured
 
-RLS: Admin only.
+---
 
-**`hikvision_attendance_logs`** -- Raw attendance events from device
+## Database Changes
+
+### 1. New Table: `departments`
 
 | Column | Type | Notes |
 |--------|------|-------|
-| id | UUID PK | |
-| device_id | UUID FK hikvision_devices | |
-| employee_code | TEXT | From device |
-| employee_name | TEXT | From device |
-| employee_id | UUID | Mapped ERP employee, nullable |
-| device_ip | TEXT | |
-| device_name | TEXT | |
-| event_time | TIMESTAMPTZ NOT NULL | |
-| event_type | TEXT | checkin/checkout/access |
-| raw_data | JSONB | Full event JSON |
-| created_at | TIMESTAMPTZ | now() |
+| id | uuid | PK |
+| name | text | Department name |
+| device_department_id | text | ID from Hikvision device |
+| parent_id | uuid | Self-reference for hierarchy |
+| device_id | uuid | Which device synced this |
+| created_at | timestamptz | Auto |
 
-Unique constraint on (device_id, employee_code, event_time) to prevent duplicates. RLS: Admin + Staff SELECT.
+RLS: Admin full access, staff/technician can view.
 
-**`hikvision_employee_mapping`** -- Maps device employee codes to ERP employees
+### 2. Alter `employees` table
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| device_employee_code | TEXT NOT NULL | |
-| device_employee_name | TEXT | |
-| erp_employee_id | UUID FK employees | nullable until mapped |
-| device_id | UUID FK hikvision_devices | |
-| created_at | TIMESTAMPTZ | now() |
+- Add `avatar_url text` column
+- Add `department_id uuid` referencing `departments`
+- Add `device_employee_code text` for auto-mapping
 
-Unique on (device_employee_code, device_id). RLS: Admin only.
+### 3. Alter `hikvision_devices` table
 
-**`hikvision_sync_log`** -- Audit trail for sync operations
+- Add `device_model text`
+- Add `device_version text`
+- Add `device_serial text` (proper column instead of reusing `ip_address`)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID PK | |
-| device_id | UUID FK hikvision_devices | |
-| action | TEXT | sync_started/sync_completed/sync_failed/test_connection |
-| status | TEXT | success/error |
-| records_synced | INTEGER DEFAULT 0 | |
-| error_message | TEXT | |
-| created_at | TIMESTAMPTZ | now() |
+### 4. Alter `hikvision_employee_mapping` table
 
-RLS: Admin SELECT + INSERT.
+- Add `card_number text`
+- Add `department_name text`
+- Add `synced_at timestamptz`
+- Add `avatar_synced boolean default false`
 
-Seed default device: "Office Hikvision Controller" at 10.0.1.116:80.
+### 5. Alter `hikvision_sync_log` table
 
-## 2. Backend Function: `hikvision-sync`
+- Add `sync_type text` (device_info, employee, photo, department, attendance)
 
-A new edge function that handles three operations:
+---
 
-- **test**: Calls `GET /ISAPI/System/deviceInfo` with Digest Auth to verify connectivity
-- **sync**: Calls `POST /ISAPI/AccessControl/AcsEvent?format=json` to fetch access events, stores new records, auto-creates employee mappings for unknown codes, and links to `attendance_records` for mapped employees
-- **device-info**: Returns device information
+## Edge Function Changes (`hikvision-sync/index.ts`)
 
-The function receives device credentials and IP from the request body (fetched from DB by the caller). It uses HTTP Basic/Digest auth as required by ISAPI.
+Add new actions to the existing edge function:
 
-**Important note**: The device must be reachable from the internet for cloud-based sync. If only accessible on the local network, users should access the ERP from the same network and use browser-based sync as a fallback.
+### Action: `device-info`
+- GET `/ISAPI/System/deviceInfo` via transparent proxy
+- Parse XML response for device name, model, serial, firmware version
+- Update `hikvision_devices` record with fetched info
 
-## 3. Enhanced Attendance Page
+### Action: `sync-employees`
+- POST `/ISAPI/AccessControl/UserInfo/Search?format=json` via transparent proxy
+- Iterate through all users (paginated with `searchResultPosition`)
+- Upsert into `hikvision_employee_mapping`
+- Auto-create `employees` records for unmapped users
+- Auto-map by employee code match
 
-Restructure `src/pages/Attendance.tsx` with tabs:
+### Action: `sync-photos`
+- For each mapped employee, GET `/ISAPI/Intelligent/FDLib/FDSearch?format=json` or use the face picture download endpoint via transparent proxy
+- Download face image binary
+- Upload to storage bucket `uploads` under `avatars/` path
+- Update `employees.avatar_url` and `hikvision_employee_mapping.avatar_synced`
 
-**Tab: Attendance** (existing)
-- Current manual check-in/check-out and records table (unchanged)
+### Action: `sync-departments`
+- GET `/ISAPI/AccessControl/Department?format=json` via transparent proxy
+- Upsert into `departments` table
+- Link employees to departments
 
-**Tab: Devices** (new, admin only)
-- Table of configured Hikvision devices with status indicators (green/red)
-- "Add Device" slide-over form: Name, IP, Port, Username, Password
-- "Test Connection" button per device
-- "Sync Now" button per device
-- Last sync timestamp display
-- Edit/delete device
+### Action: `sync-attendance` (enhance existing `sync`)
+- Same as current `sync` but with improved pagination (loop until all events fetched)
+- Better event type detection (check `major`/`minor` event codes)
 
-**Tab: Sync Logs** (new, admin only)
-- Table of all sync operations: Timestamp, Device, Action, Status, Records Synced, Error
-- Filter by device and date
+### Action: `full-sync`
+- Orchestrator that runs: device-info, sync-departments, sync-employees, sync-photos, sync-attendance in sequence
+- Returns combined results
 
-**Tab: Employee Mapping** (new, admin only)
-- Table of device employee codes mapped to ERP employees
-- Auto-populated when sync finds new employee codes
-- Dropdown to select ERP employee for each mapping
-- "Auto Map" button that matches by employee code
+---
 
-**Tab: Device Logs** (new, admin only)
-- Raw attendance events from Hikvision devices
-- Filters by device, employee, date range
-- Shows event time, employee code/name, event type, device
+## Auto-Sync Scheduler (pg_cron)
 
-## 4. File Changes
+Set up cron jobs using `pg_cron` + `pg_net`:
 
-### New Files
-- `supabase/functions/hikvision-sync/index.ts` -- Edge function for device communication
+| Sync Type | Interval | Action |
+|-----------|----------|--------|
+| Attendance | Every 5 minutes | `sync-attendance` |
+| Employees | Every 12 hours | `sync-employees` |
+| Photos | Every 24 hours | `sync-photos` |
+| Device Info | Every 24 hours | `device-info` |
 
-### Modified Files
-- `src/pages/Attendance.tsx` -- Add tabs for Devices, Sync Logs, Employee Mapping, Device Logs
-- `src/components/layout/AppSidebar.tsx` -- No changes needed (Attendance already under HRM)
+Note: 30-second attendance sync is not feasible with cron (minimum 1 minute) and would be excessive for cloud API calls. 5-minute intervals provide near-real-time data without overloading the API.
 
-### Database Migration
-- Create 4 new tables with RLS policies
-- Seed default device record
-- Update `supabase/config.toml` to register the new edge function
+---
 
-## 5. Implementation Order
+## UI Changes
 
-1. Database migration -- 4 new tables + RLS + seed data
-2. Edge function -- `hikvision-sync` with test/sync operations
-3. Attendance page overhaul -- Add 4 new tabs with full CRUD
-4. Deploy and test edge function
+### Attendance Page (`src/pages/Attendance.tsx`)
 
-## Network Considerations
+Enhance existing tabs:
 
-The Hikvision device is on a private network (10.0.1.116). For the cloud-based sync to reach it:
-- Option A: Port forward the device to a public IP (configure that IP in the device settings)
-- Option B: Use a VPN that makes the device accessible
-- Option C: Access the ERP from the same local network (browser-based sync)
+1. **Devices Tab** - Add "Fetch Device Info" button, show model/version/serial columns
+2. **Employee Mapping Tab** - Add "Auto Map" button, "Sync Employees from Device" button, show card number and department
+3. **New Tab: Departments** - Show synced departments with hierarchy
+4. **Sync Logs Tab** - Add sync_type filter column
 
-The system stores connection details per device, so it works with any accessible IP/hostname.
+### Employees Page (`src/pages/Employees.tsx`)
+
+- Display avatar image in employee table (from `avatar_url`)
+- Show department from `departments` table
+- Add "Sync from Device" indicator badge
+
+### Settings Page (Hikvision tab)
+
+- Add auto-sync toggle and interval configuration
+- Show cron job status
+
+---
+
+## Implementation Order
+
+1. **Database migrations** - New tables, column additions, RLS policies
+2. **Edge function rewrite** - Add all new actions (device-info, sync-employees, sync-photos, sync-departments, full-sync)
+3. **Attendance page UI** - Enhanced tabs with new sync buttons and department tab
+4. **Employees page UI** - Avatar display and department column
+5. **Auto-sync setup** - pg_cron jobs for scheduled syncing
+6. **Testing** - Test each sync action via the UI
+
+---
+
+## Technical Details
+
+### ISAPI Endpoints (via Transparent Proxy)
+
+All requests go through: `{areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/...`
+
+Headers required:
+```text
+Authorization: Bearer {accessToken}
+x-devserial: {deviceSerial}
+Content-Type: application/json
+```
+
+Key endpoints:
+- Device info: `GET .../System/deviceInfo`
+- User search: `POST .../AccessControl/UserInfo/Search?format=json`
+- Department list: `GET .../AccessControl/Department?format=json`
+- Face picture: `GET .../Intelligent/FDLib/FDSearch?format=json` or `POST .../AccessControl/UserInfo/FaceInfo/Search`
+- ACS Events: `POST .../AccessControl/AcsEvent?format=json`
+
+### Photo Storage
+
+- Photos stored in existing `uploads` bucket under `avatars/{employee_id}.jpg`
+- Public URL generated and saved to `employees.avatar_url`
+
+### Deduplication Strategy
+
+- Employees: unique on `(device_employee_code, device_id)` in mapping table
+- Attendance: unique on `(device_id, employee_code, event_time)` (already exists)
+- Departments: unique on `(device_department_id, device_id)`
 
