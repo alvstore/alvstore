@@ -3,35 +3,32 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, Banknote, Smartphone, Package, Barcode, Printer, Mail, MessageSquare } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, Banknote, Smartphone, Package, Barcode, Printer, Mail, MessageSquare, User, Phone } from "lucide-react";
 import { toast } from "sonner";
 
 interface Product {
-  id: string;
-  name: string;
-  sku: string | null;
-  barcode: string | null;
-  image_url: string | null;
-  selling_price: number;
-  gst_percentage: number;
-  stock_quantity: number;
-  unit: string | null;
+  id: string; name: string; sku: string | null; barcode: string | null;
+  image_url: string | null; selling_price: number; gst_percentage: number;
+  stock_quantity: number; unit: string | null;
 }
 
 interface CartItem {
-  product: Product;
-  quantity: number;
-  lineTotal: number;
-  lineGst: number;
+  product: Product; quantity: number; lineTotal: number; lineGst: number;
+}
+
+interface Customer {
+  id: string; name: string; phone: string | null; email: string | null;
 }
 
 export default function POS() {
@@ -46,6 +43,16 @@ export default function POS() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [lastSale, setLastSale] = useState<{ items: CartItem[]; subtotal: number; gst: number; total: number; method: string; txnNumber: string; date: string } | null>(null);
 
+  // Walk-in customer
+  const [isWalkIn, setIsWalkIn] = useState(true);
+  const [walkInName, setWalkInName] = useState("");
+  const [walkInPhone, setWalkInPhone] = useState("");
+  const [walkInEmail, setWalkInEmail] = useState("");
+  const [saveAsCustomer, setSaveAsCustomer] = useState(false);
+  const [existingCustomers, setExistingCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+  const [customerSearch, setCustomerSearch] = useState("");
+
   const fetchProducts = useCallback(async () => {
     let query = supabase.from("products").select("id,name,sku,barcode,image_url,selling_price,gst_percentage,stock_quantity,unit").gt("stock_quantity", 0);
     if (search) {
@@ -55,30 +62,31 @@ export default function POS() {
     setProducts(data || []);
   }, [search]);
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  const fetchCustomers = useCallback(async () => {
+    let query = supabase.from("customers").select("id, name, phone, email");
+    if (customerSearch) {
+      query = query.or(`name.ilike.%${customerSearch}%,phone.ilike.%${customerSearch}%`);
+    }
+    const { data } = await query.order("name").limit(20);
+    setExistingCustomers(data || []);
+  }, [customerSearch]);
 
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
   useEffect(() => { barcodeRef.current?.focus(); }, []);
 
   const addToCart = (product: Product) => {
     setCart(prev => {
       const existing = prev.find(c => c.product.id === product.id);
       if (existing) {
-        if (existing.quantity >= product.stock_quantity) {
-          toast.error("Insufficient stock");
-          return prev;
-        }
+        if (existing.quantity >= product.stock_quantity) { toast.error("Insufficient stock"); return prev; }
         return prev.map(c =>
           c.product.id === product.id
             ? { ...c, quantity: c.quantity + 1, lineTotal: (c.quantity + 1) * product.selling_price, lineGst: (c.quantity + 1) * product.selling_price * product.gst_percentage / 100 }
             : c
         );
       }
-      return [...prev, {
-        product,
-        quantity: 1,
-        lineTotal: product.selling_price,
-        lineGst: product.selling_price * product.gst_percentage / 100,
-      }];
+      return [...prev, { product, quantity: 1, lineTotal: product.selling_price, lineGst: product.selling_price * product.gst_percentage / 100 }];
     });
   };
 
@@ -88,23 +96,16 @@ export default function POS() {
       const newQty = c.quantity + delta;
       if (newQty <= 0) return c;
       if (newQty > c.product.stock_quantity) { toast.error("Insufficient stock"); return c; }
-      return {
-        ...c, quantity: newQty,
-        lineTotal: newQty * c.product.selling_price,
-        lineGst: newQty * c.product.selling_price * c.product.gst_percentage / 100,
-      };
+      return { ...c, quantity: newQty, lineTotal: newQty * c.product.selling_price, lineGst: newQty * c.product.selling_price * c.product.gst_percentage / 100 };
     }));
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(c => c.product.id !== productId));
-  };
+  const removeFromCart = (productId: string) => setCart(prev => prev.filter(c => c.product.id !== productId));
 
   const handleBarcodeScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || !barcodeInput.trim()) return;
     const product = products.find(p => p.barcode === barcodeInput.trim());
-    if (product) { addToCart(product); setBarcodeInput(""); }
-    else { toast.error("Product not found"); }
+    if (product) { addToCart(product); setBarcodeInput(""); } else toast.error("Product not found");
   };
 
   const subtotal = cart.reduce((s, c) => s + c.lineTotal, 0);
@@ -115,6 +116,21 @@ export default function POS() {
     if (cart.length === 0) { toast.error("Cart is empty"); return; }
     setProcessing(true);
     try {
+      let customerId: string | null = null;
+
+      // Handle customer
+      if (!isWalkIn && selectedCustomerId) {
+        customerId = selectedCustomerId;
+      } else if (isWalkIn && saveAsCustomer && walkInName.trim()) {
+        const { data: newCust, error: custErr } = await supabase.from("customers").insert({
+          name: walkInName.trim(),
+          phone: walkInPhone || null,
+          email: walkInEmail || null,
+          created_by: user?.id,
+        }).select("id").single();
+        if (!custErr && newCust) customerId = newCust.id;
+      }
+
       const items = cart.map(c => ({
         product_id: c.product.id, name: c.product.name,
         qty: c.quantity, price: c.product.selling_price,
@@ -124,28 +140,27 @@ export default function POS() {
       const { data: txn, error: txnError } = await supabase.from("pos_transactions").insert({
         items, subtotal, gst_amount: gstAmount, total,
         payment_method: paymentMethod, created_by: user?.id,
+        customer_id: customerId,
       }).select("transaction_number, created_at").single();
       if (txnError) throw txnError;
 
       for (const c of cart) {
-        const { error: mvError } = await supabase.from("stock_movements").insert({
+        await supabase.from("stock_movements").insert({
           product_id: c.product.id, type: "out" as const,
-          quantity: c.quantity, reference: "POS Sale",
-          created_by: user?.id,
+          quantity: c.quantity, reference: "POS Sale", created_by: user?.id,
         });
-        if (mvError) throw mvError;
       }
 
       setLastSale({
-        items: [...cart],
-        subtotal, gst: gstAmount, total,
-        method: paymentMethod,
-        txnNumber: txn?.transaction_number || "",
+        items: [...cart], subtotal, gst: gstAmount, total,
+        method: paymentMethod, txnNumber: txn?.transaction_number || "",
         date: txn?.created_at || new Date().toISOString(),
       });
       setReceiptOpen(true);
       toast.success(`Sale completed — ₹${total.toFixed(2)}`);
       setCart([]);
+      setWalkInName(""); setWalkInPhone(""); setWalkInEmail("");
+      setSaveAsCustomer(false); setSelectedCustomerId("");
       fetchProducts();
     } catch (err: any) {
       toast.error(err.message || "Sale failed");
@@ -181,38 +196,42 @@ export default function POS() {
     printWindow.document.close();
   };
 
+  const sendWhatsAppReceipt = async () => {
+    const phone = isWalkIn ? walkInPhone : existingCustomers.find(c => c.id === selectedCustomerId)?.phone;
+    if (!phone) { toast.error("No phone number available"); return; }
+    if (!lastSale) return;
+    try {
+      await supabase.functions.invoke("send-whatsapp", {
+        body: { to: phone, message: `Receipt: ${lastSale.txnNumber}\nTotal: ₹${lastSale.total.toFixed(2)}\nPayment: ${lastSale.method}\nThank you!` },
+      });
+      toast.success("WhatsApp receipt sent");
+    } catch { toast.error("Failed to send WhatsApp"); }
+  };
+
+  const sendEmailReceipt = async () => {
+    const email = isWalkIn ? walkInEmail : existingCustomers.find(c => c.id === selectedCustomerId)?.email;
+    if (!email) { toast.error("No email available"); return; }
+    toast.info("Configure SMTP in Settings → Integrations to enable email receipts");
+  };
+
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-5rem)]">
       {/* Left: Product Panel */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Barcode + Search */}
         <div className="flex gap-2 mb-4">
           <div className="relative flex-1">
             <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={barcodeRef}
-              placeholder="Scan barcode..."
-              className="pl-9"
-              value={barcodeInput}
-              onChange={e => setBarcodeInput(e.target.value)}
-              onKeyDown={handleBarcodeScan}
-            />
+            <Input ref={barcodeRef} placeholder="Scan barcode..." className="pl-9" value={barcodeInput} onChange={e => setBarcodeInput(e.target.value)} onKeyDown={handleBarcodeScan} />
           </div>
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Search products..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
-
-        {/* Product Grid */}
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {products.map(p => (
-              <button
-                key={p.id}
-                onClick={() => addToCart(p)}
-                className="rounded-lg border bg-card p-3 text-left hover:ring-2 hover:ring-primary transition-all active:scale-[0.98]"
-              >
+              <button key={p.id} onClick={() => addToCart(p)} className="rounded-lg border bg-card p-3 text-left hover:ring-2 hover:ring-primary transition-all active:scale-[0.98]">
                 <div className="h-20 bg-muted rounded flex items-center justify-center mb-2">
                   {p.image_url ? <img src={p.image_url} alt={p.name} className="h-full w-full object-cover rounded" /> : <Package className="h-8 w-8 text-muted-foreground/30" />}
                 </div>
@@ -236,6 +255,44 @@ export default function POS() {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col overflow-hidden p-4 pt-0">
+          {/* Customer Section */}
+          <div className="mb-3 space-y-2 pb-3 border-b border-border">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Customer</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground">Walk-in</span>
+                <Switch checked={isWalkIn} onCheckedChange={v => { setIsWalkIn(v); setSelectedCustomerId(""); }} className="h-4 w-7" />
+              </div>
+            </div>
+            {isWalkIn ? (
+              <div className="space-y-1.5">
+                <Input placeholder="Name" value={walkInName} onChange={e => setWalkInName(e.target.value)} className="h-7 text-xs" />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Input placeholder="Phone" value={walkInPhone} onChange={e => setWalkInPhone(e.target.value)} className="h-7 text-xs" />
+                  <Input placeholder="Email" value={walkInEmail} onChange={e => setWalkInEmail(e.target.value)} className="h-7 text-xs" />
+                </div>
+                {walkInName.trim() && (
+                  <div className="flex items-center gap-1.5">
+                    <Switch checked={saveAsCustomer} onCheckedChange={setSaveAsCustomer} className="h-3.5 w-6" />
+                    <span className="text-[10px] text-muted-foreground">Save as customer</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Input placeholder="Search customers..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} className="h-7 text-xs" />
+                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select customer" /></SelectTrigger>
+                  <SelectContent>
+                    {existingCustomers.map(c => (
+                      <SelectItem key={c.id} value={c.id} className="text-xs">{c.name} {c.phone ? `· ${c.phone}` : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
           {cart.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
               Scan or select products to add
@@ -285,12 +342,11 @@ export default function POS() {
           )}
         </CardContent>
       </Card>
+
       {/* Receipt Dialog */}
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
         <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Sale Complete</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Sale Complete</DialogTitle></DialogHeader>
           {lastSale && (
             <div className="space-y-3 text-sm">
               <div className="text-center">
@@ -315,11 +371,11 @@ export default function POS() {
             <Button variant="outline" className="flex-1" onClick={printReceipt}>
               <Printer className="h-4 w-4 mr-1.5" />Print
             </Button>
-            <Button variant="outline" className="flex-1" onClick={() => toast.info("Configure SMTP in Settings → Integrations to enable email receipts")}>
-              <Mail className="h-4 w-4 mr-1.5" />Email
+            <Button variant="outline" className="flex-1" onClick={sendWhatsAppReceipt}>
+              <Phone className="h-4 w-4 mr-1.5" />WhatsApp
             </Button>
-            <Button variant="outline" className="flex-1" onClick={() => toast.info("Configure SMS API in Settings → Integrations to enable SMS receipts")}>
-              <MessageSquare className="h-4 w-4 mr-1.5" />SMS
+            <Button variant="outline" className="flex-1" onClick={sendEmailReceipt}>
+              <Mail className="h-4 w-4 mr-1.5" />Email
             </Button>
           </DialogFooter>
         </DialogContent>
