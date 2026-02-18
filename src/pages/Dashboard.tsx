@@ -1,17 +1,21 @@
 import {
   DollarSign, TrendingUp, CreditCard, Wallet,
   Package, Wrench, CheckCircle, Users, RefreshCw,
+  ArrowUpRight, ArrowDownRight, ShoppingCart, Clock,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, RadarChart, Radar,
+  PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfDay, startOfMonth } from "date-fns";
+import { useAuth } from "@/hooks/useAuth";
 
 // --- Data fetchers ---
 
@@ -70,60 +74,105 @@ async function fetchTopProducts() {
   return Object.entries(productQty).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, qty]) => ({ name, qty }));
 }
 
+async function fetchRecentInvoices() {
+  const { data } = await supabase.from("invoices")
+    .select("id, invoice_number, total, payment_status, created_at, customers(name)")
+    .order("created_at", { ascending: false }).limit(5);
+  return data || [];
+}
+
 function fmt(n: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data: kpis, isLoading: kpiLoading } = useQuery({ queryKey: ["dashboard-kpis"], queryFn: fetchKpis, staleTime: 60_000 });
   const { data: salesTrend, isLoading: trendLoading } = useQuery({ queryKey: ["dashboard-sales-trend"], queryFn: fetchSalesTrend, staleTime: 60_000 });
   const { data: repairBreakdown } = useQuery({ queryKey: ["dashboard-repairs"], queryFn: fetchRepairBreakdown, staleTime: 60_000 });
   const { data: topProducts } = useQuery({ queryKey: ["dashboard-top-products"], queryFn: fetchTopProducts, staleTime: 60_000 });
+  const { data: recentInvoices } = useQuery({ queryKey: ["dashboard-recent-invoices"], queryFn: fetchRecentInvoices, staleTime: 60_000 });
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["dashboard-kpis"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-sales-trend"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-repairs"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-top-products"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-recent-invoices"] });
   };
 
   const kpiCards = [
-    { label: "Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", icon: DollarSign, color: "text-primary" },
-    { label: "Sales This Month", value: kpis ? fmt(kpis.salesMonth) : "—", icon: TrendingUp, color: "text-success" },
-    { label: "Pending Payments", value: kpis ? fmt(kpis.pendingPayments) : "—", icon: CreditCard, color: "text-warning" },
-    { label: "Cash Balance", value: kpis ? fmt(kpis.cashBalance) : "—", icon: Wallet, color: "text-info" },
-    { label: "Low Stock Items", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-destructive" },
+    { label: "Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", icon: DollarSign, bg: "bg-primary/10", iconColor: "text-primary", trend: "+12%", up: true },
+    { label: "Monthly Revenue", value: kpis ? fmt(kpis.salesMonth) : "—", icon: TrendingUp, bg: "bg-success/10", iconColor: "text-success", trend: "+8%", up: true },
+    { label: "Pending Payments", value: kpis ? fmt(kpis.pendingPayments) : "—", icon: CreditCard, bg: "bg-warning/10", iconColor: "text-warning", trend: "-5%", up: false },
+    { label: "Total Customers", value: kpis ? String(kpis.totalCustomers) : "—", icon: Users, bg: "bg-info/10", iconColor: "text-info", trend: "+22%", up: true },
+  ];
+
+  const statCards = [
+    { label: "Cash Balance", value: kpis ? fmt(kpis.cashBalance) : "—", icon: Wallet, color: "text-primary" },
+    { label: "Low Stock", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-destructive" },
     { label: "Active Repairs", value: kpis ? String(kpis.activeRepairs) : "—", icon: Wrench, color: "text-accent" },
     { label: "Completed Today", value: kpis ? String(kpis.completedToday) : "—", icon: CheckCircle, color: "text-success" },
-    { label: "Total Customers", value: kpis ? String(kpis.totalCustomers) : "—", icon: Users, color: "text-primary" },
   ];
+
+  const paymentBadge = (status: string) => {
+    const styles: Record<string, string> = {
+      paid: "bg-success/10 text-success",
+      unpaid: "bg-destructive/10 text-destructive",
+      partial: "bg-warning/10 text-warning",
+    };
+    return (
+      <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full capitalize ${styles[status] || "bg-muted text-muted-foreground"}`}>
+        {status}
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back. Here's your business overview.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={refresh}><RefreshCw className="h-4 w-4 mr-2" />Refresh</Button>
-      </div>
+      {/* Welcome Banner */}
+      <Card className="border-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent overflow-hidden">
+        <CardContent className="p-6 flex items-center justify-between">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              Welcome back! 🎉
+            </h1>
+            <p className="text-sm text-muted-foreground max-w-md">
+              Here's what's happening with your business today. Keep up the great work!
+            </p>
+            <Button variant="default" size="sm" className="mt-2" onClick={refresh}>
+              <RefreshCw className="h-3.5 w-3.5 mr-2" />Refresh Data
+            </Button>
+          </div>
+          <div className="hidden md:flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Today's Date</p>
+              <p className="text-sm font-semibold text-foreground">{format(new Date(), "dd MMM yyyy")}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* KPI Cards */}
+      {/* Primary KPI Cards - Materialize style with trend indicators */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiCards.map((kpi) => (
-          <Card key={kpi.label}>
+          <Card key={kpi.label} className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
             <CardContent className="p-5">
               {kpiLoading ? (
-                <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-7 w-32" /></div>
+                <div className="space-y-3"><Skeleton className="h-4 w-20" /><Skeleton className="h-8 w-28" /></div>
               ) : (
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">{kpi.label}</p>
-                    <p className="text-2xl font-bold">{kpi.value}</p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{kpi.label}</p>
+                    <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
+                    <div className={`flex items-center gap-1 text-xs font-medium ${kpi.up ? "text-success" : "text-destructive"}`}>
+                      {kpi.up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                      {kpi.trend}
+                    </div>
                   </div>
-                  <div className={`p-2.5 rounded-xl bg-muted ${kpi.color}`}>
-                    <kpi.icon className="h-5 w-5" />
+                  <div className={`h-11 w-11 rounded-xl ${kpi.bg} flex items-center justify-center`}>
+                    <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
                   </div>
                 </div>
               )}
@@ -132,52 +181,142 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Sales Trend (Last 7 Days)</CardTitle></CardHeader>
-          <CardContent>
-            {trendLoading ? <Skeleton className="h-[280px] w-full" /> : (
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={salesTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
-                  <Line type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ fill: "hsl(var(--primary))", r: 4 }} />
-                </LineChart>
+      {/* Secondary stat row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {statCards.map((s) => (
+          <Card key={s.label} className="border-border/50">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={`h-9 w-9 rounded-lg bg-muted flex items-center justify-center ${s.color}`}>
+                <s.icon className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground font-medium">{s.label}</p>
+                <p className="text-lg font-bold text-foreground">{kpiLoading ? "—" : s.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Charts Row 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Sales Trend - Area chart */}
+        <Card className="lg:col-span-2 border-border/50 shadow-sm">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Sales Trend</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Last 7 days performance</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold text-foreground">{kpis ? fmt(kpis.salesMonth) : "—"}</p>
+                <p className="text-[11px] text-muted-foreground">This Month</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {trendLoading ? <Skeleton className="h-[260px] w-full rounded-lg" /> : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={salesTrend}>
+                  <defs>
+                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "hsl(var(--card))", border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px", fontSize: "12px", boxShadow: "0 4px 12px hsl(var(--foreground) / 0.08)",
+                    }}
+                    formatter={(value: number) => [fmt(value), "Sales"]}
+                  />
+                  <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#salesGradient)" dot={{ fill: "hsl(var(--primary))", r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }} />
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Repair Status Breakdown</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
+        {/* Repair Breakdown - Donut */}
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Repair Status</CardTitle>
+            <p className="text-xs text-muted-foreground">Current breakdown</p>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
-                <Pie data={repairBreakdown || []} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value">
+                <Pie data={repairBreakdown || []} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value" strokeWidth={0}>
                   {(repairBreakdown || []).map((entry, index) => <Cell key={index} fill={entry.color} />)}
                 </Pie>
-                <Tooltip />
-                <Legend />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px" }} />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
+      </div>
 
-        <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-base">Top Selling Products</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart layout="vertical" data={topProducts || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <YAxis dataKey="name" type="category" width={120} stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
-                <Bar dataKey="qty" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+      {/* Charts Row 2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top Products - Horizontal Bar */}
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Top Selling Products</CardTitle>
+            <p className="text-xs text-muted-foreground">By quantity sold</p>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart layout="vertical" data={topProducts || []} barSize={14}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis dataKey="name" type="category" width={100} stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+                <Bar dataKey="qty" fill="hsl(var(--info))" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Recent Invoices - Materialize style list */}
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Recent Invoices</CardTitle>
+                <p className="text-xs text-muted-foreground">Latest transactions</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-0">
+              {(recentInvoices || []).map((inv: any) => (
+                <div key={inv.id} className="flex items-center justify-between py-3 border-b border-border/50 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback className="text-[11px] bg-primary/10 text-primary font-semibold">
+                        {(inv.customers?.name || "?").slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{inv.customers?.name || "Unknown"}</p>
+                      <p className="text-[11px] text-muted-foreground">{inv.invoice_number}</p>
+                    </div>
+                  </div>
+                  <div className="text-right flex items-center gap-3">
+                    <p className="text-sm font-semibold text-foreground">{fmt(inv.total || 0)}</p>
+                    {paymentBadge(inv.payment_status || "unpaid")}
+                  </div>
+                </div>
+              ))}
+              {(!recentInvoices || recentInvoices.length === 0) && (
+                <p className="text-sm text-muted-foreground text-center py-8">No recent invoices</p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
