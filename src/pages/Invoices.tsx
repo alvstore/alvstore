@@ -186,22 +186,22 @@ export default function Invoices() {
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New Invoice</Button>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs - Materialize style */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Invoices", value: totalInvoices, icon: FileText, color: "text-primary" },
-          { label: "Paid", value: paidCount, icon: CheckCircle, color: "text-success" },
-          { label: "Unpaid", value: unpaidCount, icon: AlertCircle, color: "text-destructive" },
-          { label: "Revenue", value: `₹${totalRevenue.toLocaleString("en-IN")}`, icon: TrendingUp, color: "text-accent" },
+          { label: "Total Invoices", value: totalInvoices, icon: FileText, bg: "bg-primary/10", iconColor: "text-primary" },
+          { label: "Paid", value: paidCount, icon: CheckCircle, bg: "bg-success/10", iconColor: "text-success" },
+          { label: "Unpaid", value: unpaidCount, icon: AlertCircle, bg: "bg-destructive/10", iconColor: "text-destructive" },
+          { label: "Revenue", value: `₹${totalRevenue.toLocaleString("en-IN")}`, icon: TrendingUp, bg: "bg-accent/10", iconColor: "text-accent" },
         ].map(kpi => (
-          <Card key={kpi.label} className="border-border">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`h-10 w-10 rounded-lg bg-muted flex items-center justify-center ${kpi.color}`}>
-                <kpi.icon className="h-5 w-5" />
+          <Card key={kpi.label} className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-5 flex items-start justify-between">
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{kpi.label}</p>
+                <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                <p className="text-lg font-bold text-foreground">{kpi.value}</p>
+              <div className={`h-11 w-11 rounded-xl ${kpi.bg} flex items-center justify-center`}>
+                <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
               </div>
             </CardContent>
           </Card>
@@ -225,51 +225,71 @@ export default function Invoices() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Table - Materialize inspired */}
+      <Card className="border-border/50 shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/30">
-              <TableHead className="text-xs">Invoice #</TableHead>
-              <TableHead className="hidden sm:table-cell text-xs">Customer</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs">Payment</TableHead>
-              <TableHead className="text-right text-xs">Total</TableHead>
-              <TableHead className="hidden md:table-cell text-xs">Date</TableHead>
-              <TableHead className="w-32 text-xs">Actions</TableHead>
+            <TableRow className="border-border/50">
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">#ID</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</TableHead>
+              <TableHead className="hidden md:table-cell text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Issued Date</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Balance</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : invoices.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                <Receipt className="h-10 w-10 mx-auto mb-2 opacity-30" />No invoices found
+              <TableRow><TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                <Receipt className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">No invoices found</p>
               </TableCell></TableRow>
             ) : invoices.map(inv => (
-              <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openDetail(inv)}>
-                <TableCell className="font-medium text-sm">{inv.invoice_number}</TableCell>
-                <TableCell className="hidden sm:table-cell text-sm">{inv.customers?.name || "—"}</TableCell>
-                <TableCell><StatusBadge status={inv.status} /></TableCell>
+              <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/30 border-border/50 transition-colors" onClick={() => openDetail(inv)}>
+                <TableCell className="font-semibold text-sm text-primary">{inv.invoice_number}</TableCell>
                 <TableCell>
-                  <div className="space-y-1">
-                    <StatusBadge status={inv.payment_status} />
-                    {inv.payment_status === "partial" && (
-                      <Progress value={(inv.paid_amount / (inv.total || 1)) * 100} className="h-1 w-16" />
-                    )}
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-semibold text-primary">
+                        {(inv.customers?.name || "?").slice(0, 2).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{inv.customers?.name || "—"}</p>
+                      <p className="text-[11px] text-muted-foreground truncate hidden sm:block">{inv.customers?.email || ""}</p>
+                    </div>
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-semibold text-sm">₹{(inv.total || 0).toLocaleString("en-IN")}</TableCell>
-                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                  {new Date(inv.created_at).toLocaleDateString("en-IN")}
+                <TableCell className="font-semibold text-sm text-foreground">₹{(inv.total || 0).toLocaleString("en-IN")}</TableCell>
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                  {new Date(inv.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                </TableCell>
+                <TableCell>
+                  {inv.payment_status === "paid" ? (
+                    <StatusBadge status="paid" />
+                  ) : (
+                    <div className="space-y-1">
+                      <span className="text-sm font-medium text-destructive">
+                        ₹{((inv.total || 0) - (inv.paid_amount || 0)).toLocaleString("en-IN")}
+                      </span>
+                      {inv.paid_amount > 0 && (
+                        <Progress value={(inv.paid_amount / (inv.total || 1)) * 100} className="h-1.5 w-20" />
+                      )}
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell onClick={e => e.stopPropagation()}>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 items-center justify-end">
                     {inv.payment_status !== "paid" && (
-                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openPayment(inv)}>Pay</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs font-medium" onClick={() => openPayment(inv)}>Pay</Button>
                     )}
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyPublicLink(inv.public_token)} title="Copy link">
-                      <Copy className="h-3.5 w-3.5" />
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => copyPublicLink(inv.public_token)} title="Copy link">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openDetail(inv)} title="View">
+                      <Eye className="h-4 w-4" />
                     </Button>
                   </div>
                 </TableCell>
@@ -277,7 +297,7 @@ export default function Invoices() {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </Card>
 
       {/* Create Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>

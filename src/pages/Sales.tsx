@@ -199,22 +199,22 @@ export default function Sales() {
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> New Quotation</Button>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards - Materialize style */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Quotations", value: totalQuotations, icon: FileText, color: "text-primary" },
-          { label: "Accepted", value: acceptedCount, icon: CheckCircle, color: "text-success" },
-          { label: "Pending", value: pendingCount, icon: Clock, color: "text-warning" },
-          { label: "Total Value", value: `₹${totalValue.toLocaleString("en-IN")}`, icon: TrendingUp, color: "text-accent" },
+          { label: "Total Quotations", value: totalQuotations, icon: FileText, bg: "bg-primary/10", iconColor: "text-primary" },
+          { label: "Accepted", value: acceptedCount, icon: CheckCircle, bg: "bg-success/10", iconColor: "text-success" },
+          { label: "Pending", value: pendingCount, icon: Clock, bg: "bg-warning/10", iconColor: "text-warning" },
+          { label: "Total Value", value: `₹${totalValue.toLocaleString("en-IN")}`, icon: TrendingUp, bg: "bg-accent/10", iconColor: "text-accent" },
         ].map(kpi => (
-          <Card key={kpi.label} className="border-border">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`h-10 w-10 rounded-lg bg-muted flex items-center justify-center ${kpi.color}`}>
-                <kpi.icon className="h-5 w-5" />
+          <Card key={kpi.label} className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-5 flex items-start justify-between">
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{kpi.label}</p>
+                <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                <p className="text-lg font-bold text-foreground">{kpi.value}</p>
+              <div className={`h-11 w-11 rounded-xl ${kpi.bg} flex items-center justify-center`}>
+                <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
               </div>
             </CardContent>
           </Card>
@@ -238,44 +238,59 @@ export default function Sales() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Table - Materialize inspired */}
+      <Card className="border-border/50 shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/30">
-              <TableHead className="text-xs">Number</TableHead>
-              <TableHead className="hidden sm:table-cell text-xs">Customer</TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-right text-xs">Total</TableHead>
-              <TableHead className="hidden md:table-cell text-xs">Date</TableHead>
-              <TableHead className="hidden lg:table-cell text-xs text-center">Views</TableHead>
-              <TableHead className="w-32 text-xs">Actions</TableHead>
+            <TableRow className="border-border/50">
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">#ID</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-right">Total</TableHead>
+              <TableHead className="hidden md:table-cell text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Issued Date</TableHead>
+              <TableHead className="hidden lg:table-cell text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-center">Views</TableHead>
+              <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : quotations.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                <ShoppingCart className="h-10 w-10 mx-auto mb-2 opacity-30" />No quotations found
+              <TableRow><TableCell colSpan={7} className="text-center py-16 text-muted-foreground">
+                <ShoppingCart className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">No quotations found</p>
               </TableCell></TableRow>
             ) : quotations.map(q => (
-              <TableRow key={q.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openDetail(q)}>
-                <TableCell className="font-medium text-sm">{q.quotation_number}</TableCell>
-                <TableCell className="hidden sm:table-cell text-sm">{q.customers?.name || "—"}</TableCell>
-                <TableCell><StatusBadge status={q.status} /></TableCell>
-                <TableCell className="text-right font-semibold text-sm">₹{(q.total || 0).toLocaleString("en-IN")}</TableCell>
-                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                  {new Date(q.created_at).toLocaleDateString("en-IN")}
+              <TableRow key={q.id} className="cursor-pointer hover:bg-muted/30 border-border/50 transition-colors" onClick={() => openDetail(q)}>
+                <TableCell className="font-semibold text-sm text-primary">{q.quotation_number}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-semibold text-primary">
+                        {(q.customers?.name || "?").slice(0, 2).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{q.customers?.name || "—"}</p>
+                      <p className="text-[11px] text-muted-foreground truncate hidden sm:block">{q.customers?.email || ""}</p>
+                    </div>
+                  </div>
                 </TableCell>
-                <TableCell className="hidden lg:table-cell text-center text-xs text-muted-foreground">{q.view_count || 0}</TableCell>
+                <TableCell><StatusBadge status={q.status} /></TableCell>
+                <TableCell className="text-right font-semibold text-sm text-foreground">₹{(q.total || 0).toLocaleString("en-IN")}</TableCell>
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                  {new Date(q.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                </TableCell>
+                <TableCell className="hidden lg:table-cell text-center">
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{q.view_count || 0}</span>
+                </TableCell>
                 <TableCell onClick={e => e.stopPropagation()}>
-                  <div className="flex gap-1 items-center">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyPublicLink(q.public_token)} title="Copy link">
-                      <Copy className="h-3.5 w-3.5" />
+                  <div className="flex gap-1 items-center justify-end">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => copyPublicLink(q.public_token)} title="Copy link">
+                      <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="View public">
-                      <a href={`/sales/public/${q.public_token}`} target="_blank"><Eye className="h-3.5 w-3.5" /></a>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" asChild title="View">
+                      <a href={`/sales/public/${q.public_token}`} target="_blank"><Eye className="h-4 w-4" /></a>
                     </Button>
                   </div>
                 </TableCell>
@@ -283,7 +298,7 @@ export default function Sales() {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </Card>
 
       {/* Create Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
