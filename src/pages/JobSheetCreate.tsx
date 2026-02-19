@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -16,10 +17,21 @@ import { Separator } from "@/components/ui/separator";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2 } from "lucide-react";
+import {
+  ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2, Check,
+  User, Smartphone, IndianRupee, ClipboardCheck, FileText,
+} from "lucide-react";
 import { toast } from "sonner";
 
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+
+const STEPS = [
+  { label: "Customer", icon: User },
+  { label: "Device", icon: Smartphone },
+  { label: "Service Charges", icon: IndianRupee },
+  { label: "Checklist", icon: ClipboardCheck },
+  { label: "Review", icon: FileText },
+];
 
 interface ChecklistItem {
   category: string;
@@ -132,27 +144,33 @@ const DEVICE_CHECKLISTS: Record<string, ChecklistItem[]> = {
   ],
 };
 
-// Categories that depend on "Device turns ON"
 const POWER_DEPENDENT_CATEGORIES = ["Display", "Audio", "Camera", "Network", "Hardware", "Input", "Ports", "Cooling"];
 
 function getChecklistForDevice(deviceType: string): ChecklistItem[] {
-  // Try exact match first, then partial match
   if (DEVICE_CHECKLISTS[deviceType]) return DEVICE_CHECKLISTS[deviceType].map(c => ({ ...c }));
   const lower = deviceType.toLowerCase();
   if (lower.includes("laptop") || lower.includes("notebook")) return DEVICE_CHECKLISTS.Laptop.map(c => ({ ...c }));
   if (lower.includes("tablet") || lower.includes("ipad")) return DEVICE_CHECKLISTS.Tablet.map(c => ({ ...c }));
   if (lower.includes("desktop") || lower.includes("pc") || lower.includes("computer")) return DEVICE_CHECKLISTS.Desktop.map(c => ({ ...c }));
-  // Default to Mobile
   return DEVICE_CHECKLISTS.Mobile.map(c => ({ ...c }));
+}
+
+interface ServiceCategory {
+  id: string;
+  name: string;
+  default_charge: number;
 }
 
 export default function JobSheetCreate() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { id: editId } = useParams();
 
+  const [currentStep, setCurrentStep] = useState(1);
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<{ id: string; name: string }[]>([]);
-  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [customers, setCustomers] = useState<{ id: string; name: string; phone?: string; email?: string; gst_number?: string; address?: string }[]>([]);
+  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(getChecklistForDevice("Mobile"));
   const [issueTags, setIssueTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
@@ -162,6 +180,7 @@ export default function JobSheetCreate() {
   const [showApplePassword, setShowApplePassword] = useState(false);
   const [showGooglePassword, setShowGooglePassword] = useState(false);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
 
   const [form, setForm] = useState({
     customer_id: "",
@@ -184,33 +203,59 @@ export default function JobSheetCreate() {
     google_account: "",
     google_account_password: "",
     device_lock_code: "",
+    // Service charge fields
+    service_charge: "",
+    gst_mode: "exclusive",
+    gst_percentage: "18",
+    discount_type: "none",
+    discount_value: "",
   });
 
   useEffect(() => {
     Promise.all([
       supabase.from("device_brands").select("id, name").order("name"),
       supabase.from("device_types").select("id, name").order("name"),
-      supabase.from("customers").select("id, name").order("name"),
-    ]).then(([bRes, tRes, cRes]) => {
+      supabase.from("customers").select("id, name, phone, email, gst_number, address").order("name"),
+      supabase.from("service_charge_categories").select("*").order("name"),
+    ]).then(([bRes, tRes, cRes, scRes]) => {
       setBrands(bRes.data || []);
       setDeviceTypes(tRes.data || []);
       setCustomers(cRes.data || []);
+      setServiceCategories((scRes.data as ServiceCategory[]) || []);
     });
   }, []);
 
-  // When device type changes, reload checklist
+  // When device type changes, reload checklist and auto-fill service charge
   useEffect(() => {
     const type = form.device_type === "__other__" ? form.custom_type : form.device_type;
     if (!type) return;
     const newChecklist = getChecklistForDevice(type);
     setChecklist(newChecklist);
     setDeviceIsOff(false);
-    // Open all categories by default
     const cats = [...new Set(newChecklist.map(c => c.category))];
     const openMap: Record<string, boolean> = {};
     cats.forEach(c => { openMap[c] = true; });
     setOpenCategories(openMap);
-  }, [form.device_type, form.custom_type]);
+
+    // Auto-fill service charge from categories
+    const matchCat = serviceCategories.find(sc =>
+      sc.name.toLowerCase() === type.toLowerCase() ||
+      type.toLowerCase().includes(sc.name.toLowerCase())
+    );
+    if (matchCat) {
+      setForm(prev => ({ ...prev, service_charge: String(matchCat.default_charge) }));
+    }
+  }, [form.device_type, form.custom_type, serviceCategories]);
+
+  // When customer is selected, update preview
+  useEffect(() => {
+    if (form.customer_id) {
+      const cust = customers.find(c => c.id === form.customer_id);
+      setSelectedCustomer(cust || null);
+    } else {
+      setSelectedCustomer(null);
+    }
+  }, [form.customer_id, customers]);
 
   const updateField = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -246,19 +291,54 @@ export default function JobSheetCreate() {
     setImageFiles(prev => [...prev.filter(i => i.type !== type), { type, file: files[0] }]);
   };
 
-  const validate = () => {
-    if (!form.customer_id) { toast.error("Select a customer"); return false; }
-    if (!form.device_brand && !form.custom_brand) { toast.error("Select device brand"); return false; }
-    if (!form.device_type && !form.custom_type) { toast.error("Select device type"); return false; }
-    if (!form.problem_description.trim()) { toast.error("Enter problem description"); return false; }
-    if (!form.staff_notes.trim()) { toast.error("Staff notes are mandatory"); return false; }
-    const incomplete = checklist.filter(c => c.value === "");
-    if (incomplete.length > 0) { toast.error(`Complete all checklist items (${incomplete.length} remaining)`); return false; }
+  // Service charge calculations
+  const serviceCharge = parseFloat(form.service_charge) || 0;
+  const gstPercent = parseFloat(form.gst_percentage) || 0;
+  const discountValue = parseFloat(form.discount_value) || 0;
+
+  const calcDiscount = () => {
+    if (form.discount_type === "percentage") return (serviceCharge * discountValue) / 100;
+    if (form.discount_type === "fixed") return discountValue;
+    return 0;
+  };
+  const discount = calcDiscount();
+  const afterDiscount = serviceCharge - discount;
+
+  const calcGst = () => {
+    if (form.gst_mode === "none") return 0;
+    if (form.gst_mode === "inclusive") return afterDiscount - (afterDiscount / (1 + gstPercent / 100));
+    return (afterDiscount * gstPercent) / 100; // exclusive
+  };
+  const gstAmount = calcGst();
+  const totalAmount = form.gst_mode === "inclusive" ? afterDiscount : afterDiscount + gstAmount;
+
+  const validateStep = (step: number) => {
+    if (step === 1) {
+      if (!form.customer_id) { toast.error("Select a customer"); return false; }
+    }
+    if (step === 2) {
+      if (!form.device_brand && !form.custom_brand) { toast.error("Select device brand"); return false; }
+      if (!form.device_type && !form.custom_type) { toast.error("Select device type"); return false; }
+      if (!form.problem_description.trim()) { toast.error("Enter problem description"); return false; }
+    }
+    if (step === 4) {
+      if (!form.staff_notes.trim()) { toast.error("Staff notes are mandatory"); return false; }
+      const incomplete = checklist.filter(c => c.value === "");
+      if (incomplete.length > 0) { toast.error(`Complete all checklist items (${incomplete.length} remaining)`); return false; }
+    }
     return true;
   };
 
-  const handleSave = async () => {
-    if (!validate()) return;
+  const nextStep = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep(prev => Math.min(prev + 1, 5));
+    }
+  };
+
+  const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
+
+  const handleSave = async (generateInvoice = false) => {
+    if (!validateStep(4)) return;
     setSaving(true);
 
     try {
@@ -296,9 +376,17 @@ export default function JobSheetCreate() {
         google_account: form.google_account || null,
         google_account_password: form.google_account_password || null,
         device_lock_code: form.device_lock_code || null,
+        // Billing fields
+        service_charge: serviceCharge,
+        gst_mode: form.gst_mode,
+        gst_percentage: gstPercent,
+        gst_amount: gstAmount,
+        discount_type: form.discount_type,
+        discount_value: discountValue,
+        total_amount: totalAmount,
+        payment_status: "unpaid",
       };
       const { data: job, error } = await supabase.from("job_sheets").insert(insertData).select().single();
-
       if (error) throw error;
 
       for (const img of imageFiles) {
@@ -323,6 +411,47 @@ export default function JobSheetCreate() {
         user_id: user?.id,
         user_role: "staff",
       });
+
+      // Generate invoice if requested
+      if (generateInvoice) {
+        const invoiceData: any = {
+          customer_id: form.customer_id,
+          job_sheet_id: job.id,
+          gst_inclusive: form.gst_mode === "inclusive",
+          discount_type: form.discount_type === "none" ? "percentage" : form.discount_type,
+          discount_value: form.discount_type === "none" ? 0 : discountValue,
+          subtotal: serviceCharge,
+          gst_amount: gstAmount,
+          total: totalAmount,
+          status: "draft",
+          payment_status: "unpaid",
+          created_by: user?.id,
+        };
+        const { data: invoice, error: invErr } = await supabase.from("invoices").insert(invoiceData).select().single();
+        if (!invErr && invoice) {
+          // Add service charge as line item
+          await supabase.from("invoice_items").insert({
+            invoice_id: invoice.id,
+            product_name: `Service Charge - ${finalType}`,
+            unit_price: serviceCharge,
+            quantity: 1,
+            gst_percentage: gstPercent,
+            total: serviceCharge,
+          });
+          // Link invoice to job sheet
+          await supabase.from("job_sheets").update({
+            invoice_id: invoice.id,
+            status: "invoice_generated" as any,
+          }).eq("id", job.id);
+
+          await supabase.from("job_sheet_audit_log").insert({
+            job_sheet_id: job.id,
+            action: "invoice_generated",
+            details: `Invoice ${invoice.invoice_number} generated from job sheet`,
+            user_id: user?.id,
+          });
+        }
+      }
 
       toast.success(`Job Sheet ${job.job_number} created`);
       navigate(`/repairs/${job.id}`);
@@ -350,342 +479,509 @@ export default function JobSheetCreate() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate("/repairs")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">New Job Sheet</h1>
-          <p className="text-muted-foreground">Create a mandatory repair job sheet</p>
+          <p className="text-muted-foreground">Step-by-step repair job creation</p>
         </div>
       </div>
 
-      {/* Customer Section */}
+      {/* Stepper Indicator */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Customer Information</CardTitle></CardHeader>
-        <CardContent>
-          <div className="space-y-1.5">
-            <Label>Customer *</Label>
-            <Select value={form.customer_id} onValueChange={v => updateField("customer_id", v)}>
-              <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-              <SelectContent>
-                {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Device Section */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Device Information</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Brand *</Label>
-              <Select value={form.device_brand} onValueChange={v => updateField("device_brand", v)}>
-                <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
-                <SelectContent>
-                  {brands.map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
-                  <SelectItem value="__other__">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              {form.device_brand === "__other__" && (
-                <Input placeholder="Enter brand name" value={form.custom_brand} onChange={e => updateField("custom_brand", e.target.value)} className="mt-2" />
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label>Device Type *</Label>
-              <Select value={form.device_type} onValueChange={v => updateField("device_type", v)}>
-                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                <SelectContent>
-                  {deviceTypes.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
-                  <SelectItem value="__other__">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              {form.device_type === "__other__" && (
-                <Input placeholder="Enter device type" value={form.custom_type} onChange={e => updateField("custom_type", e.target.value)} className="mt-2" />
-              )}
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              { field: "device_model", label: "Model Name" },
-              { field: "serial_number", label: "Serial Number" },
-              { field: "imei_number", label: "IMEI Number" },
-              { field: "device_color", label: "Color" },
-              { field: "storage_capacity", label: "Storage Capacity" },
-            ].map(({ field, label }) => (
-              <div key={field} className="space-y-1.5">
-                <Label>{label}</Label>
-                <Input value={(form as any)[field]} onChange={e => updateField(field, e.target.value)} />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Photo Upload */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Device Photos</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {imageTypes.map(type => {
-              const selected = imageFiles.find(i => i.type === type);
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            {STEPS.map((step, idx) => {
+              const stepNum = idx + 1;
+              const isCompleted = currentStep > stepNum;
+              const isCurrent = currentStep === stepNum;
+              const StepIcon = step.icon;
               return (
-                <label key={type} className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 cursor-pointer hover:border-primary/50 transition-colors min-h-[120px]">
-                  {selected ? (
-                    <div className="text-center">
-                      <p className="text-xs text-primary font-medium truncate max-w-full">{selected.file.name}</p>
-                      <p className="text-xs text-muted-foreground capitalize mt-1">{type}</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className="h-6 w-6 text-muted-foreground mb-1" />
-                      <p className="text-xs text-muted-foreground capitalize">{type}</p>
-                    </>
+                <div key={stepNum} className="flex items-center flex-1 last:flex-initial">
+                  <div className="flex flex-col items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        if (stepNum < currentStep) setCurrentStep(stepNum);
+                      }}
+                      className={`h-10 w-10 rounded-full flex items-center justify-center transition-all text-sm font-semibold ${
+                        isCompleted
+                          ? "bg-primary text-primary-foreground cursor-pointer"
+                          : isCurrent
+                          ? "bg-primary/20 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {isCompleted ? <Check className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
+                    </button>
+                    <span className={`text-[11px] font-medium hidden sm:block ${
+                      isCurrent ? "text-primary" : isCompleted ? "text-foreground" : "text-muted-foreground"
+                    }`}>{step.label}</span>
+                  </div>
+                  {idx < STEPS.length - 1 && (
+                    <div className={`flex-1 h-0.5 mx-2 rounded-full ${isCompleted ? "bg-primary" : "bg-border"}`} />
                   )}
-                  <input type="file" accept="image/*" className="hidden" onChange={e => handleImageSelect(type, e.target.files)} />
-                </label>
+                </div>
               );
             })}
           </div>
         </CardContent>
       </Card>
 
-      {/* Account Credentials */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Account & Security Credentials</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Step 1: Customer */}
+      {currentStep === 1 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4" /> Customer Information</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Apple ID</Label>
-              <Input placeholder="apple@icloud.com" value={form.apple_id} onChange={e => updateField("apple_id", e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Apple ID Password</Label>
-              <div className="relative">
-                <Input
-                  type={showApplePassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={form.apple_id_password}
-                  onChange={e => updateField("apple_id_password", e.target.value)}
-                />
-                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowApplePassword(p => !p)}>
-                  {showApplePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Google Account</Label>
-              <Input placeholder="user@gmail.com" value={form.google_account} onChange={e => updateField("google_account", e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Google Account Password</Label>
-              <div className="relative">
-                <Input
-                  type={showGooglePassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={form.google_account_password}
-                  onChange={e => updateField("google_account_password", e.target.value)}
-                />
-                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowGooglePassword(p => !p)}>
-                  {showGooglePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="max-w-sm space-y-1.5">
-            <Label>Device Lock Code / PIN</Label>
-            <Input placeholder="Enter lock code" value={form.device_lock_code} onChange={e => updateField("device_lock_code", e.target.value)} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pre-Repair Checklist */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Pre-Repair Checklist *</CardTitle>
-            <div className="flex items-center gap-2">
-              {overallProgress.percent === 100 && <CheckCircle2 className="h-4 w-4 text-success" />}
-              <Badge variant={overallProgress.percent === 100 ? "default" : "secondary"}>
-                {overallProgress.completed}/{overallProgress.total}
-              </Badge>
-            </div>
-          </div>
-          <Progress value={overallProgress.percent} className="h-2 mt-2" />
-          {deviceIsOff && (
-            <div className="flex items-center gap-2 text-xs text-warning mt-2">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              <span>Device is OFF — dependent checks auto-set to N/A. You can override manually.</span>
-            </div>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {categories.map(cat => {
-            const progress = getCategoryProgress(cat);
-            return (
-              <Collapsible
-                key={cat}
-                open={openCategories[cat] ?? true}
-                onOpenChange={(open) => setOpenCategories(prev => ({ ...prev, [cat]: open }))}
-              >
-                <CollapsibleTrigger asChild>
-                  <button className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm">
-                    <div className="flex items-center gap-2">
-                      <ChevronDown className={`h-4 w-4 transition-transform ${openCategories[cat] ? "" : "-rotate-90"}`} />
-                      <span className="font-medium">{cat}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Progress value={progress.percent} className="h-1.5 w-16" />
-                      <Badge variant={progress.percent === 100 ? "default" : "secondary"} className={`text-xs min-w-[40px] justify-center ${progress.percent > 0 && progress.percent < 100 ? "bg-warning/15 text-warning border-warning/30" : ""}`}>
-                        {progress.completed}/{progress.total}
-                      </Badge>
-                    </div>
-                  </button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-1">
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-muted/30">
-                          <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Item</th>
-                          <th className="text-center px-2 py-2 font-medium text-muted-foreground text-xs w-[140px]">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {checklist.map((item, idx) => item.category !== cat ? null : (
-                          <tr key={idx} className="border-t border-border/50">
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-2">
-                                <span>{item.item}</span>
-                                {item.autoSet && (
-                                  <span className="text-[9px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">Auto</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-2 py-2">
-                              <div className="flex gap-1 justify-center">
-                                <button
-                                  type="button"
-                                  onClick={() => updateChecklist(idx, "yes")}
-                                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                                    item.value === "yes"
-                                      ? "bg-success text-success-foreground"
-                                      : "bg-muted text-muted-foreground hover:bg-success/20 hover:text-success"
-                                  }`}
-                                >
-                                  Yes
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => updateChecklist(idx, "no")}
-                                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                                    item.value === "no"
-                                      ? "bg-destructive text-destructive-foreground"
-                                      : "bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
-                                  }`}
-                                >
-                                  No
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => updateChecklist(idx, "na")}
-                                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                                    item.value === "na"
-                                      ? "bg-muted-foreground text-background"
-                                      : "bg-muted text-muted-foreground hover:bg-muted-foreground/20"
-                                  }`}
-                                >
-                                  N/A
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      {/* Problem Description */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Problem Description *</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            rows={3}
-            placeholder="Describe the issue..."
-            value={form.problem_description}
-            onChange={e => updateField("problem_description", e.target.value)}
-          />
-          <div>
-            <Label className="mb-1.5 block">Issue Tags</Label>
-            <div className="flex gap-2 flex-wrap mb-2">
-              {issueTags.map(tag => (
-                <Badge key={tag} variant="secondary" className="gap-1">
-                  {tag}
-                  <button type="button" onClick={() => setIssueTags(prev => prev.filter(t => t !== tag))}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Input placeholder="Add tag" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addTag())} className="max-w-xs" />
-              <Button type="button" variant="outline" size="sm" onClick={addTag}><Plus className="h-3 w-3" /></Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Estimate */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Repair Estimate</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label>Estimated Cost (₹)</Label>
-              <Input type="number" value={form.estimated_cost} onChange={e => updateField("estimated_cost", e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Estimated Completion</Label>
-              <Input type="date" value={form.estimated_completion} onChange={e => updateField("estimated_completion", e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Priority</Label>
-              <Select value={form.priority} onValueChange={v => updateField("priority", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{PRIORITIES.map(p => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}</SelectContent>
+              <Label>Select Customer *</Label>
+              <Select value={form.customer_id} onValueChange={v => updateField("customer_id", v)}>
+                <SelectTrigger><SelectValue placeholder="Search and select customer" /></SelectTrigger>
+                <SelectContent>
+                  {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name} {c.phone ? `— ${c.phone}` : ""}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            {selectedCustomer && (
+              <Card className="bg-muted/30 border-primary/20">
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="text-sm grid grid-cols-2 gap-x-6 gap-y-1 flex-1">
+                      <p><span className="text-muted-foreground">Name:</span> {selectedCustomer.name}</p>
+                      <p><span className="text-muted-foreground">Phone:</span> {selectedCustomer.phone || "—"}</p>
+                      <p><span className="text-muted-foreground">Email:</span> {selectedCustomer.email || "—"}</p>
+                      <p><span className="text-muted-foreground">GSTIN:</span> {selectedCustomer.gst_number || "—"}</p>
+                      {selectedCustomer.address && (
+                        <p className="col-span-2"><span className="text-muted-foreground">Address:</span> {selectedCustomer.address}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Staff Notes */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Staff Notes *</CardTitle></CardHeader>
-        <CardContent>
-          <Textarea
-            rows={3}
-            placeholder="Enter mandatory staff notes..."
-            value={form.staff_notes}
-            onChange={e => updateField("staff_notes", e.target.value)}
-          />
-        </CardContent>
-      </Card>
+      {/* Step 2: Device */}
+      {currentStep === 2 && (
+        <>
+          <Card>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Smartphone className="h-4 w-4" /> Device Information</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Device Type *</Label>
+                  <Select value={form.device_type} onValueChange={v => updateField("device_type", v)}>
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      {deviceTypes.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
+                      <SelectItem value="__other__">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.device_type === "__other__" && (
+                    <Input placeholder="Enter device type" value={form.custom_type} onChange={e => updateField("custom_type", e.target.value)} className="mt-2" />
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Brand *</Label>
+                  <Select value={form.device_brand} onValueChange={v => updateField("device_brand", v)}>
+                    <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
+                    <SelectContent>
+                      {brands.map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
+                      <SelectItem value="__other__">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.device_brand === "__other__" && (
+                    <Input placeholder="Enter brand name" value={form.custom_brand} onChange={e => updateField("custom_brand", e.target.value)} className="mt-2" />
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { field: "device_model", label: "Model Name" },
+                  { field: "serial_number", label: "Serial Number" },
+                  { field: "imei_number", label: "IMEI Number" },
+                  { field: "device_color", label: "Color" },
+                  { field: "storage_capacity", label: "Storage Capacity" },
+                ].map(({ field, label }) => (
+                  <div key={field} className="space-y-1.5">
+                    <Label>{label}</Label>
+                    <Input value={(form as any)[field]} onChange={e => updateField(field, e.target.value)} />
+                  </div>
+                ))}
+              </div>
+              <Separator />
+              <div className="space-y-1.5">
+                <Label>Problem Description *</Label>
+                <Textarea rows={3} placeholder="Describe the issue..." value={form.problem_description} onChange={e => updateField("problem_description", e.target.value)} />
+              </div>
+              <div>
+                <Label className="mb-1.5 block">Issue Tags</Label>
+                <div className="flex gap-2 flex-wrap mb-2">
+                  {issueTags.map(tag => (
+                    <Badge key={tag} variant="secondary" className="gap-1">
+                      {tag}
+                      <button type="button" onClick={() => setIssueTags(prev => prev.filter(t => t !== tag))}><X className="h-3 w-3" /></button>
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input placeholder="Add tag" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addTag())} className="max-w-xs" />
+                  <Button type="button" variant="outline" size="sm" onClick={addTag}><Plus className="h-3 w-3" /></Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-      <div className="flex gap-3 justify-end pb-6">
-        <Button variant="outline" onClick={() => navigate("/repairs")}>Cancel</Button>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? "Creating..." : "Create Job Sheet"}
-        </Button>
+          {/* Photos */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Device Photos</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {imageTypes.map(type => {
+                  const selected = imageFiles.find(i => i.type === type);
+                  return (
+                    <label key={type} className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 cursor-pointer hover:border-primary/50 transition-colors min-h-[120px]">
+                      {selected ? (
+                        <div className="text-center">
+                          <p className="text-xs text-primary font-medium truncate max-w-full">{selected.file.name}</p>
+                          <p className="text-xs text-muted-foreground capitalize mt-1">{type}</p>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload className="h-6 w-6 text-muted-foreground mb-1" />
+                          <p className="text-xs text-muted-foreground capitalize">{type}</p>
+                        </>
+                      )}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => handleImageSelect(type, e.target.files)} />
+                    </label>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Credentials */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Account & Security Credentials</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Apple ID</Label>
+                  <Input placeholder="apple@icloud.com" value={form.apple_id} onChange={e => updateField("apple_id", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Apple ID Password</Label>
+                  <div className="relative">
+                    <Input type={showApplePassword ? "text" : "password"} placeholder="••••••••" value={form.apple_id_password} onChange={e => updateField("apple_id_password", e.target.value)} />
+                    <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowApplePassword(p => !p)}>
+                      {showApplePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Google Account</Label>
+                  <Input placeholder="user@gmail.com" value={form.google_account} onChange={e => updateField("google_account", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Google Account Password</Label>
+                  <div className="relative">
+                    <Input type={showGooglePassword ? "text" : "password"} placeholder="••••••••" value={form.google_account_password} onChange={e => updateField("google_account_password", e.target.value)} />
+                    <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowGooglePassword(p => !p)}>
+                      {showGooglePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="max-w-sm space-y-1.5">
+                <Label>Device Lock Code / PIN</Label>
+                <Input placeholder="Enter lock code" value={form.device_lock_code} onChange={e => updateField("device_lock_code", e.target.value)} />
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Step 3: Service Charges */}
+      {currentStep === 3 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><IndianRupee className="h-4 w-4" /> Service Charges & Billing</CardTitle></CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Service Charge (₹)</Label>
+                  <Input type="number" value={form.service_charge} onChange={e => updateField("service_charge", e.target.value)} placeholder="Auto-filled from category" />
+                  {serviceCategories.find(sc => sc.name.toLowerCase() === (form.device_type === "__other__" ? form.custom_type : form.device_type).toLowerCase()) && (
+                    <p className="text-xs text-muted-foreground">Auto-filled from device category default</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>GST Mode</Label>
+                  <RadioGroup value={form.gst_mode} onValueChange={v => updateField("gst_mode", v)} className="flex gap-4">
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="none" id="gst-none" /><Label htmlFor="gst-none" className="font-normal">No GST</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="inclusive" id="gst-inc" /><Label htmlFor="gst-inc" className="font-normal">Inclusive</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="exclusive" id="gst-exc" /><Label htmlFor="gst-exc" className="font-normal">Exclusive</Label></div>
+                  </RadioGroup>
+                </div>
+
+                {form.gst_mode !== "none" && (
+                  <div className="space-y-1.5">
+                    <Label>GST Percentage (%)</Label>
+                    <Select value={form.gst_percentage} onValueChange={v => updateField("gst_percentage", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {["5", "12", "18", "28"].map(p => <SelectItem key={p} value={p}>{p}%</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Discount</Label>
+                  <RadioGroup value={form.discount_type} onValueChange={v => updateField("discount_type", v)} className="flex gap-4">
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="none" id="disc-none" /><Label htmlFor="disc-none" className="font-normal">None</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="percentage" id="disc-pct" /><Label htmlFor="disc-pct" className="font-normal">Percentage</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="fixed" id="disc-fix" /><Label htmlFor="disc-fix" className="font-normal">Fixed</Label></div>
+                  </RadioGroup>
+                </div>
+
+                {form.discount_type !== "none" && (
+                  <div className="space-y-1.5">
+                    <Label>Discount Value {form.discount_type === "percentage" ? "(%)" : "(₹)"}</Label>
+                    <Input type="number" value={form.discount_value} onChange={e => updateField("discount_value", e.target.value)} />
+                  </div>
+                )}
+              </div>
+
+              {/* Live Calculation Preview */}
+              <Card className="bg-muted/30 border-primary/20 h-fit">
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Billing Preview</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Service Charge</span>
+                    <span className="font-medium">₹{serviceCharge.toLocaleString("en-IN")}</span>
+                  </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-sm text-destructive">
+                      <span>Discount ({form.discount_type === "percentage" ? `${discountValue}%` : "Fixed"})</span>
+                      <span>-₹{discount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <Separator />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">After Discount</span>
+                    <span>₹{afterDiscount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {form.gst_mode !== "none" && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">GST ({gstPercent}% {form.gst_mode})</span>
+                      <span>₹{gstAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <Separator />
+                  <div className="flex justify-between text-base font-bold">
+                    <span>Total</span>
+                    <span className="text-primary">₹{totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 4: Pre-Repair Checklist */}
+      {currentStep === 4 && (
+        <>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Pre-Repair Checklist *</CardTitle>
+                <div className="flex items-center gap-2">
+                  {overallProgress.percent === 100 && <CheckCircle2 className="h-4 w-4 text-success" />}
+                  <Badge variant={overallProgress.percent === 100 ? "default" : "secondary"}>{overallProgress.completed}/{overallProgress.total}</Badge>
+                </div>
+              </div>
+              <Progress value={overallProgress.percent} className="h-2 mt-2" />
+              {deviceIsOff && (
+                <div className="flex items-center gap-2 text-xs text-warning mt-2">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span>Device is OFF — dependent checks auto-set to N/A. You can override manually.</span>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {categories.map(cat => {
+                const progress = getCategoryProgress(cat);
+                return (
+                  <Collapsible key={cat} open={openCategories[cat] ?? true} onOpenChange={(open) => setOpenCategories(prev => ({ ...prev, [cat]: open }))}>
+                    <CollapsibleTrigger asChild>
+                      <button className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm">
+                        <div className="flex items-center gap-2">
+                          <ChevronDown className={`h-4 w-4 transition-transform ${openCategories[cat] ? "" : "-rotate-90"}`} />
+                          <span className="font-medium">{cat}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Progress value={progress.percent} className="h-1.5 w-16" />
+                          <Badge variant={progress.percent === 100 ? "default" : "secondary"} className={`text-xs min-w-[40px] justify-center ${progress.percent > 0 && progress.percent < 100 ? "bg-warning/15 text-warning border-warning/30" : ""}`}>
+                            {progress.completed}/{progress.total}
+                          </Badge>
+                        </div>
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-1">
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead><tr className="bg-muted/30"><th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs">Item</th><th className="text-center px-2 py-2 font-medium text-muted-foreground text-xs w-[140px]">Status</th></tr></thead>
+                          <tbody>
+                            {checklist.map((item, idx) => item.category !== cat ? null : (
+                              <tr key={idx} className="border-t border-border/50">
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <span>{item.item}</span>
+                                    {item.autoSet && <span className="text-[9px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded-full">Auto</span>}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2">
+                                  <div className="flex gap-1 justify-center">
+                                    {(["yes", "no", "na"] as const).map(v => (
+                                      <button key={v} type="button" onClick={() => updateChecklist(idx, v)}
+                                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                                          item.value === v
+                                            ? v === "yes" ? "bg-success text-success-foreground" : v === "no" ? "bg-destructive text-destructive-foreground" : "bg-muted-foreground text-background"
+                                            : `bg-muted text-muted-foreground ${v === "yes" ? "hover:bg-success/20 hover:text-success" : v === "no" ? "hover:bg-destructive/20 hover:text-destructive" : "hover:bg-muted-foreground/20"}`
+                                        }`}
+                                      >{v === "na" ? "N/A" : v.charAt(0).toUpperCase() + v.slice(1)}</button>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Staff Notes & Priority *</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea rows={3} placeholder="Enter mandatory staff notes..." value={form.staff_notes} onChange={e => updateField("staff_notes", e.target.value)} />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Estimated Cost (₹)</Label>
+                  <Input type="number" value={form.estimated_cost} onChange={e => updateField("estimated_cost", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Estimated Completion</Label>
+                  <Input type="date" value={form.estimated_completion} onChange={e => updateField("estimated_completion", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Priority</Label>
+                  <Select value={form.priority} onValueChange={v => updateField("priority", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{PRIORITIES.map(p => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Step 5: Review */}
+      {currentStep === 5 && (
+        <>
+          {/* Customer Review */}
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><User className="h-4 w-4" /> Customer</CardTitle></CardHeader>
+            <CardContent className="text-sm grid grid-cols-2 gap-2">
+              <p><span className="text-muted-foreground">Name:</span> {selectedCustomer?.name || "—"}</p>
+              <p><span className="text-muted-foreground">Phone:</span> {selectedCustomer?.phone || "—"}</p>
+              <p><span className="text-muted-foreground">Email:</span> {selectedCustomer?.email || "—"}</p>
+              <p><span className="text-muted-foreground">GSTIN:</span> {selectedCustomer?.gst_number || "—"}</p>
+            </CardContent>
+          </Card>
+
+          {/* Device Review */}
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Smartphone className="h-4 w-4" /> Device</CardTitle></CardHeader>
+            <CardContent className="text-sm grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <p><span className="text-muted-foreground">Type:</span> {form.device_type === "__other__" ? form.custom_type : form.device_type}</p>
+              <p><span className="text-muted-foreground">Brand:</span> {form.device_brand === "__other__" ? form.custom_brand : form.device_brand}</p>
+              <p><span className="text-muted-foreground">Model:</span> {form.device_model || "—"}</p>
+              <p><span className="text-muted-foreground">Serial:</span> {form.serial_number || "—"}</p>
+              <p><span className="text-muted-foreground">IMEI:</span> {form.imei_number || "—"}</p>
+              <p><span className="text-muted-foreground">Problem:</span> {form.problem_description.slice(0, 50)}{form.problem_description.length > 50 ? "..." : ""}</p>
+            </CardContent>
+          </Card>
+
+          {/* Billing Review */}
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><IndianRupee className="h-4 w-4" /> Service Charge Summary</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">Service Charge</span><span>₹{serviceCharge.toLocaleString("en-IN")}</span></div>
+              {discount > 0 && (
+                <div className="flex justify-between text-destructive"><span>Discount</span><span>-₹{discount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
+              )}
+              {form.gst_mode !== "none" && (
+                <div className="flex justify-between"><span className="text-muted-foreground">GST ({gstPercent}% {form.gst_mode})</span><span>₹{gstAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
+              )}
+              <Separator />
+              <div className="flex justify-between font-bold text-base"><span>Total</span><span className="text-primary">₹{totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
+            </CardContent>
+          </Card>
+
+          {/* Checklist Summary */}
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Checklist Summary</CardTitle></CardHeader>
+            <CardContent className="text-sm">
+              <div className="flex gap-4">
+                <Badge className="bg-success/10 text-success">Pass: {checklist.filter(c => c.value === "yes").length}</Badge>
+                <Badge className="bg-destructive/10 text-destructive">Fail: {checklist.filter(c => c.value === "no").length}</Badge>
+                <Badge className="bg-muted text-muted-foreground">N/A: {checklist.filter(c => c.value === "na").length}</Badge>
+              </div>
+              <p className="mt-2"><span className="text-muted-foreground">Priority:</span> <span className="capitalize">{form.priority}</span></p>
+              <p><span className="text-muted-foreground">Staff Notes:</span> {form.staff_notes.slice(0, 100)}</p>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Navigation Buttons */}
+      <div className="flex gap-3 justify-between pb-6">
+        <div>
+          {currentStep > 1 && (
+            <Button variant="outline" onClick={prevStep}>Back</Button>
+          )}
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => navigate("/repairs")}>Cancel</Button>
+          {currentStep < 5 ? (
+            <Button onClick={nextStep}>Next</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
+                {saving ? "Saving..." : "Save Job Sheet"}
+              </Button>
+              <Button onClick={() => handleSave(true)} disabled={saving}>
+                {saving ? "Saving..." : "Save & Generate Invoice"}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
