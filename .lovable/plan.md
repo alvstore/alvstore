@@ -1,111 +1,259 @@
 
 
-# Enhancement Plan: Calendar Views, Finance Receipts & Search, Dashboard Widgets
+# Repair Management Module -- Complete Overhaul
 
-## 1. Calendar -- Month/Week/Day/List Views
+## Overview
 
-The current calendar only has a month grid view. Based on the reference image, we need Month, Week, Day, and List toggle buttons with proper views for each.
-
-**Changes to `src/pages/CalendarPage.tsx`:**
-
-- Add a `viewMode` state: `"month" | "week" | "day" | "list"`
-- Add toggle button group (Month / Week / Day / List) in the calendar header, styled like the reference image
-- **Month View** (existing): Keep current grid, minor polish
-- **Week View**: 7-column grid with time slots (6AM-10PM) on the left axis. Events rendered as colored blocks spanning their time range. All-day events shown in a top row. Navigation arrows shift by 1 week. Header shows "Feb 15 -- 21, 2026" style date range
-- **Day View**: Single column with hourly slots. Events rendered as blocks. Header shows the selected date
-- **List View**: Simple chronological list of upcoming events in a table/card format with date grouping
-- Update navigation arrows to shift by week/day depending on current viewMode
-- "Today" button resets to current date in any view
+Full redesign of the repair module to support service charges with category-based defaults, per-repair GST (inclusive/exclusive), discounts, parts tracking, invoice generation from repairs, payment sync, and a step-by-step wizard for job sheet creation. All pages will follow Materialize admin template patterns (card layouts, stepper wizard, timeline, sticky sidebar).
 
 ---
 
-## 2. Finance: Income/Expense Receipt Slip + Date Filter + Search Fix
+## Database Changes
 
-### 2A. Receipt Slip for Income/Expense
+### 1. New Table: `service_charge_categories`
 
-When a user records an income (e.g., advance payment from customer), they need to download/print a receipt slip.
+Stores default service charges per device category (admin-configurable).
 
-**Changes to `TransactionTab` in `src/pages/Finance.tsx`:**
-- Add a "View" or receipt icon button on each transaction row
-- Clicking opens a receipt dialog/sheet with a print-optimized layout:
-  - Company name, address, phone (from `business_settings`)
-  - Receipt number (transaction_id)
-  - Date, Payment Mode, Amount (in words + digits)
-  - Category, Reference, Description
-  - "Received From" / "Paid To" field
-  - Staff name
-  - Signature line
-- Add "Print" and "Download PDF" buttons (using `window.print()` with print CSS)
-- Add "Send WhatsApp" and "Send Email" buttons to share receipt
+```
+id              uuid PK DEFAULT gen_random_uuid()
+name            text NOT NULL (e.g. "iPhone", "Laptop", "MacBook")
+default_charge  numeric NOT NULL DEFAULT 0
+created_at      timestamptz DEFAULT now()
+```
 
-### 2B. Date Filter for Income & Expense Tabs
+RLS: Admin full access, staff/technician read-only.
 
-**Changes to `TransactionTab`:**
-- Add date range filter buttons: Today, 7 Days, This Month, Custom (with date picker)
-- Filter the transaction list by the selected date range
-- Same pattern already used in Cash Control tab
+### 2. New Table: `repair_parts`
 
-### 2C. Search Fix -- Search Across All Fields
+Tracks parts used per repair job.
 
-**Current issue**: Search only matches `transaction_id` and `description`. User expects to search by date, amount, reference, staff name, payment mode.
+```
+id              uuid PK DEFAULT gen_random_uuid()
+job_sheet_id    uuid NOT NULL (FK to job_sheets)
+name            text NOT NULL
+cost            numeric NOT NULL DEFAULT 0
+gst_percentage  numeric DEFAULT 18
+quantity        integer DEFAULT 1
+total           numeric DEFAULT 0
+created_at      timestamptz DEFAULT now()
+```
 
-**Changes to `TransactionTab`:**
-- Expand search filter to match across: `transaction_id`, `date` (formatted), `amount` (string), `payment_mode`, `reference`, `staff_name`, `description`
+RLS: Admin and staff full access, technicians can view assigned jobs' parts.
 
-### 2D. Audit Log Search Fix
+### 3. Alter Table: `job_sheets`
 
-**Changes to `AuditLogTab` in `src/pages/Finance.tsx`:**
-- Expand search to match across: `action`, `details`, `staff_name`, `user_role`, `entity_type`, and formatted `created_at` date
-- Same fix in `src/pages/AuditLogs.tsx` (the standalone audit page)
+Add columns for billing:
+
+```
+service_charge      numeric DEFAULT 0
+discount_type       text DEFAULT 'none' (values: none, percentage, fixed)
+discount_value      numeric DEFAULT 0
+gst_mode            text DEFAULT 'exclusive' (values: inclusive, exclusive, none)
+gst_percentage      numeric DEFAULT 18
+gst_amount          numeric DEFAULT 0
+parts_total         numeric DEFAULT 0
+total_amount        numeric DEFAULT 0
+invoice_id          uuid (FK to invoices, nullable)
+payment_status      text DEFAULT 'unpaid' (values: unpaid, partial, paid)
+```
+
+### 4. Seed default service categories
+
+Insert rows via migration:
+
+- iPhone: 750
+- Android: 500
+- Laptop: 2600
+- MacBook: 3500
+- Tablet: 1000
+- Other: 500
 
 ---
 
-## 3. Dashboard -- Separate KPI Widgets for Quotations, POS Sales, and Total Sales
+## File Changes
 
-### Problem
-"POS Sales Today" KPI currently only shows POS transaction totals. User wants three separate clearly labeled widgets so nothing is merged.
+### A. `src/pages/JobSheetCreate.tsx` -- Stepper Wizard Rewrite
 
-**Changes to `src/pages/Dashboard.tsx`:**
+Replace the current single-page form with a 5-step wizard:
 
-- Replace the current secondary stat cards with a new row of 3 clearly separated widgets:
+- **Step state**: `currentStep` (1-5) with Next/Back buttons and a horizontal stepper indicator at the top showing completed/current/future steps with icons and labels.
 
-  1. **POS Sales Today** -- Sum of `pos_transactions.total` for today (already exists, keep as-is)
-  2. **Quotations Today** -- Sum of `quotations.total` created today (new query)
-  3. **Invoices Today** -- Sum of `invoices.total` created today (new query)
+- **Step 1 -- Customer Information**
+  - Select existing customer dropdown with search
+  - "Create New" button that reveals inline fields (Name, Phone, Email, Address, GSTIN)
+  - Customer contact card preview when selected
 
-- Add month equivalents below or as sub-text:
-  - POS Sales This Month
-  - Quotations This Month
-  - Invoices This Month
+- **Step 2 -- Device Information**
+  - Device category dropdown (iPhone, Android, Laptop, MacBook, Tablet, Other)
+  - Brand, Model, IMEI/Serial, Color, Storage
+  - Problem description, Issue tags
+  - Device photos upload (front, back, side, damage)
+  - Account credentials (Apple ID, Google, Lock Code)
 
-- Each widget uses a different icon and color to make them visually distinct:
-  - POS Sales: ShoppingCart icon, primary color
-  - Quotations: FileText icon, warning/amber color
-  - Invoices: Receipt icon, success/green color
+- **Step 3 -- Service Charges**
+  - Auto-fill service charge from `service_charge_categories` based on device category
+  - Editable service charge amount
+  - GST toggle: None / Inclusive / Exclusive (radio group)
+  - GST percentage selector (default 18%)
+  - Discount selector: None / Percentage / Fixed
+  - Discount value input
+  - Live calculation preview card showing: Service Charge, Discount, GST, Total
 
-- Update `fetchKpis()` to add new queries:
-  - `supabase.from("quotations").select("total").gte("created_at", today)` for quotations today
-  - `supabase.from("quotations").select("total").gte("created_at", monthStart)` for quotations this month
-  - `supabase.from("invoices").select("total").gte("created_at", today)` for invoices today
-  - `supabase.from("invoices").select("total").gte("created_at", monthStart)` for invoices this month
+- **Step 4 -- Pre-Repair Checklist**
+  - Same existing checklist logic (device-specific, collapsible categories, progress bars)
+  - Staff notes (mandatory)
+  - Priority selector
+  - Estimated completion date
+
+- **Step 5 -- Review and Submit**
+  - Full summary preview in a read-only card layout:
+    - Customer card
+    - Device info card
+    - Service charge + GST + discount breakdown
+    - Checklist summary (pass/fail counts)
+  - Two buttons: "Save Job Sheet" and "Save and Generate Invoice"
+  - "Save and Generate Invoice" creates both the job sheet and an invoice in one action
+
+### B. `src/pages/JobSheetDetail.tsx` -- Materialize Preview Layout
+
+Restructure to a two-column layout (70/30):
+
+**Left column (main content):**
+
+1. Business header card (company name, address, logo)
+2. Customer card (name, phone, email, GST)
+3. Device info card
+4. Service charge summary card:
+   - Service Charge line
+   - Parts list (from `repair_parts` table) with name, cost, GST, quantity, total
+   - Subtotal, Discount, GST breakdown (CGST/SGST), Grand Total
+5. Pre-repair checklist (existing, collapsed)
+6. Post-repair checklist (existing)
+7. Repair Status Timeline (Materialize vertical timeline):
+   - Each step: icon, label, date/time, user name, notes
+   - Completed steps in primary color, current with ring indicator, future greyed out
+   - Show audit log entries mapped to timeline steps
+8. Audit log
+
+**Right column (sticky sidebar actions):**
+
+- Status badge (large)
+- "Generate Invoice" button (creates invoice from repair data -- service charge + parts as line items)
+- "Add Payment" button (opens sheet to record payment, updates job payment_status and syncs to invoices/payments tables)
+- "Download PDF" button (print-optimized)
+- "Edit Job Sheet" button (navigates to edit route)
+- "Copy Public Link"
+- Payment status badge (Unpaid/Partial/Paid)
+- Assigned technician card
+- Device movement actions
+
+### C. `src/pages/JobSheets.tsx` -- Enhanced List Page
+
+Update table columns to match requirements:
+
+- Job Sheet Number
+- Customer (with avatar initials)
+- Device (brand + model)
+- Category (device_type)
+- Service Charge (formatted)
+- Total Amount (formatted)
+- Status badge
+- Created Date
+- Actions dropdown: View, Edit, Generate Invoice, Add Payment, Download PDF
+
+Add repair revenue KPI cards:
+
+- Total Repairs
+- Pending Approval
+- In Progress
+- Repair Revenue (sum of total_amount where payment_status = paid)
+
+### D. `src/pages/Dashboard.tsx` -- Repair Revenue Integration
+
+Update `fetchKpis()` to add:
+
+- Repair Revenue Today: sum of `job_sheets.total_amount` where `payment_status = 'paid'` and created today
+- Repair Revenue This Month: same but month range
+
+Add a "Repair Revenue" widget to the sales widgets row with Wrench icon.
+
+Update the repair breakdown chart to query `job_sheets` instead of `repair_tickets` (which may be unused).
+
+### E. Invoice Generation Logic
+
+When "Generate Invoice" is clicked on a repair:
+
+1. Create invoice with:
+   - customer_id from job sheet
+   - job_sheet_id linked
+   - Line items:
+     - Service charge as first item (product_name: "Service Charge - {device_type}", unit_price: service_charge)
+     - Each repair_part as additional line items
+   - GST mode, discount from job sheet
+   - Calculate totals using existing `calculateTotals` function
+
+2. Update `job_sheets.invoice_id` with the new invoice ID
+3. Update `job_sheets.status` to `invoice_generated`
+4. Log to `job_sheet_audit_log`
+
+### F. Payment Sync
+
+When payment is recorded against a repair:
+
+1. Insert into `payments` table with type = 'repair'
+2. Update `job_sheets.payment_status` based on paid vs total
+3. If invoice exists, update `invoices.paid_amount` and `invoices.payment_status`
+4. Log to `finance_audit_log`
+
+### G. Settings -- Service Charge Categories
+
+Add a "Service Categories" section in `src/pages/Settings.tsx` under the System group:
+
+- Table listing categories with name and default charge
+- Add/Edit/Delete categories
+- CRUD against `service_charge_categories` table
+
+### H. Routing Updates in `src/App.tsx`
+
+- Add route `/repairs/:id/edit` pointing to JobSheetCreate in edit mode
 
 ---
 
 ## Technical Details
 
+### New Files
+```
+None -- all changes are to existing files
+```
+
 ### Modified Files
 ```
-src/pages/CalendarPage.tsx -- Add Month/Week/Day/List views with toggle
-src/pages/Finance.tsx -- Receipt slip, date filter, search fix for TransactionTab + AuditLogTab
-src/pages/Dashboard.tsx -- Separate KPI widgets for POS/Quotations/Invoices
-src/pages/AuditLogs.tsx -- Search fix across all fields
+src/pages/JobSheetCreate.tsx  -- Full rewrite to stepper wizard with service charges
+src/pages/JobSheetDetail.tsx  -- Two-column Materialize layout with invoice/payment actions
+src/pages/JobSheets.tsx       -- Enhanced table columns, revenue KPIs, action dropdown
+src/pages/Dashboard.tsx       -- Add repair revenue widget
+src/pages/Settings.tsx        -- Add service charge categories management
+src/App.tsx                   -- Add /repairs/:id/edit route
 ```
 
-### No Database Changes Required
+### Database Migration (single SQL)
+```sql
+-- Service charge categories table
+CREATE TABLE service_charge_categories (...)
+-- Repair parts table
+CREATE TABLE repair_parts (...)
+-- Alter job_sheets with new billing columns
+ALTER TABLE job_sheets ADD COLUMN service_charge ...
+-- RLS policies for new tables
+-- Seed default categories
+```
 
 ### Implementation Order
-1. Dashboard KPI separation (quickest, clear impact)
-2. Finance search fix + date filter (TransactionTab + AuditLogTab)
-3. Finance receipt slip (print/download)
-4. Calendar Month/Week/Day/List views (largest change)
+1. Database migration (new tables + alter job_sheets)
+2. Settings -- service charge categories CRUD
+3. JobSheetCreate -- stepper wizard rewrite
+4. JobSheetDetail -- two-column layout + invoice generation + payment sync
+5. JobSheets -- enhanced list with revenue KPIs
+6. Dashboard -- repair revenue widget
+7. App.tsx routing update
 
