@@ -1170,15 +1170,23 @@ export type Database = {
           device_sent_at: string | null
           device_sent_by: string | null
           device_type: string
+          discount_type: string | null
+          discount_value: number | null
           estimated_completion: string | null
           estimated_cost: number | null
           final_cost: number | null
           google_account: string | null
           google_account_password: string | null
+          gst_amount: number | null
+          gst_mode: string | null
+          gst_percentage: number | null
           id: string
           imei_number: string | null
+          invoice_id: string | null
           issue_tags: Json | null
           job_number: string
+          parts_total: number | null
+          payment_status: string | null
           post_repair_checklist: Json | null
           pre_repair_checklist: Json | null
           priority: Database["public"]["Enums"]["repair_priority"]
@@ -1186,12 +1194,14 @@ export type Database = {
           public_token: string
           repair_notes: string | null
           serial_number: string | null
+          service_charge: number | null
           staff_notes: string | null
           status: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity: string | null
           technician_payment: number | null
           technician_payment_date: string | null
           technician_payment_status: string | null
+          total_amount: number | null
           updated_at: string
         }
         Insert: {
@@ -1214,15 +1224,23 @@ export type Database = {
           device_sent_at?: string | null
           device_sent_by?: string | null
           device_type: string
+          discount_type?: string | null
+          discount_value?: number | null
           estimated_completion?: string | null
           estimated_cost?: number | null
           final_cost?: number | null
           google_account?: string | null
           google_account_password?: string | null
+          gst_amount?: number | null
+          gst_mode?: string | null
+          gst_percentage?: number | null
           id?: string
           imei_number?: string | null
+          invoice_id?: string | null
           issue_tags?: Json | null
           job_number?: string
+          parts_total?: number | null
+          payment_status?: string | null
           post_repair_checklist?: Json | null
           pre_repair_checklist?: Json | null
           priority?: Database["public"]["Enums"]["repair_priority"]
@@ -1230,12 +1248,14 @@ export type Database = {
           public_token?: string
           repair_notes?: string | null
           serial_number?: string | null
+          service_charge?: number | null
           staff_notes?: string | null
           status?: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity?: string | null
           technician_payment?: number | null
           technician_payment_date?: string | null
           technician_payment_status?: string | null
+          total_amount?: number | null
           updated_at?: string
         }
         Update: {
@@ -1258,15 +1278,23 @@ export type Database = {
           device_sent_at?: string | null
           device_sent_by?: string | null
           device_type?: string
+          discount_type?: string | null
+          discount_value?: number | null
           estimated_completion?: string | null
           estimated_cost?: number | null
           final_cost?: number | null
           google_account?: string | null
           google_account_password?: string | null
+          gst_amount?: number | null
+          gst_mode?: string | null
+          gst_percentage?: number | null
           id?: string
           imei_number?: string | null
+          invoice_id?: string | null
           issue_tags?: Json | null
           job_number?: string
+          parts_total?: number | null
+          payment_status?: string | null
           post_repair_checklist?: Json | null
           pre_repair_checklist?: Json | null
           priority?: Database["public"]["Enums"]["repair_priority"]
@@ -1274,12 +1302,14 @@ export type Database = {
           public_token?: string
           repair_notes?: string | null
           serial_number?: string | null
+          service_charge?: number | null
           staff_notes?: string | null
           status?: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity?: string | null
           technician_payment?: number | null
           technician_payment_date?: string | null
           technician_payment_status?: string | null
+          total_amount?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -1288,6 +1318,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_sheets_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
         ]
@@ -1828,6 +1865,47 @@ export type Database = {
           },
         ]
       }
+      repair_parts: {
+        Row: {
+          cost: number
+          created_at: string
+          gst_percentage: number | null
+          id: string
+          job_sheet_id: string
+          name: string
+          quantity: number
+          total: number
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          gst_percentage?: number | null
+          id?: string
+          job_sheet_id: string
+          name: string
+          quantity?: number
+          total?: number
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          gst_percentage?: number | null
+          id?: string
+          job_sheet_id?: string
+          name?: string
+          quantity?: number
+          total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "repair_parts_job_sheet_id_fkey"
+            columns: ["job_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "job_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       repair_status_history: {
         Row: {
           changed_by: string | null
@@ -1936,6 +2014,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      service_charge_categories: {
+        Row: {
+          created_at: string
+          default_charge: number
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          default_charge?: number
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          default_charge?: number
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       stock_movements: {
         Row: {
