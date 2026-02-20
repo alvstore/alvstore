@@ -20,7 +20,7 @@ import {
 import {
   User, Shield, Building2, Receipt, Mail, MessageSquare, Phone,
   Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File,
-  Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2,
+  Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -51,6 +51,7 @@ const SETTINGS_SECTIONS = [
   { id: "razorpay", label: "Razorpay", icon: CreditCard, group: "Integrations", adminOnly: true },
   { id: "hikvision", label: "Hikvision", icon: Camera, group: "Integrations", adminOnly: true },
   { id: "templates", label: "Templates", icon: FileText, group: "System", adminOnly: true },
+  { id: "service-categories", label: "Service Categories", icon: Wrench, group: "System", adminOnly: true },
 ];
 
 export default function Settings() {
@@ -73,6 +74,7 @@ export default function Settings() {
       case "razorpay": return isAdmin ? <RazorpayTab /> : null;
       case "hikvision": return isAdmin ? <HikvisionTab /> : null;
       case "templates": return isAdmin ? <TemplatesTab /> : null;
+      case "service-categories": return isAdmin ? <ServiceCategoriesTab /> : null;
       default: return <ProfileTab />;
     }
   };
@@ -960,6 +962,87 @@ function TemplatesTab() {
           </div>
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+// ─── Service Categories Tab ─────────────────────────────────────
+function ServiceCategoriesTab() {
+  const [categories, setCategories] = useState<{ id: string; name: string; default_charge: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", default_charge: "" });
+  const [saving, setSaving] = useState(false);
+
+  const fetchCategories = async () => {
+    setLoading(true);
+    const { data } = await supabase.from("service_charge_categories").select("*").order("name");
+    if (data) setCategories(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchCategories(); }, []);
+
+  const save = async () => {
+    setSaving(true);
+    const payload = { name: form.name, default_charge: parseFloat(form.default_charge) || 0 };
+    if (editId) {
+      const { error } = await supabase.from("service_charge_categories").update(payload).eq("id", editId);
+      if (error) toast.error(error.message); else { toast.success("Category updated"); setEditId(null); setForm({ name: "", default_charge: "" }); fetchCategories(); }
+    } else {
+      const { error } = await supabase.from("service_charge_categories").insert(payload);
+      if (error) toast.error(error.message); else { toast.success("Category added"); setForm({ name: "", default_charge: "" }); fetchCategories(); }
+    }
+    setSaving(false);
+  };
+
+  const deleteCategory = async (id: string) => {
+    const { error } = await supabase.from("service_charge_categories").delete().eq("id", id);
+    if (error) toast.error(error.message); else { toast.success("Deleted"); fetchCategories(); }
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <Card>
+        <CardHeader><CardTitle>{editId ? "Edit Category" : "Add Service Category"}</CardTitle><CardDescription>Set default service charges per device type</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5"><Label>Category Name</Label><Input placeholder="e.g. iPhone" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
+            <div className="space-y-1.5"><Label>Default Charge (₹)</Label><Input type="number" placeholder="e.g. 750" value={form.default_charge} onChange={e => setForm(p => ({ ...p, default_charge: e.target.value }))} /></div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={save} disabled={saving || !form.name}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}{editId ? "Update" : "Add Category"}</Button>
+            {editId && <Button variant="outline" onClick={() => { setEditId(null); setForm({ name: "", default_charge: "" }); }}>Cancel</Button>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Existing Categories</CardTitle></CardHeader>
+        <CardContent>
+          {loading ? <p className="text-muted-foreground py-4 text-center text-sm">Loading...</p> : (
+            <Table>
+              <TableHeader>
+                <TableRow><TableHead>Device Category</TableHead><TableHead>Default Charge</TableHead><TableHead className="w-24">Actions</TableHead></TableRow>
+              </TableHeader>
+              <TableBody>
+                {categories.map(c => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell>₹{c.default_charge.toLocaleString("en-IN")}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditId(c.id); setForm({ name: c.name, default_charge: String(c.default_charge) }); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteCategory(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

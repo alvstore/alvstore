@@ -22,29 +22,36 @@ import { useAuth } from "@/hooks/useAuth";
 async function fetchKpis() {
   const today = startOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
+  const todayDate = format(startOfDay(new Date()), "yyyy-MM-dd");
+  const monthDate = format(startOfMonth(new Date()), "yyyy-MM-dd");
 
   const [salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers,
-    quotationsToday, quotationsMonth, invoicesToday, invoicesMonth] = await Promise.all([
+    quotationsToday, quotationsMonth, invoicesToday, invoicesMonth,
+    repairRevenueToday, repairRevenueMonth, totalRepairJobs, pendingRepairs] = await Promise.all([
     supabase.from("pos_transactions").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
     supabase.from("pos_transactions").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
     supabase.from("payments").select("amount").eq("status", "pending").then(r => r.data?.reduce((s, p) => s + Number(p.amount), 0) ?? 0),
     supabase.from("finance_accounts").select("current_balance").eq("status", "active").then(r => r.data?.reduce((s, a) => s + Number(a.current_balance), 0) ?? 0),
-    supabase.from("finance_transactions").select("amount").eq("type", "income").gte("date", format(startOfMonth(new Date()), "yyyy-MM-dd")).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
-    supabase.from("finance_transactions").select("amount").eq("type", "expense").gte("date", format(startOfMonth(new Date()), "yyyy-MM-dd")).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
+    supabase.from("finance_transactions").select("amount").eq("type", "income").gte("date", monthDate).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
+    supabase.from("finance_transactions").select("amount").eq("type", "expense").gte("date", monthDate).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
     supabase.from("products").select("id", { count: "exact", head: true }).or("stock_quantity.lte.low_stock_threshold").then(r => r.count ?? 0),
-    supabase.from("repair_tickets").select("id", { count: "exact", head: true }).not("status", "in", '("completed","delivered")').then(r => r.count ?? 0),
-    supabase.from("repair_status_history").select("id", { count: "exact", head: true }).eq("new_status", "completed").gte("created_at", today).then(r => r.count ?? 0),
+    supabase.from("job_sheets").select("id", { count: "exact", head: true }).not("status", "in", '("delivered","invoice_generated")').then(r => r.count ?? 0),
+    supabase.from("job_sheets").select("id", { count: "exact", head: true }).eq("status", "repair_completed").gte("created_at", today).then(r => r.count ?? 0),
     supabase.from("customers").select("id", { count: "exact", head: true }).then(r => r.count ?? 0),
-    // Quotations
     supabase.from("quotations").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
     supabase.from("quotations").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
-    // Invoices
     supabase.from("invoices").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
     supabase.from("invoices").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
+    // Repair Revenue (paid job sheets)
+    supabase.from("job_sheets").select("total_amount").eq("payment_status", "paid").gte("created_at", today).then(r => r.data?.reduce((s, j) => s + Number(j.total_amount || 0), 0) ?? 0),
+    supabase.from("job_sheets").select("total_amount").eq("payment_status", "paid").gte("created_at", monthStart).then(r => r.data?.reduce((s, j) => s + Number(j.total_amount || 0), 0) ?? 0),
+    supabase.from("job_sheets").select("id", { count: "exact", head: true }).then(r => r.count ?? 0),
+    supabase.from("job_sheets").select("id", { count: "exact", head: true }).in("status", ["created","pending_approval","assigned","in_progress","waiting_parts"]).then(r => r.count ?? 0),
   ]);
 
   return { salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers,
-    quotationsToday, quotationsMonth, invoicesToday, invoicesMonth };
+    quotationsToday, quotationsMonth, invoicesToday, invoicesMonth,
+    repairRevenueToday, repairRevenueMonth, totalRepairJobs, pendingRepairs };
 }
 
 async function fetchIncomeExpenseTrend() {
@@ -133,9 +140,9 @@ export default function Dashboard() {
   };
 
   const kpiCards = [
-    { label: "Revenue", value: kpis ? fmt(kpis.revenue) : "—", icon: TrendingUp, bg: "bg-success/10", iconColor: "text-success", trend: "+8%", up: true },
-    { label: "Expenses", value: kpis ? fmt(kpis.expenses) : "—", icon: CreditCard, bg: "bg-destructive/10", iconColor: "text-destructive", trend: "-5%", up: false },
-    { label: "Net Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, bg: "bg-primary/10", iconColor: "text-primary", trend: "+12%", up: true },
+    { label: "Monthly Revenue", value: kpis ? fmt(kpis.revenue) : "—", icon: TrendingUp, bg: "bg-success/10", iconColor: "text-success", trend: "+8%", up: true },
+    { label: "Monthly Expenses", value: kpis ? fmt(kpis.expenses) : "—", icon: CreditCard, bg: "bg-destructive/10", iconColor: "text-destructive", trend: "-5%", up: false },
+    { label: "Cash Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, bg: "bg-primary/10", iconColor: "text-primary", trend: "+12%", up: true },
     { label: "Total Customers", value: kpis ? String(kpis.totalCustomers) : "—", icon: Users, bg: "bg-info/10", iconColor: "text-info", trend: "+22%", up: true },
   ];
 
@@ -143,11 +150,13 @@ export default function Dashboard() {
     { label: "POS Sales Today", value: kpis ? fmt(kpis.salesToday) : "—", sub: kpis ? `This Month: ${fmt(kpis.salesMonth)}` : "", icon: ShoppingCart, bg: "bg-primary/10", iconColor: "text-primary" },
     { label: "Quotations Today", value: kpis ? fmt(kpis.quotationsToday) : "—", sub: kpis ? `This Month: ${fmt(kpis.quotationsMonth)}` : "", icon: Clock, bg: "bg-warning/10", iconColor: "text-warning" },
     { label: "Invoices Today", value: kpis ? fmt(kpis.invoicesToday) : "—", sub: kpis ? `This Month: ${fmt(kpis.invoicesMonth)}` : "", icon: CreditCard, bg: "bg-success/10", iconColor: "text-success" },
+    { label: "Repair Revenue Today", value: kpis ? fmt(kpis.repairRevenueToday) : "—", sub: kpis ? `This Month: ${fmt(kpis.repairRevenueMonth)}` : "", icon: Wrench, bg: "bg-accent/10", iconColor: "text-accent" },
   ];
 
   const statCards = [
-    { label: "Low Stock", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-destructive" },
-    { label: "Active Repairs", value: kpis ? String(kpis.activeRepairs) : "—", icon: Wrench, color: "text-accent" },
+    { label: "Low Stock Items", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-destructive" },
+    { label: "Total Repairs", value: kpis ? String(kpis.totalRepairJobs) : "—", icon: Wrench, color: "text-accent" },
+    { label: "Pending Repairs", value: kpis ? String(kpis.pendingRepairs) : "—", icon: CheckCircle, color: "text-warning" },
     { label: "Completed Today", value: kpis ? String(kpis.completedToday) : "—", icon: CheckCircle, color: "text-success" },
   ];
 
@@ -241,7 +250,7 @@ export default function Dashboard() {
       </div>
 
       {/* Secondary stat row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {statCards.map((s) => (
           <Card key={s.label} className="border-border/50">
             <CardContent className="p-4 flex items-center gap-3">
