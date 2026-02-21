@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Outlet } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
@@ -6,7 +6,21 @@ import { cn } from "@/lib/utils";
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("sidebarCollapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggle = useCallback(() => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem("sidebarCollapsed", String(next)); } catch {}
+      return next;
+    });
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -18,9 +32,9 @@ export function AppLayout() {
         />
       )}
 
-      {/* Sidebar - hidden on mobile unless open */}
-      <div className={cn("hidden md:block")}>
-        <AppSidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+      {/* Sidebar - always visible on desktop */}
+      <div className="hidden md:block">
+        <AppSidebar collapsed={collapsed} onToggle={handleToggle} />
       </div>
       {mobileOpen && (
         <div className="md:hidden">
@@ -29,7 +43,7 @@ export function AppLayout() {
       )}
 
       {/* Main content */}
-      <div className={cn("flex flex-col min-h-screen transition-all duration-300", collapsed ? "md:ml-16" : "md:ml-60")}>
+      <div className={cn("flex flex-col min-h-screen transition-all duration-300", collapsed ? "md:ml-[60px]" : "md:ml-[240px]")}>
         <AppHeader onMobileMenuToggle={() => setMobileOpen(!mobileOpen)} />
         <main className="flex-1 p-4 md:p-6">
           <Outlet />

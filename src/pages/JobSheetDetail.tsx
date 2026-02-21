@@ -282,10 +282,11 @@ export default function JobSheetDetail() {
         created_by: user?.id,
       });
 
-      // Update job payment status
-      const totalPaid = amount; // simplified - in production sum all payments
+      // Sum ALL payments for this customer to determine status
+      const { data: allPayments } = await supabase.from("payments").select("amount").eq("customer_id", job.customer_id).eq("status", "completed");
+      const totalPaid = (allPayments || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
       const total = Number(job.total_amount) || 0;
-      const newStatus = totalPaid >= total ? "paid" : "partial";
+      const newStatus = totalPaid >= total ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
       await supabase.from("job_sheets").update({ payment_status: newStatus } as any).eq("id", id);
 
       // Update invoice if linked
@@ -602,7 +603,7 @@ export default function JobSheetDetail() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">Actions</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                {isAdminStaff && !job.invoice_id && (
+                {isAdminStaff && !job.invoice_id && ["quality_check", "repair_completed"].includes(job.status) && (
                   <Button className="w-full justify-start" size="sm" onClick={generateInvoice} disabled={generatingInvoice}>
                     <Receipt className="h-3.5 w-3.5 mr-2" /> {generatingInvoice ? "Generating..." : "Generate Invoice"}
                   </Button>

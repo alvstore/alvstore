@@ -1195,6 +1195,7 @@ export type Database = {
           repair_notes: string | null
           serial_number: string | null
           service_charge: number | null
+          service_items: Json | null
           staff_notes: string | null
           status: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity: string | null
@@ -1249,6 +1250,7 @@ export type Database = {
           repair_notes?: string | null
           serial_number?: string | null
           service_charge?: number | null
+          service_items?: Json | null
           staff_notes?: string | null
           status?: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity?: string | null
@@ -1303,6 +1305,7 @@ export type Database = {
           repair_notes?: string | null
           serial_number?: string | null
           service_charge?: number | null
+          service_items?: Json | null
           staff_notes?: string | null
           status?: Database["public"]["Enums"]["job_sheet_status"]
           storage_capacity?: string | null
