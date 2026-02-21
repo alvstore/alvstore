@@ -1,259 +1,180 @@
 
+# Full ERP Code Audit, Bug Fix, and Workflow Redesign
 
-# Repair Management Module -- Complete Overhaul
+## Part 1: Fix Sidebar Navigation Bug
 
-## Overview
+**Problem**: Sidebar only visible on hover, does not persist state across page refresh.
 
-Full redesign of the repair module to support service charges with category-based defaults, per-repair GST (inclusive/exclusive), discounts, parts tracking, invoice generation from repairs, payment sync, and a step-by-step wizard for job sheet creation. All pages will follow Materialize admin template patterns (card layouts, stepper wizard, timeline, sticky sidebar).
+**Root Cause**: `AppLayout.tsx` initializes `collapsed` as `useState(false)` without reading from localStorage. The sidebar width (`w-[240px]` / `w-[60px]`) is correct but the state resets on every navigation.
 
----
+**Fix in `src/components/layout/AppLayout.tsx`**:
+- Read initial `collapsed` state from `localStorage.getItem("sidebarCollapsed")`
+- Persist collapsed state to localStorage on toggle
+- Ensure sidebar margin (`md:ml-60` / `md:ml-16`) stays synced with the `w-[240px]` / `w-[60px]` in AppSidebar
+- Mobile: sidebar opens via hamburger, closes on overlay click or navigation
 
-## Database Changes
-
-### 1. New Table: `service_charge_categories`
-
-Stores default service charges per device category (admin-configurable).
-
-```
-id              uuid PK DEFAULT gen_random_uuid()
-name            text NOT NULL (e.g. "iPhone", "Laptop", "MacBook")
-default_charge  numeric NOT NULL DEFAULT 0
-created_at      timestamptz DEFAULT now()
-```
-
-RLS: Admin full access, staff/technician read-only.
-
-### 2. New Table: `repair_parts`
-
-Tracks parts used per repair job.
-
-```
-id              uuid PK DEFAULT gen_random_uuid()
-job_sheet_id    uuid NOT NULL (FK to job_sheets)
-name            text NOT NULL
-cost            numeric NOT NULL DEFAULT 0
-gst_percentage  numeric DEFAULT 18
-quantity        integer DEFAULT 1
-total           numeric DEFAULT 0
-created_at      timestamptz DEFAULT now()
-```
-
-RLS: Admin and staff full access, technicians can view assigned jobs' parts.
-
-### 3. Alter Table: `job_sheets`
-
-Add columns for billing:
-
-```
-service_charge      numeric DEFAULT 0
-discount_type       text DEFAULT 'none' (values: none, percentage, fixed)
-discount_value      numeric DEFAULT 0
-gst_mode            text DEFAULT 'exclusive' (values: inclusive, exclusive, none)
-gst_percentage      numeric DEFAULT 18
-gst_amount          numeric DEFAULT 0
-parts_total         numeric DEFAULT 0
-total_amount        numeric DEFAULT 0
-invoice_id          uuid (FK to invoices, nullable)
-payment_status      text DEFAULT 'unpaid' (values: unpaid, partial, paid)
-```
-
-### 4. Seed default service categories
-
-Insert rows via migration:
-
-- iPhone: 750
-- Android: 500
-- Laptop: 2600
-- MacBook: 3500
-- Tablet: 1000
-- Other: 500
+**Fix in `src/components/layout/AppSidebar.tsx`**:
+- No hover-dependent visibility -- sidebar is always rendered, never toggles on hover
+- Verify all CSS classes are static positioning, no `opacity-0` or `translate-x` tricks on desktop
 
 ---
 
-## File Changes
+## Part 2: Fix "Edit Job Sheet" Not Working
 
-### A. `src/pages/JobSheetCreate.tsx` -- Stepper Wizard Rewrite
+**Problem**: No `/repairs/:id/edit` route exists in `App.tsx`. The edit button in `JobSheetDetail.tsx` likely navigates to a non-existent route.
 
-Replace the current single-page form with a 5-step wizard:
+**Fix in `src/App.tsx`**:
+- Add route: `<Route path="/repairs/:id/edit" element={<JobSheetCreate />} />`
 
-- **Step state**: `currentStep` (1-5) with Next/Back buttons and a horizontal stepper indicator at the top showing completed/current/future steps with icons and labels.
-
-- **Step 1 -- Customer Information**
-  - Select existing customer dropdown with search
-  - "Create New" button that reveals inline fields (Name, Phone, Email, Address, GSTIN)
-  - Customer contact card preview when selected
-
-- **Step 2 -- Device Information**
-  - Device category dropdown (iPhone, Android, Laptop, MacBook, Tablet, Other)
-  - Brand, Model, IMEI/Serial, Color, Storage
-  - Problem description, Issue tags
-  - Device photos upload (front, back, side, damage)
-  - Account credentials (Apple ID, Google, Lock Code)
-
-- **Step 3 -- Service Charges**
-  - Auto-fill service charge from `service_charge_categories` based on device category
-  - Editable service charge amount
-  - GST toggle: None / Inclusive / Exclusive (radio group)
-  - GST percentage selector (default 18%)
-  - Discount selector: None / Percentage / Fixed
-  - Discount value input
-  - Live calculation preview card showing: Service Charge, Discount, GST, Total
-
-- **Step 4 -- Pre-Repair Checklist**
-  - Same existing checklist logic (device-specific, collapsible categories, progress bars)
-  - Staff notes (mandatory)
-  - Priority selector
-  - Estimated completion date
-
-- **Step 5 -- Review and Submit**
-  - Full summary preview in a read-only card layout:
-    - Customer card
-    - Device info card
-    - Service charge + GST + discount breakdown
-    - Checklist summary (pass/fail counts)
-  - Two buttons: "Save Job Sheet" and "Save and Generate Invoice"
-  - "Save and Generate Invoice" creates both the job sheet and an invoice in one action
-
-### B. `src/pages/JobSheetDetail.tsx` -- Materialize Preview Layout
-
-Restructure to a two-column layout (70/30):
-
-**Left column (main content):**
-
-1. Business header card (company name, address, logo)
-2. Customer card (name, phone, email, GST)
-3. Device info card
-4. Service charge summary card:
-   - Service Charge line
-   - Parts list (from `repair_parts` table) with name, cost, GST, quantity, total
-   - Subtotal, Discount, GST breakdown (CGST/SGST), Grand Total
-5. Pre-repair checklist (existing, collapsed)
-6. Post-repair checklist (existing)
-7. Repair Status Timeline (Materialize vertical timeline):
-   - Each step: icon, label, date/time, user name, notes
-   - Completed steps in primary color, current with ring indicator, future greyed out
-   - Show audit log entries mapped to timeline steps
-8. Audit log
-
-**Right column (sticky sidebar actions):**
-
-- Status badge (large)
-- "Generate Invoice" button (creates invoice from repair data -- service charge + parts as line items)
-- "Add Payment" button (opens sheet to record payment, updates job payment_status and syncs to invoices/payments tables)
-- "Download PDF" button (print-optimized)
-- "Edit Job Sheet" button (navigates to edit route)
-- "Copy Public Link"
-- Payment status badge (Unpaid/Partial/Paid)
-- Assigned technician card
-- Device movement actions
-
-### C. `src/pages/JobSheets.tsx` -- Enhanced List Page
-
-Update table columns to match requirements:
-
-- Job Sheet Number
-- Customer (with avatar initials)
-- Device (brand + model)
-- Category (device_type)
-- Service Charge (formatted)
-- Total Amount (formatted)
-- Status badge
-- Created Date
-- Actions dropdown: View, Edit, Generate Invoice, Add Payment, Download PDF
-
-Add repair revenue KPI cards:
-
-- Total Repairs
-- Pending Approval
-- In Progress
-- Repair Revenue (sum of total_amount where payment_status = paid)
-
-### D. `src/pages/Dashboard.tsx` -- Repair Revenue Integration
-
-Update `fetchKpis()` to add:
-
-- Repair Revenue Today: sum of `job_sheets.total_amount` where `payment_status = 'paid'` and created today
-- Repair Revenue This Month: same but month range
-
-Add a "Repair Revenue" widget to the sales widgets row with Wrench icon.
-
-Update the repair breakdown chart to query `job_sheets` instead of `repair_tickets` (which may be unused).
-
-### E. Invoice Generation Logic
-
-When "Generate Invoice" is clicked on a repair:
-
-1. Create invoice with:
-   - customer_id from job sheet
-   - job_sheet_id linked
-   - Line items:
-     - Service charge as first item (product_name: "Service Charge - {device_type}", unit_price: service_charge)
-     - Each repair_part as additional line items
-   - GST mode, discount from job sheet
-   - Calculate totals using existing `calculateTotals` function
-
-2. Update `job_sheets.invoice_id` with the new invoice ID
-3. Update `job_sheets.status` to `invoice_generated`
-4. Log to `job_sheet_audit_log`
-
-### F. Payment Sync
-
-When payment is recorded against a repair:
-
-1. Insert into `payments` table with type = 'repair'
-2. Update `job_sheets.payment_status` based on paid vs total
-3. If invoice exists, update `invoices.paid_amount` and `invoices.payment_status`
-4. Log to `finance_audit_log`
-
-### G. Settings -- Service Charge Categories
-
-Add a "Service Categories" section in `src/pages/Settings.tsx` under the System group:
-
-- Table listing categories with name and default charge
-- Add/Edit/Delete categories
-- CRUD against `service_charge_categories` table
-
-### H. Routing Updates in `src/App.tsx`
-
-- Add route `/repairs/:id/edit` pointing to JobSheetCreate in edit mode
+**Fix in `src/pages/JobSheetCreate.tsx`**:
+- The file already reads `useParams().id` as `editId` (line 167) but has no edit-loading logic
+- Add `useEffect` that fetches existing job sheet data when `editId` is present
+- Populate form fields from fetched data
+- On save: use `update` instead of `insert` when `editId` exists
+- Add audit log entry: "job_sheet_edited"
+- Change page title to "Edit Job Sheet" when editing
 
 ---
 
-## Technical Details
+## Part 3: Remove Auto Invoice Generation
 
-### New Files
-```
-None -- all changes are to existing files
-```
+**Problem**: `JobSheetCreate.tsx` has a "Save and Generate Invoice" button (line 416-454) that auto-generates an invoice at creation time. This violates the correct business workflow.
 
-### Modified Files
-```
-src/pages/JobSheetCreate.tsx  -- Full rewrite to stepper wizard with service charges
-src/pages/JobSheetDetail.tsx  -- Two-column Materialize layout with invoice/payment actions
-src/pages/JobSheets.tsx       -- Enhanced table columns, revenue KPIs, action dropdown
-src/pages/Dashboard.tsx       -- Add repair revenue widget
-src/pages/Settings.tsx        -- Add service charge categories management
-src/App.tsx                   -- Add /repairs/:id/edit route
-```
+**Fix in `src/pages/JobSheetCreate.tsx`**:
+- Remove the `generateInvoice` parameter from `handleSave()`
+- Remove the "Save and Generate Invoice" button from Step 5
+- Keep only "Save Job Sheet" button
+- Remove all invoice generation code from the create form (lines 416-454)
 
-### Database Migration (single SQL)
+**Invoice generation stays ONLY in `JobSheetDetail.tsx`** via the "Generate Invoice" button, which is already a manual action (line 220-264). This is correct and stays as-is.
+
+---
+
+## Part 4: Enhanced Service Charge Structure
+
+**Problem**: Current service charge is a single amount field. Needs HSN, per-item GST, quantity, and proper line-item structure.
+
+**Fix in `src/pages/JobSheetCreate.tsx` (Step 3)**:
+- Replace single service charge input with a line-items table
+- Each service line item has: Service Name, HSN Code, GST %, Price, Quantity, Discount (type + value), Taxable Amount, GST Amount, Total
+- Add "Add Service Line" button to add multiple charges
+- Auto-fill first line from `service_charge_categories` based on device type
+- GST toggle (None/Inclusive/Exclusive) applies globally
+- Live calculation preview: Subtotal, Total Discount, Total GST (CGST/SGST split), Grand Total
+- Store as JSON array in `service_charge` column or keep computed totals in existing columns
+
+**Database change**: Add `service_items` jsonb column to `job_sheets` to store line items array, or create a new `job_sheet_service_items` table.
+
+I recommend using a JSONB column on `job_sheets` called `service_items` (simpler, no new table needed) to store the array of service line items. The existing `service_charge`, `gst_amount`, `total_amount` columns continue to hold computed totals.
+
+---
+
+## Part 5: Redesign Job Sheet Detail Page
+
+**Current state**: Already has a two-column layout with timeline. Needs section improvements.
+
+**Fix in `src/pages/JobSheetDetail.tsx`**:
+- Structured sections in left column:
+  1. Customer Info card (name, phone, email, GST)
+  2. Device Info card (brand, model, serial, IMEI, color, storage)
+  3. Problem Description card (description, issue tags)
+  4. Pre-Repair Checklist (collapsible, existing)
+  5. Diagnosis section (staff notes, technician notes)
+  6. Service Charges table (line items with HSN, GST, discount, totals)
+  7. Parts Used table (from repair_parts)
+  8. Cost Summary card (subtotal, discount, GST breakdown, parts, grand total)
+  9. Post-Repair Checklist (existing)
+  10. Repair Timeline (existing, already implemented)
+  11. Audit Log (existing)
+
+- Right sidebar improvements:
+  - Large status badge with stepper dropdown
+  - Payment status badge
+  - Generate Invoice button (only if no invoice linked AND status >= quality_check)
+  - Add Payment button
+  - Edit Job Sheet button (navigates to `/repairs/:id/edit`)
+  - Download PDF / Print
+  - Copy Public Link
+  - Technician assignment card
+  - Device movement actions
+
+- Status flow enforcement: only allow forward progression through defined statuses:
+  Created -> Diagnosis -> Estimate Prepared -> Estimate Approved -> Repair In Progress -> Repair Completed -> Quality Check -> Invoice Generated -> Delivered
+
+---
+
+## Part 6: Finance Transactions UI Redesign
+
+**Fix in `src/pages/Finance.tsx`**:
+- Enhance TransactionTab table columns: Transaction ID, Date, Type, Category name (joined), Reference, Customer, Amount, Payment Method, Account name, Status, Created By
+- Add date range filter (Today / 7 Days / Month / Custom)
+- Add export CSV button
+- Add transaction detail side panel (Sheet) on row click showing full details
+- Improve dashboard KPI cards: Cash Balance, Bank Balance, Daily Income, Daily Expense with proper card styling
+- Transaction creation panel as a slide-over Sheet
+
+---
+
+## Part 7: Invoice Control System
+
+**Already implemented** in `JobSheetDetail.tsx` (generateInvoice function, lines 220-264). Needs minor improvements:
+
+- Add invoice preview dialog before creation (show what will be generated)
+- Only enable "Generate Invoice" when status is `quality_check` or later
+- Invoice includes: Customer, Job Sheet reference, Service Charges (line items), Parts, GST, Discount, Total
+- After generation, show link to invoice
+
+---
+
+## Part 8: UI/UX Improvements
+
+Apply across all modified files:
+- Consistent spacing (p-6 for cards, gap-6 between sections)
+- Status badges use consistent color scheme from StatusBadge component
+- Stepper UI uses ring indicators for current step
+- Forms use consistent label/input spacing
+- Responsive: stack to single column on mobile
+- Print styles for PDF generation
+
+---
+
+## Part 9: Code Audit Stability Fixes
+
+- Fix broken route: Add `/repairs/:id/edit`
+- Fix sidebar state persistence
+- Remove auto-invoice trigger
+- Fix payment sync: sum ALL payments for a job (not just latest) when calculating payment status
+- Fix `addPayment` in JobSheetDetail (line 286): currently only uses current payment amount, should query all payments for this job
+
+---
+
+## Part 10: Audit Log
+
+Already implemented. All actions (create, edit, status change, invoice generation, payment) log to `job_sheet_audit_log`. Finance actions log to `finance_audit_log`. No changes needed -- just ensure new edit flow also logs.
+
+---
+
+## Technical Summary
+
+### Database Migration
 ```sql
--- Service charge categories table
-CREATE TABLE service_charge_categories (...)
--- Repair parts table
-CREATE TABLE repair_parts (...)
--- Alter job_sheets with new billing columns
-ALTER TABLE job_sheets ADD COLUMN service_charge ...
--- RLS policies for new tables
--- Seed default categories
+ALTER TABLE job_sheets ADD COLUMN IF NOT EXISTS service_items jsonb DEFAULT '[]'::jsonb;
+```
+
+### Files Modified
+```text
+src/components/layout/AppLayout.tsx   -- Sidebar persistence fix
+src/components/layout/AppSidebar.tsx  -- Remove any hover dependencies
+src/App.tsx                          -- Add /repairs/:id/edit route
+src/pages/JobSheetCreate.tsx         -- Edit mode, remove auto-invoice, enhanced service charges
+src/pages/JobSheetDetail.tsx         -- UI restructure, invoice control, payment fix
+src/pages/Finance.tsx                -- Transaction UI redesign
 ```
 
 ### Implementation Order
-1. Database migration (new tables + alter job_sheets)
-2. Settings -- service charge categories CRUD
-3. JobSheetCreate -- stepper wizard rewrite
-4. JobSheetDetail -- two-column layout + invoice generation + payment sync
-5. JobSheets -- enhanced list with revenue KPIs
-6. Dashboard -- repair revenue widget
-7. App.tsx routing update
-
+1. Sidebar fix (AppLayout + AppSidebar)
+2. Database migration (service_items column)
+3. App.tsx route addition
+4. JobSheetCreate -- edit mode + remove auto-invoice + service line items
+5. JobSheetDetail -- UI restructure + invoice control + payment fix
+6. Finance.tsx -- transaction UI improvements
