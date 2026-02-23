@@ -274,6 +274,7 @@ export default function JobSheetDetail() {
       // Insert payment
       await supabase.from("payments").insert({
         customer_id: job.customer_id,
+        job_sheet_id: id,
         amount,
         payment_method: paymentForm.method as any,
         type: "invoice" as any,
@@ -282,8 +283,8 @@ export default function JobSheetDetail() {
         created_by: user?.id,
       });
 
-      // Sum ALL payments for this customer to determine status
-      const { data: allPayments } = await supabase.from("payments").select("amount").eq("customer_id", job.customer_id).eq("status", "completed");
+      // Sum payments linked to THIS job sheet only
+      const { data: allPayments } = await supabase.from("payments").select("amount").eq("job_sheet_id", id).eq("status", "completed");
       const totalPaid = (allPayments || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
       const total = Number(job.total_amount) || 0;
       const newStatus = totalPaid >= total ? "paid" : totalPaid > 0 ? "partial" : "unpaid";

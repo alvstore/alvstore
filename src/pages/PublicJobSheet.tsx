@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Check, X, Loader2, ClipboardList, Smartphone, User } from "lucide-react";
+import { Check, X, Loader2, ClipboardList, Smartphone, User, IndianRupee } from "lucide-react";
 import { toast } from "sonner";
 
 const statusColors: Record<string, string> = {
@@ -22,10 +22,15 @@ const statusColors: Record<string, string> = {
   delivered: "bg-muted text-muted-foreground",
 };
 
+function fmt(n: number) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
+}
+
 export default function PublicJobSheet() {
   const { token } = useParams();
   const [job, setJob] = useState<any>(null);
   const [images, setImages] = useState<any[]>([]);
+  const [parts, setParts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState(false);
 
@@ -39,8 +44,12 @@ export default function PublicJobSheet() {
         .single();
       if (error || !data) { setLoading(false); return; }
       setJob(data);
-      const { data: imgs } = await supabase.from("job_sheet_images").select("*").eq("job_sheet_id", data.id);
-      setImages(imgs || []);
+      const [imgRes, partsRes] = await Promise.all([
+        supabase.from("job_sheet_images").select("*").eq("job_sheet_id", data.id),
+        supabase.from("repair_parts").select("*").eq("job_sheet_id", data.id),
+      ]);
+      setImages(imgRes.data || []);
+      setParts(partsRes.data || []);
       setLoading(false);
     };
     load();
@@ -74,6 +83,15 @@ export default function PublicJobSheet() {
   const checklist = (job.pre_repair_checklist as any[]) || [];
   const categories = [...new Set(checklist.map((c: any) => c.category))];
   const canRespond = job.status === "pending_approval" && !job.approval_status;
+
+  // Billing calculations
+  const serviceItems = (job.service_items as any[]) || [];
+  const serviceCharge = Number(job.service_charge) || 0;
+  const partsTotal = parts.reduce((s, p) => s + Number(p.total), 0);
+  const gstAmount = Number(job.gst_amount) || 0;
+  const discountVal = Number(job.discount_value) || 0;
+  const totalAmount = Number(job.total_amount) || 0;
+  const hasBilling = serviceCharge > 0 || serviceItems.length > 0 || partsTotal > 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -137,10 +155,72 @@ export default function PublicJobSheet() {
         <Card>
           <CardContent className="pt-4 text-sm space-y-2">
             <p><span className="text-muted-foreground">Problem:</span> {job.problem_description}</p>
-            {job.estimated_cost && <p><span className="text-muted-foreground">Estimated Cost:</span> ₹{job.estimated_cost}</p>}
             {job.estimated_completion && <p><span className="text-muted-foreground">Expected By:</span> {job.estimated_completion}</p>}
           </CardContent>
         </Card>
+
+        {/* Billing Summary */}
+        {hasBilling && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2"><IndianRupee className="h-4 w-4" /> Cost Estimate</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Service items */}
+              {serviceItems.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase">Service Charges</p>
+                  {serviceItems.map((item: any, i: number) => (
+                    <div key={i} className="flex justify-between text-sm">
+                      <span>{item.name} {item.hsn_code ? `(HSN: ${item.hsn_code})` : ""} × {item.quantity || 1}</span>
+                      <span className="font-medium">{fmt(Number(item.total) || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {serviceItems.length === 0 && serviceCharge > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Service Charge</span>
+                  <span className="font-medium">{fmt(serviceCharge)}</span>
+                </div>
+              )}
+
+              {/* Parts */}
+              {parts.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground uppercase">Parts</p>
+                  {parts.map((p: any) => (
+                    <div key={p.id} className="flex justify-between text-sm">
+                      <span>{p.name} × {p.quantity}</span>
+                      <span className="font-medium">{fmt(Number(p.total))}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Separator />
+
+              <div className="space-y-1 text-sm">
+                {discountVal > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Discount</span>
+                    <span>-{fmt(discountVal)}</span>
+                  </div>
+                )}
+                {gstAmount > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>GST {job.gst_mode === "inclusive" ? "(Inclusive)" : ""}</span>
+                    <span>{fmt(gstAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-base pt-1">
+                  <span>Total</span>
+                  <span>{fmt(totalAmount + partsTotal)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Approval Actions */}
         {canRespond && (

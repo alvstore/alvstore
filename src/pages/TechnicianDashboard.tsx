@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Wrench, Clock, CheckCircle, Eye, User, Users } from "lucide-react";
+import { Wrench, Clock, CheckCircle, Eye, User, Users, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { differenceInDays, differenceInHours, parseISO } from "date-fns";
 
 const JOB_STATUSES = ["assigned", "in_progress", "waiting_parts", "repair_completed"] as const;
 
@@ -31,6 +32,7 @@ interface JobSheet {
   status: string;
   priority: string;
   created_at: string;
+  estimated_completion: string | null;
   customers?: { name: string } | null;
 }
 
@@ -42,12 +44,22 @@ interface TechnicianOverview {
   completed_jobs: number;
 }
 
+function getTTR(estimated: string | null) {
+  if (!estimated) return null;
+  const target = parseISO(estimated);
+  const now = new Date();
+  const diffDays = differenceInDays(target, now);
+  const diffHours = differenceInHours(target, now);
+  if (diffDays < 0) return { label: `${Math.abs(diffDays)}d overdue`, color: "text-destructive", urgent: true };
+  if (diffDays === 0) return { label: `${Math.max(0, diffHours)}h left`, color: "text-warning", urgent: true };
+  return { label: `${diffDays}d left`, color: "text-success", urgent: false };
+}
+
 export default function TechnicianDashboard() {
   const { user, hasRole } = useAuth();
   const isAdminOrStaff = hasRole("admin") || hasRole("staff");
   const isTechnician = hasRole("technician");
 
-  // If admin/staff, show overview. If technician, show own repairs.
   if (isAdminOrStaff && !isTechnician) {
     return <TechnicianOverviewView />;
   }
@@ -55,13 +67,13 @@ export default function TechnicianDashboard() {
 }
 
 function TechnicianOverviewView() {
+  const navigate = useNavigate();
   const [technicians, setTechnicians] = useState<TechnicianOverview[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetch = async () => {
       setLoading(true);
-      // Get all technician users
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "technician");
       if (!roles || roles.length === 0) { setTechnicians([]); setLoading(false); return; }
 
@@ -96,24 +108,9 @@ function TechnicianOverviewView() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><Users className="h-5 w-5 text-primary" /></div>
-            <div><p className="text-2xl font-bold">{technicians.length}</p><p className="text-xs text-muted-foreground">Technicians</p></div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-warning/10"><Wrench className="h-5 w-5 text-warning" /></div>
-            <div><p className="text-2xl font-bold">{totalActive}</p><p className="text-xs text-muted-foreground">Active Jobs</p></div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-success/10"><CheckCircle className="h-5 w-5 text-success" /></div>
-            <div><p className="text-2xl font-bold">{totalCompleted}</p><p className="text-xs text-muted-foreground">Completed</p></div>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><div className="p-2 rounded-lg bg-primary/10"><Users className="h-5 w-5 text-primary" /></div><div><p className="text-2xl font-bold">{technicians.length}</p><p className="text-xs text-muted-foreground">Technicians</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><Wrench className="h-5 w-5 text-warning" /></div><div><p className="text-2xl font-bold">{totalActive}</p><p className="text-xs text-muted-foreground">Active Jobs</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><div className="p-2 rounded-lg bg-success/10"><CheckCircle className="h-5 w-5 text-success" /></div><div><p className="text-2xl font-bold">{totalCompleted}</p><p className="text-xs text-muted-foreground">Completed</p></div></CardContent></Card>
       </div>
 
       {loading ? <p className="text-center text-muted-foreground py-12">Loading...</p> : technicians.length === 0 ? (
@@ -124,7 +121,7 @@ function TechnicianOverviewView() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {technicians.map(t => (
-            <Card key={t.user_id}>
+            <Card key={t.user_id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate(`/repairs?technician=${t.user_id}`)}>
               <CardContent className="p-5 flex items-center gap-4">
                 <div className="p-3 rounded-full bg-muted"><User className="h-6 w-6 text-muted-foreground" /></div>
                 <div className="flex-1 min-w-0">
@@ -154,7 +151,7 @@ function MyRepairsView() {
     setLoading(true);
     const { data, error } = await supabase
       .from("job_sheets")
-      .select("id, job_number, device_brand, device_model, problem_description, status, priority, created_at, customers(name)")
+      .select("id, job_number, device_brand, device_model, problem_description, status, priority, created_at, estimated_completion, customers(name)")
       .eq("assigned_technician_id", user?.id || "")
       .not("status", "eq", "delivered")
       .order("created_at", { ascending: false });
@@ -182,24 +179,9 @@ function MyRepairsView() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><Wrench className="h-5 w-5 text-primary" /></div>
-            <div><p className="text-2xl font-bold">{active.length}</p><p className="text-xs text-muted-foreground">Active</p></div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-success/10"><CheckCircle className="h-5 w-5 text-success" /></div>
-            <div><p className="text-2xl font-bold">{completed.length}</p><p className="text-xs text-muted-foreground">Completed</p></div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-warning/10"><Clock className="h-5 w-5 text-warning" /></div>
-            <div><p className="text-2xl font-bold">{jobs.filter(j => j.priority === "urgent").length}</p><p className="text-xs text-muted-foreground">Urgent</p></div>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><div className="p-2 rounded-lg bg-primary/10"><Wrench className="h-5 w-5 text-primary" /></div><div><p className="text-2xl font-bold">{active.length}</p><p className="text-xs text-muted-foreground">Active</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><div className="p-2 rounded-lg bg-success/10"><CheckCircle className="h-5 w-5 text-success" /></div><div><p className="text-2xl font-bold">{completed.length}</p><p className="text-xs text-muted-foreground">Completed</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><div className="p-2 rounded-lg bg-warning/10"><Clock className="h-5 w-5 text-warning" /></div><div><p className="text-2xl font-bold">{jobs.filter(j => j.priority === "urgent").length}</p><p className="text-xs text-muted-foreground">Urgent</p></div></CardContent></Card>
       </div>
 
       {loading ? (
@@ -211,32 +193,41 @@ function MyRepairsView() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {jobs.map(j => (
-            <Card key={j.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-bold">{j.job_number}</CardTitle>
-                  <Badge className={statusColors[j.status] || ""} variant="secondary">{j.status.replace(/_/g, " ")}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-sm">
-                  <p className="font-medium">{j.customers?.name}</p>
-                  <p className="text-muted-foreground">{[j.device_brand, j.device_model].filter(Boolean).join(" ") || "No device info"}</p>
-                </div>
-                <p className="text-xs text-muted-foreground line-clamp-2">{j.problem_description}</p>
-                <div className="flex gap-2">
-                  <Select value={j.status} onValueChange={v => updateStatus(j.id, v)}>
-                    <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>{JOB_STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize text-xs">{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate(`/repairs/${j.id}`)}>
-                    <Eye className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {jobs.map(j => {
+            const ttr = getTTR(j.estimated_completion);
+            return (
+              <Card key={j.id} className={`hover:shadow-md transition-shadow ${ttr?.urgent ? "border-l-4 border-l-destructive" : ""}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-bold">{j.job_number}</CardTitle>
+                    <Badge className={statusColors[j.status] || ""} variant="secondary">{j.status.replace(/_/g, " ")}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-sm">
+                    <p className="font-medium">{j.customers?.name}</p>
+                    <p className="text-muted-foreground">{[j.device_brand, j.device_model].filter(Boolean).join(" ") || "No device info"}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{j.problem_description}</p>
+                  {ttr && (
+                    <div className={`flex items-center gap-1.5 text-xs font-medium ${ttr.color}`}>
+                      {ttr.urgent ? <AlertTriangle className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+                      {ttr.label}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Select value={j.status} onValueChange={v => updateStatus(j.id, v)}>
+                      <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>{JOB_STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize text-xs">{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate(`/repairs/${j.id}`)}>
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

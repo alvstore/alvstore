@@ -85,15 +85,18 @@ async function fetchSalesTrend() {
 }
 
 async function fetchRepairBreakdown() {
-  const { data } = await supabase.from("repair_tickets").select("status");
+  const { data } = await supabase.from("job_sheets").select("status");
   const counts: Record<string, number> = {};
   data?.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
   const colorMap: Record<string, string> = {
-    pending: "hsl(38, 92%, 50%)", assigned: "hsl(200, 80%, 55%)",
-    in_progress: "hsl(217, 91%, 60%)", waiting_parts: "hsl(262, 83%, 58%)",
-    completed: "hsl(142, 71%, 45%)", delivered: "hsl(0, 0%, 60%)",
+    created: "hsl(200, 15%, 60%)", pending_approval: "hsl(38, 92%, 50%)",
+    approved: "hsl(200, 80%, 55%)", rejected: "hsl(0, 84%, 60%)",
+    assigned: "hsl(199, 89%, 48%)", in_progress: "hsl(217, 91%, 60%)",
+    waiting_parts: "hsl(262, 83%, 58%)", repair_completed: "hsl(142, 71%, 45%)",
+    quality_check: "hsl(280, 60%, 50%)", invoice_generated: "hsl(160, 60%, 45%)",
+    delivered: "hsl(0, 0%, 60%)",
   };
-  return Object.entries(counts).map(([name, value]) => ({ name: name.replace("_", " "), value, color: colorMap[name] || "hsl(0,0%,50%)" }));
+  return Object.entries(counts).map(([name, value]) => ({ name: name.replace(/_/g, " "), value, color: colorMap[name] || "hsl(0,0%,50%)" }));
 }
 
 async function fetchTopProducts() {
@@ -140,10 +143,10 @@ export default function Dashboard() {
   };
 
   const kpiCards = [
-    { label: "Monthly Revenue", value: kpis ? fmt(kpis.revenue) : "—", icon: TrendingUp, bg: "bg-success/10", iconColor: "text-success", trend: "+8%", up: true },
-    { label: "Monthly Expenses", value: kpis ? fmt(kpis.expenses) : "—", icon: CreditCard, bg: "bg-destructive/10", iconColor: "text-destructive", trend: "-5%", up: false },
-    { label: "Cash Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, bg: "bg-primary/10", iconColor: "text-primary", trend: "+12%", up: true },
-    { label: "Total Customers", value: kpis ? String(kpis.totalCustomers) : "—", icon: Users, bg: "bg-info/10", iconColor: "text-info", trend: "+22%", up: true },
+    { label: "Monthly Revenue", value: kpis ? fmt(kpis.revenue) : "—", icon: TrendingUp, bg: "bg-success/10", iconColor: "text-success" },
+    { label: "Monthly Expenses", value: kpis ? fmt(kpis.expenses) : "—", icon: CreditCard, bg: "bg-destructive/10", iconColor: "text-destructive" },
+    { label: "Cash Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, bg: "bg-primary/10", iconColor: "text-primary" },
+    { label: "Total Customers", value: kpis ? String(kpis.totalCustomers) : "—", icon: Users, bg: "bg-info/10", iconColor: "text-info" },
   ];
 
   const salesWidgets = [
@@ -210,10 +213,6 @@ export default function Dashboard() {
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{kpi.label}</p>
                     <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
-                    <div className={`flex items-center gap-1 text-xs font-medium ${kpi.up ? "text-success" : "text-destructive"}`}>
-                      {kpi.up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                      {kpi.trend}
-                    </div>
                   </div>
                   <div className={`h-11 w-11 rounded-xl ${kpi.bg} flex items-center justify-center`}>
                     <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
