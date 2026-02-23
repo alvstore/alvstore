@@ -1,156 +1,176 @@
 
-# Full ERP Code Audit, Bug Fix, and Workflow Redesign
 
-## Part 1: Fix Sidebar Navigation Bug
+# Full ERP Audit, Bug Fix, and UI/UX Upgrade Plan
 
-**Problem**: Sidebar only visible on hover, does not persist state across page refresh.
+## Audit Summary
 
-**Root Cause**: `AppLayout.tsx` initializes `collapsed` as `useState(false)` without reading from localStorage. The sidebar width (`w-[240px]` / `w-[60px]`) is correct but the state resets on every navigation.
-
-**Fix in `src/components/layout/AppLayout.tsx`**:
-- Read initial `collapsed` state from `localStorage.getItem("sidebarCollapsed")`
-- Persist collapsed state to localStorage on toggle
-- Ensure sidebar margin (`md:ml-60` / `md:ml-16`) stays synced with the `w-[240px]` / `w-[60px]` in AppSidebar
-- Mobile: sidebar opens via hamburger, closes on overlay click or navigation
-
-**Fix in `src/components/layout/AppSidebar.tsx`**:
-- No hover-dependent visibility -- sidebar is always rendered, never toggles on hover
-- Verify all CSS classes are static positioning, no `opacity-0` or `translate-x` tricks on desktop
+After a comprehensive end-to-end review of the entire codebase (Login, Signup, Dashboard, Sidebar, Job Sheets, Invoices, Finance, POS, Chat, Settings, Technician Dashboard, Customer Portal, Public Pages, and Audit Logs), here are all identified issues and improvements organized by priority.
 
 ---
 
-## Part 2: Fix "Edit Job Sheet" Not Working
+## CRITICAL BUGS TO FIX
 
-**Problem**: No `/repairs/:id/edit` route exists in `App.tsx`. The edit button in `JobSheetDetail.tsx` likely navigates to a non-existent route.
+### 1. Dashboard Repair Chart Queries Wrong Table
+**File:** `src/pages/Dashboard.tsx` (line 88)
+**Issue:** `fetchRepairBreakdown()` queries `repair_tickets` table, which is a legacy table. All repair data now lives in `job_sheets`.
+**Fix:** Change query to `job_sheets` and map statuses from the current `job_sheet_status` enum.
 
-**Fix in `src/App.tsx`**:
-- Add route: `<Route path="/repairs/:id/edit" element={<JobSheetCreate />} />`
+### 2. Login Page Branding Mismatch
+**File:** `src/pages/Login.tsx` (line 33)
+**Issue:** Shows "ERPMaster" instead of "ALVStore ERP 2026" branding.
+**Fix:** Update Login, Signup, ForgotPassword, and ResetPassword pages to use "ALVStore ERP 2026" branding with the Zap icon, matching the sidebar.
 
-**Fix in `src/pages/JobSheetCreate.tsx`**:
-- The file already reads `useParams().id` as `editId` (line 167) but has no edit-loading logic
-- Add `useEffect` that fetches existing job sheet data when `editId` is present
-- Populate form fields from fetched data
-- On save: use `update` instead of `insert` when `editId` exists
-- Add audit log entry: "job_sheet_edited"
-- Change page title to "Edit Job Sheet" when editing
+### 3. Payment Sync Bug in JobSheetDetail
+**File:** `src/pages/JobSheetDetail.tsx` (line 286)
+**Issue:** Payment query sums ALL payments for the customer (`eq("customer_id", job.customer_id)`) instead of payments specifically for this job. This means payments from other jobs or invoices affect this job's payment status incorrectly.
+**Fix:** Filter payments by job-related invoice or add a `job_sheet_id` filter. Since payments don't have a `job_sheet_id` column, link through `invoice_id` or add a reference column.
 
----
+### 4. Sidebar Mobile Close on Navigation
+**File:** `src/components/layout/AppLayout.tsx`
+**Issue:** When user taps a navigation link on mobile, the sidebar stays open. User must manually close it.
+**Fix:** Close mobile sidebar on route change using `useLocation()`.
 
-## Part 3: Remove Auto Invoice Generation
-
-**Problem**: `JobSheetCreate.tsx` has a "Save and Generate Invoice" button (line 416-454) that auto-generates an invoice at creation time. This violates the correct business workflow.
-
-**Fix in `src/pages/JobSheetCreate.tsx`**:
-- Remove the `generateInvoice` parameter from `handleSave()`
-- Remove the "Save and Generate Invoice" button from Step 5
-- Keep only "Save Job Sheet" button
-- Remove all invoice generation code from the create form (lines 416-454)
-
-**Invoice generation stays ONLY in `JobSheetDetail.tsx`** via the "Generate Invoice" button, which is already a manual action (line 220-264). This is correct and stays as-is.
+### 5. Dashboard Hardcoded Trend Percentages
+**File:** `src/pages/Dashboard.tsx` (lines 143-147)
+**Issue:** KPI cards show hardcoded trend values like "+8%", "-5%", "+12%", "+22%" which are fake/misleading.
+**Fix:** Either calculate real trends by comparing current vs previous period, or remove the trend indicators entirely.
 
 ---
 
-## Part 4: Enhanced Service Charge Structure
+## WORKFLOW AND LOGIC FIXES
 
-**Problem**: Current service charge is a single amount field. Needs HSN, per-item GST, quantity, and proper line-item structure.
+### 6. Finance Transaction Table Missing Columns
+**File:** `src/pages/Finance.tsx` (TransactionTab)
+**Issue:** Income/Expense tables lack Category name, Account name, and Description columns. Only shows ID, Date, Mode, Amount, Reference, Staff.
+**Fix:** Add joined Category name and Account name columns. Add CSV export button. Add transaction detail side panel on row click.
 
-**Fix in `src/pages/JobSheetCreate.tsx` (Step 3)**:
-- Replace single service charge input with a line-items table
-- Each service line item has: Service Name, HSN Code, GST %, Price, Quantity, Discount (type + value), Taxable Amount, GST Amount, Total
-- Add "Add Service Line" button to add multiple charges
-- Auto-fill first line from `service_charge_categories` based on device type
-- GST toggle (None/Inclusive/Exclusive) applies globally
-- Live calculation preview: Subtotal, Total Discount, Total GST (CGST/SGST split), Grand Total
-- Store as JSON array in `service_charge` column or keep computed totals in existing columns
+### 7. Finance Ledger Missing CSV Export
+**File:** `src/pages/Finance.tsx` (LedgerTab)
+**Issue:** No export functionality for the ledger view.
+**Fix:** Add CSV export button to the ledger tab.
 
-**Database change**: Add `service_items` jsonb column to `job_sheets` to store line items array, or create a new `job_sheet_service_items` table.
+### 8. Public Job Sheet Missing Billing Info
+**File:** `src/pages/PublicJobSheet.tsx`
+**Issue:** The public-facing job sheet page shows the old `estimated_cost` field but doesn't show the new service charges breakdown, GST, or total amount. Customers can't see what they're approving cost-wise.
+**Fix:** Add billing summary section (service charges, GST, discount, total) to the public view.
 
-I recommend using a JSONB column on `job_sheets` called `service_items` (simpler, no new table needed) to store the array of service line items. The existing `service_charge`, `gst_amount`, `total_amount` columns continue to hold computed totals.
-
----
-
-## Part 5: Redesign Job Sheet Detail Page
-
-**Current state**: Already has a two-column layout with timeline. Needs section improvements.
-
-**Fix in `src/pages/JobSheetDetail.tsx`**:
-- Structured sections in left column:
-  1. Customer Info card (name, phone, email, GST)
-  2. Device Info card (brand, model, serial, IMEI, color, storage)
-  3. Problem Description card (description, issue tags)
-  4. Pre-Repair Checklist (collapsible, existing)
-  5. Diagnosis section (staff notes, technician notes)
-  6. Service Charges table (line items with HSN, GST, discount, totals)
-  7. Parts Used table (from repair_parts)
-  8. Cost Summary card (subtotal, discount, GST breakdown, parts, grand total)
-  9. Post-Repair Checklist (existing)
-  10. Repair Timeline (existing, already implemented)
-  11. Audit Log (existing)
-
-- Right sidebar improvements:
-  - Large status badge with stepper dropdown
-  - Payment status badge
-  - Generate Invoice button (only if no invoice linked AND status >= quality_check)
-  - Add Payment button
-  - Edit Job Sheet button (navigates to `/repairs/:id/edit`)
-  - Download PDF / Print
-  - Copy Public Link
-  - Technician assignment card
-  - Device movement actions
-
-- Status flow enforcement: only allow forward progression through defined statuses:
-  Created -> Diagnosis -> Estimate Prepared -> Estimate Approved -> Repair In Progress -> Repair Completed -> Quality Check -> Invoice Generated -> Delivered
+### 9. Technician Dashboard Missing Repair Details
+**File:** `src/pages/TechnicianDashboard.tsx`
+**Issue:** Technician cards in the overview don't link to filtered job lists. No way for admin to drill down into a specific technician's jobs.
+**Fix:** Make technician cards clickable to filter by technician.
 
 ---
 
-## Part 6: Finance Transactions UI Redesign
+## UI/UX IMPROVEMENTS
 
-**Fix in `src/pages/Finance.tsx`**:
-- Enhance TransactionTab table columns: Transaction ID, Date, Type, Category name (joined), Reference, Customer, Amount, Payment Method, Account name, Status, Created By
-- Add date range filter (Today / 7 Days / Month / Custom)
-- Add export CSV button
-- Add transaction detail side panel (Sheet) on row click showing full details
-- Improve dashboard KPI cards: Cash Balance, Bank Balance, Daily Income, Daily Expense with proper card styling
-- Transaction creation panel as a slide-over Sheet
+### 10. Login/Signup/Auth Pages -- Modern 2026 Redesign
+**Files:** `Login.tsx`, `Signup.tsx`, `ForgotPassword.tsx`, `ResetPassword.tsx`
+**Current:** Plain card with basic form fields. No visual identity.
+**Improvement:**
+- Split-screen layout: left side with brand illustration/gradient, right side with form
+- ALVStore ERP 2026 branding with Zap icon
+- Glassmorphism card effect
+- Password visibility toggle
+- Loading spinner animation
+- Consistent with the 2026 design system
+
+### 11. Finance Dashboard KPI Cards -- Better Visual Hierarchy
+**File:** `src/pages/Finance.tsx`
+**Current:** 7 KPI cards in a single row (too many, cramped on smaller screens).
+**Improvement:**
+- Group into 2 rows: Primary (Cash, Bank, Net) and Secondary (Today Income, Today Expense, Monthly Income, Monthly Expense)
+- Add mini sparkline or trend indicator
+- Better responsive grid (2 cols mobile, 4 cols desktop)
+
+### 12. Chat -- Smart Action Drawer Context
+**File:** `src/pages/Chat.tsx`
+**Current:** "New Chat" button opens a generic user picker.
+**Improvement:**
+- Add glassmorphism effect to the new chat drawer
+- Auto-suggest contacts based on active context (if navigated from a job sheet, suggest the customer and assigned technician)
+- Show user role badges in the contact list
+- Add "typing..." indicator placeholder
+
+### 13. POS -- Receipt Improvements
+**File:** `src/pages/POS.tsx`
+**Current:** Basic receipt dialog.
+**Improvement:**
+- Add business header (company name, address, GST from business_settings)
+- Show GST breakup (CGST/SGST) on receipt
+- Better print formatting
+
+### 14. Customer Portal -- Service Charges Visibility
+**File:** `src/pages/CustomerPortal.tsx`
+**Current:** Shows repair cards with old `estimated_cost` and `final_cost` fields.
+**Improvement:**
+- Show `total_amount` from job_sheets (new billing fields)
+- Show payment status badge
+- Add "View Details" link to public job sheet page
+
+### 15. Technician Dashboard -- TTR Countdown
+**File:** `src/pages/TechnicianDashboard.tsx`
+**Current:** No time tracking or urgency indicators.
+**Improvement:**
+- Add Time-to-Repair countdown based on `estimated_completion` date
+- Color-code cards by urgency (overdue = red, due today = orange, on track = green)
+- Add repair notes quick-input
+
+### 16. Job Sheet List -- Dense Table Mode
+**File:** `src/pages/JobSheets.tsx`
+**Current:** Standard table density.
+**Improvement:**
+- Add compact/dense toggle for power users
+- Show payment status badge in the table
+- Add bulk status update capability
+
+### 17. Settings Page -- Better Section Navigation
+**File:** `src/pages/Settings.tsx`
+**Current:** Long sidebar with many sections.
+**Improvement:**
+- Add search/filter for settings sections
+- Add breadcrumb for current section
+- Better mobile layout (full-width sections)
 
 ---
 
-## Part 7: Invoice Control System
+## DATABASE CHANGES
 
-**Already implemented** in `JobSheetDetail.tsx` (generateInvoice function, lines 220-264). Needs minor improvements:
-
-- Add invoice preview dialog before creation (show what will be generated)
-- Only enable "Generate Invoice" when status is `quality_check` or later
-- Invoice includes: Customer, Job Sheet reference, Service Charges (line items), Parts, GST, Discount, Total
-- After generation, show link to invoice
-
----
-
-## Part 8: UI/UX Improvements
-
-Apply across all modified files:
-- Consistent spacing (p-6 for cards, gap-6 between sections)
-- Status badges use consistent color scheme from StatusBadge component
-- Stepper UI uses ring indicators for current step
-- Forms use consistent label/input spacing
-- Responsive: stack to single column on mobile
-- Print styles for PDF generation
+### 18. Add `job_sheet_id` to Payments Table
+**Migration SQL:**
+```sql
+ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS job_sheet_id uuid REFERENCES public.job_sheets(id);
+```
+This allows proper payment-to-job tracking instead of the current customer-wide sum approach.
 
 ---
 
-## Part 9: Code Audit Stability Fixes
+## IMPLEMENTATION ORDER
 
-- Fix broken route: Add `/repairs/:id/edit`
-- Fix sidebar state persistence
-- Remove auto-invoice trigger
-- Fix payment sync: sum ALL payments for a job (not just latest) when calculating payment status
-- Fix `addPayment` in JobSheetDetail (line 286): currently only uses current payment amount, should query all payments for this job
+### Phase 1: Critical Bug Fixes (Priority)
+1. Fix Dashboard repair chart query (repair_tickets -> job_sheets)
+2. Fix payment sync bug (add job_sheet_id to payments, update addPayment logic)
+3. Fix hardcoded dashboard trends (remove or compute real values)
+4. Fix mobile sidebar auto-close on navigation
+5. Fix branding across all auth pages (ERPMaster -> ALVStore ERP 2026)
 
----
+### Phase 2: Auth Pages Redesign
+6. Redesign Login page (split-screen, glassmorphism, 2026 branding)
+7. Redesign Signup, ForgotPassword, ResetPassword pages to match
 
-## Part 10: Audit Log
+### Phase 3: Finance UI Upgrade
+8. Enhance transaction table with Category/Account columns and CSV export
+9. Add transaction detail side panel
+10. Improve KPI card layout and responsiveness
 
-Already implemented. All actions (create, edit, status change, invoice generation, payment) log to `job_sheet_audit_log`. Finance actions log to `finance_audit_log`. No changes needed -- just ensure new edit flow also logs.
+### Phase 4: Repair Workflow Polish
+11. Update PublicJobSheet with billing summary
+12. Update CustomerPortal with new billing fields
+13. Add TTR countdown to TechnicianDashboard
+14. Add dense mode to JobSheets list
+
+### Phase 5: Chat and Settings Polish
+15. Chat Smart Action Drawer improvements
+16. Settings section search and mobile layout
 
 ---
 
@@ -158,23 +178,25 @@ Already implemented. All actions (create, edit, status change, invoice generatio
 
 ### Database Migration
 ```sql
-ALTER TABLE job_sheets ADD COLUMN IF NOT EXISTS service_items jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS job_sheet_id uuid;
 ```
 
 ### Files Modified
 ```text
-src/components/layout/AppLayout.tsx   -- Sidebar persistence fix
-src/components/layout/AppSidebar.tsx  -- Remove any hover dependencies
-src/App.tsx                          -- Add /repairs/:id/edit route
-src/pages/JobSheetCreate.tsx         -- Edit mode, remove auto-invoice, enhanced service charges
-src/pages/JobSheetDetail.tsx         -- UI restructure, invoice control, payment fix
-src/pages/Finance.tsx                -- Transaction UI redesign
+src/pages/Login.tsx                      -- 2026 branded redesign
+src/pages/Signup.tsx                     -- 2026 branded redesign
+src/pages/ForgotPassword.tsx             -- 2026 branded redesign
+src/pages/ResetPassword.tsx              -- 2026 branded redesign
+src/pages/Dashboard.tsx                  -- Fix repair chart, remove fake trends
+src/pages/JobSheetDetail.tsx             -- Fix payment sync with job_sheet_id
+src/pages/Finance.tsx                    -- Enhanced transaction table, CSV export
+src/pages/Chat.tsx                       -- Glassmorphism drawer, context suggestions
+src/pages/POS.tsx                        -- Receipt improvements
+src/pages/PublicJobSheet.tsx             -- Add billing summary
+src/pages/CustomerPortal.tsx             -- Show new billing fields
+src/pages/TechnicianDashboard.tsx        -- TTR countdown, clickable cards
+src/pages/JobSheets.tsx                  -- Dense mode, payment status column
+src/pages/Settings.tsx                   -- Section search, mobile layout
+src/components/layout/AppLayout.tsx      -- Mobile sidebar auto-close
 ```
 
-### Implementation Order
-1. Sidebar fix (AppLayout + AppSidebar)
-2. Database migration (service_items column)
-3. App.tsx route addition
-4. JobSheetCreate -- edit mode + remove auto-invoice + service line items
-5. JobSheetDetail -- UI restructure + invoice control + payment fix
-6. Finance.tsx -- transaction UI improvements
