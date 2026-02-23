@@ -169,15 +169,30 @@ export default function Finance() {
 
         {/* ─── DASHBOARD ─────────────────────────── */}
         <TabsContent value="dashboard" className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: "Cash Balance", value: cashBalance, icon: Wallet, color: "bg-success/10 text-success" },
               { label: "Bank Balance", value: bankBalance, icon: Landmark, color: "bg-primary/10 text-primary" },
+              { label: "Net Balance", value: netBalance, icon: DollarSign, color: "bg-accent/10 text-accent-foreground" },
+              { label: "Pending Payments", value: 0, icon: TrendingUp, color: "bg-warning/10 text-warning", hidden: true },
+            ].filter(k => !k.hidden).map(kpi => (
+              <Card key={kpi.label}>
+                <CardContent className="p-4">
+                  <div className={`p-2 rounded-lg w-fit ${kpi.color} mb-2`}>
+                    <kpi.icon className="h-4 w-4" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                  <p className="text-xl font-bold">₹{kpi.value.toLocaleString()}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
               { label: "Today Income", value: todayIncome, icon: TrendingUp, color: "bg-info/10 text-info" },
               { label: "Today Expense", value: todayExpense, icon: TrendingDown, color: "bg-destructive/10 text-destructive" },
               { label: "Monthly Income", value: monthlyIncome, icon: TrendingUp, color: "bg-success/10 text-success" },
               { label: "Monthly Expense", value: monthlyExpense, icon: TrendingDown, color: "bg-warning/10 text-warning" },
-              { label: "Net Balance", value: netBalance, icon: DollarSign, color: "bg-accent/10 text-accent" },
             ].map(kpi => (
               <Card key={kpi.label}>
                 <CardContent className="p-4">
@@ -380,14 +395,41 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
         </div>
       </div>
 
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm text-muted-foreground">{filtered.length} entries</p>
+        <Button variant="outline" size="sm" onClick={() => {
+          const headers = ["ID", "Date", "Category", "Account", "Mode", "Amount", "Reference", "Description", "Staff"];
+          const rows = filtered.map(t => [
+            t.transaction_id,
+            format(new Date(t.date), "dd MMM yyyy"),
+            categories.find(c => c.id === t.category_id)?.name || "",
+            accounts.find(a => a.id === t.account_id)?.name || "",
+            t.payment_mode || "",
+            t.amount,
+            t.reference || "",
+            t.description || "",
+            t.staff_name || "",
+          ]);
+          const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+          const blob = new Blob([csv], { type: "text/csv" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a"); a.href = url; a.download = `${type}_${format(new Date(), "yyyyMMdd")}.csv`; a.click();
+        }}>
+          <Download className="h-3.5 w-3.5 mr-1.5" />Export CSV
+        </Button>
+      </div>
+
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
               <TableHead>Date</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Account</TableHead>
               <TableHead>Mode</TableHead>
               <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Description</TableHead>
               <TableHead>Reference</TableHead>
               <TableHead>Staff</TableHead>
               <TableHead className="w-10"></TableHead>
@@ -395,15 +437,18 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No {type} entries</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No {type} entries</TableCell></TableRow>
             ) : filtered.map(t => (
               <TableRow key={t.id}>
                 <TableCell className="font-mono text-xs">{t.transaction_id}</TableCell>
-                <TableCell>{format(new Date(t.date), "dd MMM yyyy")}</TableCell>
-                <TableCell className="capitalize">{t.payment_mode}</TableCell>
+                <TableCell className="text-xs">{format(new Date(t.date), "dd MMM yyyy")}</TableCell>
+                <TableCell className="text-xs">{categories.find(c => c.id === t.category_id)?.name || <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs">{accounts.find(a => a.id === t.account_id)?.name || <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="capitalize text-xs">{t.payment_mode}</TableCell>
                 <TableCell className="text-right font-medium">₹{t.amount.toLocaleString()}</TableCell>
-                <TableCell className="text-muted-foreground">{t.reference || "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{t.staff_name || "—"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{t.description || "—"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{t.reference || "—"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{t.staff_name || "—"}</TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setReceiptTx(t); setReceiptOpen(true); }} title="View Receipt">
                     <Download className="h-3.5 w-3.5" />

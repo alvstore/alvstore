@@ -1425,6 +1425,7 @@ export type Database = {
           created_by: string | null
           customer_id: string | null
           id: string
+          job_sheet_id: string | null
           notes: string | null
           payment_method: Database["public"]["Enums"]["payment_method_type"]
           payment_number: string
@@ -1440,6 +1441,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string | null
           id?: string
+          job_sheet_id?: string | null
           notes?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method_type"]
           payment_number?: string
@@ -1455,6 +1457,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string | null
           id?: string
+          job_sheet_id?: string | null
           notes?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method_type"]
           payment_number?: string
@@ -1470,6 +1473,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_job_sheet_id_fkey"
+            columns: ["job_sheet_id"]
+            isOneToOne: false
+            referencedRelation: "job_sheets"
             referencedColumns: ["id"]
           },
           {

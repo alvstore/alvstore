@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { cn } from "@/lib/utils";
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("sidebarCollapsed") === "true";
@@ -13,6 +14,11 @@ export function AppLayout() {
       return false;
     }
   });
+
+  // Auto-close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   const handleToggle = useCallback(() => {
     setCollapsed(prev => {

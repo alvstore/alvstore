@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import {
   FileText, Wrench, CreditCard, Check, X,
-  AlertCircle, CheckCircle2, Loader2,
+  AlertCircle, CheckCircle2, Loader2, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,7 +43,7 @@ export default function CustomerPortal() {
 
       const [qRes, jRes, pRes] = await Promise.all([
         supabase.from("quotations").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
-        supabase.from("job_sheets").select("id, job_number, device_brand, device_model, status, priority, estimated_cost, final_cost, problem_description, created_at").eq("customer_id", cust.id).order("created_at", { ascending: false }),
+        supabase.from("job_sheets").select("id, job_number, device_brand, device_model, status, priority, estimated_cost, final_cost, total_amount, payment_status, problem_description, created_at, public_token").eq("customer_id", cust.id).order("created_at", { ascending: false }),
         supabase.from("payments").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
       ]);
 
@@ -223,15 +223,28 @@ export default function CustomerPortal() {
                           <p className="font-medium">{r.job_number}</p>
                           <Badge className={statusColor(r.status)}>{r.status.replace(/_/g, " ")}</Badge>
                           <Badge variant="outline" className="capitalize">{r.priority}</Badge>
+                          {r.payment_status && (
+                            <Badge className={statusColor(r.payment_status === "paid" ? "completed" : r.payment_status === "partial" ? "pending" : "rejected")}>
+                              {r.payment_status}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{r.device_brand} {r.device_model || ""}</p>
                         <p className="text-sm mt-1">{r.problem_description}</p>
-                        <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+                        <div className="flex gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                           <span>Created: {new Date(r.created_at).toLocaleDateString("en-IN")}</span>
-                          {r.estimated_cost && <span>Est. Cost: ₹{r.estimated_cost}</span>}
-                          {r.final_cost && <span>Final Cost: ₹{r.final_cost}</span>}
+                          {r.total_amount ? (
+                            <span className="font-medium text-foreground">Total: ₹{Number(r.total_amount).toLocaleString()}</span>
+                          ) : r.estimated_cost ? (
+                            <span>Est. Cost: ₹{r.estimated_cost}</span>
+                          ) : null}
                         </div>
                       </div>
+                      {r.public_token && (
+                        <Button variant="outline" size="sm" onClick={() => window.open(`/job/public/${r.public_token}`, "_blank")}>
+                          <Eye className="h-3.5 w-3.5 mr-1" />View
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
