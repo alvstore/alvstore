@@ -1,202 +1,121 @@
 
 
-# Full ERP Audit, Bug Fix, and UI/UX Upgrade Plan
+# Full ERP End-to-End Audit, Bug Fix, and UI/UX Overhaul
 
-## Audit Summary
+## Issues Found and Root Causes
 
-After a comprehensive end-to-end review of the entire codebase (Login, Signup, Dashboard, Sidebar, Job Sheets, Invoices, Finance, POS, Chat, Settings, Technician Dashboard, Customer Portal, Public Pages, and Audit Logs), here are all identified issues and improvements organized by priority.
+### CRITICAL BUG 1: Sidebar Text Invisible / Cut Off
+**Evidence**: Screenshots show sidebar nav items are barely visible -- only the active item and category headers show, rest appear as ghost text.
+**Root Cause**: In `AppSidebar.tsx` (lines 179-183), nav link text colors use Tailwind arbitrary values like `text-[hsl(var(--sidebar-foreground))/0.55]` and `text-[hsl(var(--sidebar-foreground))/0.65]`. The `/0.55` and `/0.65` opacity syntax inside `hsl()` via Tailwind arbitrary values does NOT work correctly -- Tailwind generates broken CSS. The same issue affects category labels (line 159) using `/0.38`.
+**Fix**: Replace all broken opacity color references with proper Tailwind opacity modifiers or explicit `rgba()` values. For example, change `text-[hsl(var(--sidebar-foreground))/0.65]` to `text-sidebar-foreground/65` (using Tailwind's built-in opacity modifier syntax).
 
----
+### CRITICAL BUG 2: Chat "New Conversation" Shows No Users
+**Evidence**: User reports "no user to select to start chat."
+**Root Cause**: `fetchAllProfiles()` in `Chat.tsx` (line 101) queries the `profiles` table. Currently there is only 1 profile in the system (the logged-in admin). After filtering out `p.user_id !== user?.id` (line 108), the result is empty. The employees table has 2 records (Kuldeep Salvi and OGK) but they are not linked as auth users / do not have profiles.
+**Fix**: Modify chat user picker to ALSO pull from the `employees` table (which has actual team members) as contacts. Show employees who have `user_id` set as internal chat contacts. For employees without `user_id` (external), show only as WhatsApp contacts if they have a phone number. Additionally, in the internal tab, show existing profiles AND linked employees.
 
-## CRITICAL BUGS TO FIX
+### BUG 3: Payroll Shows External Technicians
+**Evidence**: Screenshot shows "OGK" (Technician, external) in Payroll with salary ₹0. Payroll is for internal employees only.
+**Root Cause**: `Payroll.tsx` (line 50) queries `employees` with only `eq("status", "active")` filter -- does NOT filter by `employee_type`. External/outsourced technicians should NOT appear in payroll.
+**Fix**: Add `.neq("employee_type", "external")` or `.eq("employee_type", "internal")` filter. Also add a null-safe check since older records may not have `employee_type` set.
 
-### 1. Dashboard Repair Chart Queries Wrong Table
-**File:** `src/pages/Dashboard.tsx` (line 88)
-**Issue:** `fetchRepairBreakdown()` queries `repair_tickets` table, which is a legacy table. All repair data now lives in `job_sheets`.
-**Fix:** Change query to `job_sheets` and map statuses from the current `job_sheet_status` enum.
+### BUG 4: Attendance Not Filtering by Employee Type
+**Evidence**: Attendance tracks all employees but should focus on internal staff. External technicians have their own attendance tracking mechanisms.
+**Root Cause**: `ManualAttendanceTab` in `Attendance.tsx` does not distinguish between internal and external employees.
+**Fix**: When showing the admin attendance view, join with `employees` table to show only internal employees, or at minimum add an "Internal / All" filter toggle.
 
-### 2. Login Page Branding Mismatch
-**File:** `src/pages/Login.tsx` (line 33)
-**Issue:** Shows "ERPMaster" instead of "ALVStore ERP 2026" branding.
-**Fix:** Update Login, Signup, ForgotPassword, and ResetPassword pages to use "ALVStore ERP 2026" branding with the Zap icon, matching the sidebar.
+### BUG 5: Dashboard Shows Same Content on Every Page
+**Evidence**: Screenshots show the Dashboard content (Welcome back, KPI cards) is displayed when user navigates to Customers, Inventory, Attendance pages. The sidebar highlights different items but the main content stays as Dashboard.
+**Root Cause**: Need to check routing -- likely the `Outlet` is not rendering correctly or the route paths don't match. Looking at the screenshots, the URL bar shows `/customers`, `/inventory`, `/attendance` but the content is Dashboard. This suggests either the `Outlet` component is not receiving the child route properly, or the child routes are not matching.
 
-### 3. Payment Sync Bug in JobSheetDetail
-**File:** `src/pages/JobSheetDetail.tsx` (line 286)
-**Issue:** Payment query sums ALL payments for the customer (`eq("customer_id", job.customer_id)`) instead of payments specifically for this job. This means payments from other jobs or invoices affect this job's payment status incorrectly.
-**Fix:** Filter payments by job-related invoice or add a `job_sheet_id` filter. Since payments don't have a `job_sheet_id` column, link through `invoice_id` or add a reference column.
+Actually, re-examining `AppLayout.tsx` -- it uses `<Outlet />` correctly. The issue is more likely that those page components are failing to render (throwing errors silently) and the error boundary falls back to Dashboard. Let me check if pages like `Customers.tsx` or `Inventory.tsx` have import/render errors.
 
-### 4. Sidebar Mobile Close on Navigation
-**File:** `src/components/layout/AppLayout.tsx`
-**Issue:** When user taps a navigation link on mobile, the sidebar stays open. User must manually close it.
-**Fix:** Close mobile sidebar on route change using `useLocation()`.
+**Alternative root cause**: Looking at the screenshots more carefully, the URLs in the status bar show `/customers` and `/inventory`. The content area shows the Dashboard. This could mean the routes are defined but the page components crash on render, causing React to show nothing (and the Dashboard content bleeds through if it's a parent route issue). Since `App.tsx` uses flat routes under `AppLayout`, this shouldn't happen unless the child components error out.
 
-### 5. Dashboard Hardcoded Trend Percentages
-**File:** `src/pages/Dashboard.tsx` (lines 143-147)
-**Issue:** KPI cards show hardcoded trend values like "+8%", "-5%", "+12%", "+22%" which are fake/misleading.
-**Fix:** Either calculate real trends by comparing current vs previous period, or remove the trend indicators entirely.
+**Fix**: Need to audit `Customers.tsx` and `Inventory.tsx` for render errors. Add error boundaries. Also verify route registration in `App.tsx`.
 
----
+### UI/UX IMPROVEMENT 1: Adopt Reference Dashboard Design
+**Evidence**: User provided reference images showing a dark-themed "Visualization Suite" with left sidebar module selector (Sales, Finance, Inventory, Operations), prominent KPI cards with trend arrows, chart type switcher (Area/Bar/Line), and donut resource allocation chart.
+**Improvements**:
+- Add chart type toggle (Area / Bar / Line) to the Sales Trend chart
+- Add a metric selector dropdown to switch between data views (Revenue, Leads, etc.)
+- Add a donut chart for "Resource Allocation" showing repair status distribution
+- Improve KPI card design with larger values and trend indicators using real data
+- Add temporal scope filter (Today / 7 Days / 30 Days / Custom) to dashboard
 
-## WORKFLOW AND LOGIC FIXES
-
-### 6. Finance Transaction Table Missing Columns
-**File:** `src/pages/Finance.tsx` (TransactionTab)
-**Issue:** Income/Expense tables lack Category name, Account name, and Description columns. Only shows ID, Date, Mode, Amount, Reference, Staff.
-**Fix:** Add joined Category name and Account name columns. Add CSV export button. Add transaction detail side panel on row click.
-
-### 7. Finance Ledger Missing CSV Export
-**File:** `src/pages/Finance.tsx` (LedgerTab)
-**Issue:** No export functionality for the ledger view.
-**Fix:** Add CSV export button to the ledger tab.
-
-### 8. Public Job Sheet Missing Billing Info
-**File:** `src/pages/PublicJobSheet.tsx`
-**Issue:** The public-facing job sheet page shows the old `estimated_cost` field but doesn't show the new service charges breakdown, GST, or total amount. Customers can't see what they're approving cost-wise.
-**Fix:** Add billing summary section (service charges, GST, discount, total) to the public view.
-
-### 9. Technician Dashboard Missing Repair Details
-**File:** `src/pages/TechnicianDashboard.tsx`
-**Issue:** Technician cards in the overview don't link to filtered job lists. No way for admin to drill down into a specific technician's jobs.
-**Fix:** Make technician cards clickable to filter by technician.
+### UI/UX IMPROVEMENT 2: Employee Form Has Duplicate Field
+**Evidence**: `Employees.tsx` lines 289-294 show "Designation" field appears TWICE -- once in line 290 and again in line 293. The second should be "Salary" label.
+**Fix**: Remove duplicate designation field, keep the one with salary.
 
 ---
 
-## UI/UX IMPROVEMENTS
+## Implementation Plan
 
-### 10. Login/Signup/Auth Pages -- Modern 2026 Redesign
-**Files:** `Login.tsx`, `Signup.tsx`, `ForgotPassword.tsx`, `ResetPassword.tsx`
-**Current:** Plain card with basic form fields. No visual identity.
-**Improvement:**
-- Split-screen layout: left side with brand illustration/gradient, right side with form
-- ALVStore ERP 2026 branding with Zap icon
-- Glassmorphism card effect
-- Password visibility toggle
-- Loading spinner animation
-- Consistent with the 2026 design system
+### Phase 1: Critical Bug Fixes
 
-### 11. Finance Dashboard KPI Cards -- Better Visual Hierarchy
-**File:** `src/pages/Finance.tsx`
-**Current:** 7 KPI cards in a single row (too many, cramped on smaller screens).
-**Improvement:**
-- Group into 2 rows: Primary (Cash, Bank, Net) and Secondary (Today Income, Today Expense, Monthly Income, Monthly Expense)
-- Add mini sparkline or trend indicator
-- Better responsive grid (2 cols mobile, 4 cols desktop)
+**1. Fix Sidebar Text Visibility** (`src/components/layout/AppSidebar.tsx`)
+- Replace all `text-[hsl(var(--sidebar-foreground))/0.XX]` with proper Tailwind opacity classes
+- Replace `text-[hsl(var(--sidebar-accent-foreground))]` with `text-sidebar-accent-foreground`
+- Use standard Tailwind color/opacity: `text-sidebar-foreground/55`, `text-sidebar-foreground/65`, etc.
+- Test that all nav items, category labels, and separators are clearly visible
 
-### 12. Chat -- Smart Action Drawer Context
-**File:** `src/pages/Chat.tsx`
-**Current:** "New Chat" button opens a generic user picker.
-**Improvement:**
-- Add glassmorphism effect to the new chat drawer
-- Auto-suggest contacts based on active context (if navigated from a job sheet, suggest the customer and assigned technician)
-- Show user role badges in the contact list
-- Add "typing..." indicator placeholder
+**2. Fix Chat User Picker** (`src/pages/Chat.tsx`)
+- Modify `fetchAllProfiles()` to also query the `employees` table
+- Merge employees with `user_id` into the profiles list
+- Show role badges from the `employees.role` column
+- For employees without auth accounts, show them with a "(no login)" indicator
+- For external employees with phone numbers, auto-suggest them in the WhatsApp tab
 
-### 13. POS -- Receipt Improvements
-**File:** `src/pages/POS.tsx`
-**Current:** Basic receipt dialog.
-**Improvement:**
-- Add business header (company name, address, GST from business_settings)
-- Show GST breakup (CGST/SGST) on receipt
-- Better print formatting
+**3. Fix Payroll to Exclude External Employees** (`src/pages/Payroll.tsx`)
+- Add filter: `.or('employee_type.eq.internal,employee_type.is.null')` to exclude external/outsourced workers
+- Add a visual indicator column showing "Internal" badge
+- Show a separate section or note for external contractors if needed
 
-### 14. Customer Portal -- Service Charges Visibility
-**File:** `src/pages/CustomerPortal.tsx`
-**Current:** Shows repair cards with old `estimated_cost` and `final_cost` fields.
-**Improvement:**
-- Show `total_amount` from job_sheets (new billing fields)
-- Show payment status badge
-- Add "View Details" link to public job sheet page
+**4. Fix Dashboard Rendering on Other Pages** (`src/App.tsx` + affected pages)
+- Audit route definitions to ensure no conflicts
+- Add React error boundaries around page components
+- Check `Customers.tsx`, `Inventory.tsx` for runtime errors that might cause silent failures
 
-### 15. Technician Dashboard -- TTR Countdown
-**File:** `src/pages/TechnicianDashboard.tsx`
-**Current:** No time tracking or urgency indicators.
-**Improvement:**
-- Add Time-to-Repair countdown based on `estimated_completion` date
-- Color-code cards by urgency (overdue = red, due today = orange, on track = green)
-- Add repair notes quick-input
+### Phase 2: UI/UX Dashboard Overhaul
 
-### 16. Job Sheet List -- Dense Table Mode
-**File:** `src/pages/JobSheets.tsx`
-**Current:** Standard table density.
-**Improvement:**
-- Add compact/dense toggle for power users
-- Show payment status badge in the table
-- Add bulk status update capability
+**5. Dashboard Redesign** (`src/pages/Dashboard.tsx`)
+- Add temporal scope selector (Today / 7 Days / 30 Days)
+- Add chart type toggle (Area / Bar / Line) for the sales trend chart
+- Add donut chart showing repair status resource allocation
+- Compute real trend percentages by comparing current vs previous period
+- Improve KPI card styling to match reference: larger values, trend arrows with color coding
 
-### 17. Settings Page -- Better Section Navigation
-**File:** `src/pages/Settings.tsx`
-**Current:** Long sidebar with many sections.
-**Improvement:**
-- Add search/filter for settings sections
-- Add breadcrumb for current section
-- Better mobile layout (full-width sections)
+### Phase 3: Attendance & Employees Fixes
+
+**6. Attendance Employee Type Filter** (`src/pages/Attendance.tsx`)
+- Add "Internal / All" toggle to the attendance admin view
+- Show employee type badge in attendance records
+
+**7. Fix Employee Form Duplicate** (`src/pages/Employees.tsx`)
+- Remove duplicate "Designation" field at line 293
+- Ensure the second grid row is Joining Date + Salary
+
+### Phase 4: Reports Dashboard Enhancement
+
+**8. Reports Page** (`src/pages/Reports.tsx`)
+- Add repair revenue report tab
+- Add attendance summary report
+- Add employee performance metrics
 
 ---
 
-## DATABASE CHANGES
+## Files to Modify
 
-### 18. Add `job_sheet_id` to Payments Table
-**Migration SQL:**
-```sql
-ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS job_sheet_id uuid REFERENCES public.job_sheets(id);
-```
-This allows proper payment-to-job tracking instead of the current customer-wide sum approach.
-
----
-
-## IMPLEMENTATION ORDER
-
-### Phase 1: Critical Bug Fixes (Priority)
-1. Fix Dashboard repair chart query (repair_tickets -> job_sheets)
-2. Fix payment sync bug (add job_sheet_id to payments, update addPayment logic)
-3. Fix hardcoded dashboard trends (remove or compute real values)
-4. Fix mobile sidebar auto-close on navigation
-5. Fix branding across all auth pages (ERPMaster -> ALVStore ERP 2026)
-
-### Phase 2: Auth Pages Redesign
-6. Redesign Login page (split-screen, glassmorphism, 2026 branding)
-7. Redesign Signup, ForgotPassword, ResetPassword pages to match
-
-### Phase 3: Finance UI Upgrade
-8. Enhance transaction table with Category/Account columns and CSV export
-9. Add transaction detail side panel
-10. Improve KPI card layout and responsiveness
-
-### Phase 4: Repair Workflow Polish
-11. Update PublicJobSheet with billing summary
-12. Update CustomerPortal with new billing fields
-13. Add TTR countdown to TechnicianDashboard
-14. Add dense mode to JobSheets list
-
-### Phase 5: Chat and Settings Polish
-15. Chat Smart Action Drawer improvements
-16. Settings section search and mobile layout
-
----
-
-## Technical Summary
-
-### Database Migration
-```sql
-ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS job_sheet_id uuid;
-```
-
-### Files Modified
 ```text
-src/pages/Login.tsx                      -- 2026 branded redesign
-src/pages/Signup.tsx                     -- 2026 branded redesign
-src/pages/ForgotPassword.tsx             -- 2026 branded redesign
-src/pages/ResetPassword.tsx              -- 2026 branded redesign
-src/pages/Dashboard.tsx                  -- Fix repair chart, remove fake trends
-src/pages/JobSheetDetail.tsx             -- Fix payment sync with job_sheet_id
-src/pages/Finance.tsx                    -- Enhanced transaction table, CSV export
-src/pages/Chat.tsx                       -- Glassmorphism drawer, context suggestions
-src/pages/POS.tsx                        -- Receipt improvements
-src/pages/PublicJobSheet.tsx             -- Add billing summary
-src/pages/CustomerPortal.tsx             -- Show new billing fields
-src/pages/TechnicianDashboard.tsx        -- TTR countdown, clickable cards
-src/pages/JobSheets.tsx                  -- Dense mode, payment status column
-src/pages/Settings.tsx                   -- Section search, mobile layout
-src/components/layout/AppLayout.tsx      -- Mobile sidebar auto-close
+src/components/layout/AppSidebar.tsx  -- Fix broken color opacity syntax
+src/pages/Chat.tsx                    -- Fix user picker to show employees
+src/pages/Payroll.tsx                 -- Filter out external employees
+src/pages/Dashboard.tsx               -- UI/UX overhaul with chart toggles
+src/pages/Attendance.tsx              -- Employee type filter
+src/pages/Employees.tsx               -- Fix duplicate form field
+src/App.tsx                           -- Verify routing, add error boundaries
 ```
+
+## Database Changes
+None required -- all fixes are frontend logic and CSS.
 
