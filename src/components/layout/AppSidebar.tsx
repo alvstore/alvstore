@@ -124,7 +124,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
     <aside
       className={cn(
         "fixed left-0 top-0 z-40 h-screen border-r border-sidebar-border transition-all duration-300 ease-in-out flex flex-col",
-        "bg-[hsl(var(--sidebar-background))]",
+        "bg-sidebar",
         collapsed ? "w-[60px]" : "w-[240px]"
       )}
     >
@@ -133,13 +133,13 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
         "flex items-center h-16 border-b border-sidebar-border shrink-0 overflow-hidden",
         collapsed ? "justify-center px-2" : "px-5 gap-2.5"
       )}>
-        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-[hsl(var(--sidebar-primary))] to-[hsl(var(--accent))] flex items-center justify-center shrink-0">
+        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-accent flex items-center justify-center shrink-0">
           <Zap className="h-4 w-4 text-white" />
         </div>
         {!collapsed && (
           <div className="flex flex-col leading-none">
-            <span className="text-[13px] font-bold text-[hsl(var(--sidebar-accent-foreground))] tracking-tight">ALVStore</span>
-            <span className="text-[9px] font-medium text-[hsl(var(--sidebar-foreground))/0.45] tracking-widest uppercase">ERP 2026</span>
+            <span className="text-[13px] font-bold text-sidebar-accent-foreground tracking-tight">ALVStore</span>
+            <span className="text-[9px] font-medium text-sidebar-foreground/45 tracking-widest uppercase">ERP 2026</span>
           </div>
         )}
       </div>
@@ -156,13 +156,13 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 hasMultipleItems ? (
                   <button
                     onClick={() => toggleCategory(category.label)}
-                    className="w-full flex items-center justify-between py-1.5 px-1 mb-0.5 text-[9px] font-semibold tracking-[0.12em] text-[hsl(var(--sidebar-foreground))/0.38] uppercase hover:text-[hsl(var(--sidebar-foreground))/0.60] transition-colors"
+                    className="w-full flex items-center justify-between py-1.5 px-1 mb-0.5 text-[9px] font-semibold tracking-[0.12em] text-sidebar-foreground/40 uppercase hover:text-sidebar-foreground/60 transition-colors"
                   >
                     <span>{category.label}</span>
                     {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </button>
                 ) : (
-                  <p className="py-1.5 px-1 mb-0.5 text-[9px] font-semibold tracking-[0.12em] text-[hsl(var(--sidebar-foreground))/0.38] uppercase">
+                  <p className="py-1.5 px-1 mb-0.5 text-[9px] font-semibold tracking-[0.12em] text-sidebar-foreground/40 uppercase">
                     {category.label}
                   </p>
                 )
@@ -178,14 +178,14 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                       className={cn(
                         "group flex items-center rounded-lg text-[13px] font-medium transition-all duration-150",
                         collapsed
-                          ? "h-9 w-9 justify-center text-[hsl(var(--sidebar-foreground))/0.55] hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]"
-                          : "gap-2.5 px-2.5 py-2 w-full text-[hsl(var(--sidebar-foreground))/0.65] hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))]"
+                          ? "h-9 w-9 justify-center text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          : "gap-2.5 px-2.5 py-2 w-full text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       )}
                       activeClassName={cn(
-                        "!text-[hsl(var(--sidebar-primary))] font-semibold",
+                        "!text-sidebar-primary font-semibold",
                         collapsed
-                          ? "bg-[hsl(var(--sidebar-primary))/0.15]"
-                          : "bg-[hsl(var(--sidebar-primary))/0.12] shadow-[inset_2px_0_0_hsl(var(--sidebar-primary))]"
+                          ? "bg-sidebar-primary/15"
+                          : "bg-sidebar-primary/12 shadow-[inset_2px_0_0] shadow-sidebar-primary"
                       )}
                     >
                       <item.icon className={cn("shrink-0", collapsed ? "h-4 w-4" : "h-3.5 w-3.5")} />
@@ -196,7 +196,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
               )}
 
               {/* separator between categories */}
-              {!collapsed && <div className="h-px bg-[hsl(var(--sidebar-border))/0.6] my-2 mx-1" />}
+              {!collapsed && <div className="h-px bg-sidebar-border/60 my-2 mx-1" />}
             </div>
           );
         })}
@@ -205,7 +205,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
-        className="flex items-center justify-center h-11 border-t border-sidebar-border text-[hsl(var(--sidebar-foreground))/0.40] hover:text-[hsl(var(--sidebar-foreground))/0.80] hover:bg-[hsl(var(--sidebar-accent))] transition-all duration-150 shrink-0"
+        className="flex items-center justify-center h-11 border-t border-sidebar-border text-sidebar-foreground/40 hover:text-sidebar-foreground/80 hover:bg-sidebar-accent transition-all duration-150 shrink-0"
       >
         {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
       </button>

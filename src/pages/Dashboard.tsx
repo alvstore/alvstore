@@ -1,15 +1,17 @@
+import { useState } from "react";
 import {
   DollarSign, TrendingUp, CreditCard, Wallet,
   Package, Wrench, CheckCircle, Users, RefreshCw,
   ArrowUpRight, ArrowDownRight, ShoppingCart, Clock,
+  BarChart2, LineChart as LineChartIcon, AreaChart as AreaChartIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, RadarChart, Radar,
-  PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -125,6 +127,7 @@ function fmt(n: number) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const [chartType, setChartType] = useState<"area" | "bar" | "line">("area");
   const queryClient = useQueryClient();
   const { data: kpis, isLoading: kpiLoading } = useQuery({ queryKey: ["dashboard-kpis"], queryFn: fetchKpis, staleTime: 60_000 });
   const { data: salesTrend, isLoading: trendLoading } = useQuery({ queryKey: ["dashboard-sales-trend"], queryFn: fetchSalesTrend, staleTime: 60_000 });
@@ -267,7 +270,7 @@ export default function Dashboard() {
 
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 gap-6">
-        {/* Sales Trend - Area chart */}
+        {/* Sales Trend - Switchable chart type */}
         <Card className="border-border/50 shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -275,34 +278,55 @@ export default function Dashboard() {
                 <CardTitle className="text-base font-semibold">Sales Trend</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">Last 7 days performance</p>
               </div>
-              <div className="text-right">
-                <p className="text-lg font-bold text-foreground">{kpis ? fmt(kpis.salesMonth) : "—"}</p>
-                <p className="text-[11px] text-muted-foreground">This Month</p>
+              <div className="flex items-center gap-3">
+                <Tabs value={chartType} onValueChange={v => setChartType(v as any)}>
+                  <TabsList className="h-8">
+                    <TabsTrigger value="area" className="h-6 px-2"><AreaChartIcon className="h-3.5 w-3.5" /></TabsTrigger>
+                    <TabsTrigger value="bar" className="h-6 px-2"><BarChart2 className="h-3.5 w-3.5" /></TabsTrigger>
+                    <TabsTrigger value="line" className="h-6 px-2"><LineChartIcon className="h-3.5 w-3.5" /></TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-foreground">{kpis ? fmt(kpis.salesMonth) : "—"}</p>
+                  <p className="text-[11px] text-muted-foreground">This Month</p>
+                </div>
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
             {trendLoading ? <Skeleton className="h-[260px] w-full rounded-lg" /> : (
               <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={salesTrend}>
-                  <defs>
-                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "hsl(var(--card))", border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px", fontSize: "12px", boxShadow: "0 4px 12px hsl(var(--foreground) / 0.08)",
-                    }}
-                    formatter={(value: number) => [fmt(value), "Sales"]}
-                  />
-                  <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#salesGradient)" dot={{ fill: "hsl(var(--primary))", r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }} />
-                </AreaChart>
+                {chartType === "area" ? (
+                  <AreaChart data={salesTrend}>
+                    <defs>
+                      <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px", boxShadow: "0 4px 12px hsl(var(--foreground) / 0.08)" }} formatter={(value: number) => [fmt(value), "Sales"]} />
+                    <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#salesGradient)" dot={{ fill: "hsl(var(--primary))", r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }} />
+                  </AreaChart>
+                ) : chartType === "bar" ? (
+                  <BarChart data={salesTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} formatter={(value: number) => [fmt(value), "Sales"]} />
+                    <Bar dataKey="sales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={24} />
+                  </BarChart>
+                ) : (
+                  <LineChart data={salesTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} formatter={(value: number) => [fmt(value), "Sales"]} />
+                    <Line type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ fill: "hsl(var(--primary))", r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }} />
+                  </LineChart>
+                )}
               </ResponsiveContainer>
             )}
           </CardContent>

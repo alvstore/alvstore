@@ -290,14 +290,10 @@ export default function Employees() {
               <div className="space-y-1.5"><Label>Designation</Label><Input value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Designation</Label><Input value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} /></div>
+              <div className="space-y-1.5"><Label>Joining Date</Label><Input type="date" value={form.joining_date} onChange={e => setForm(p => ({ ...p, joining_date: e.target.value }))} /></div>
               <div className="space-y-1.5"><Label>Salary</Label><Input type="number" value={form.salary} onChange={e => setForm(p => ({ ...p, salary: e.target.value }))} /></div>
             </div>
-            <div className="space-y-1.5"><Label>Joining Date</Label><Input type="date" value={form.joining_date} onChange={e => setForm(p => ({ ...p, joining_date: e.target.value }))} /></div>
-            <div className="space-y-1.5">
-              <Label>{editId ? "New Password (optional)" : "Password (for login account)"}</Label>
-              <Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder={editId ? "Leave blank to keep" : "Min 6 chars"} />
-            </div>
+            <div className="space-y-1.5"><Label>Password {editId ? "(optional)" : "(for login)"}</Label><Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder={editId ? "Leave blank to keep" : "Min 6 chars"} /></div>
             <Button className="w-full" onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editId ? "Update Employee" : "Create Employee"}
