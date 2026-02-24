@@ -98,17 +98,30 @@ export default function Chat() {
   }, [profiles]);
 
   const fetchAllProfiles = useCallback(async () => {
-    const { data: profilesData } = await supabase.from("profiles").select("user_id, full_name");
-    const { data: rolesData } = await supabase.from("user_roles").select("user_id, role");
-    if (profilesData) {
-      const rolesMap: Record<string, string> = {};
-      rolesData?.forEach(r => { rolesMap[r.user_id] = r.role; });
-      setAllProfiles(
-        profilesData
-          .filter(p => p.user_id !== user?.id)
-          .map(p => ({ ...p, full_name: p.full_name || "User", role: rolesMap[p.user_id] || "staff" }))
-      );
-    }
+    // Fetch profiles (auth users) and employees table for team members
+    const [{ data: profilesData }, { data: rolesData }, { data: employeesData }] = await Promise.all([
+      supabase.from("profiles").select("user_id, full_name"),
+      supabase.from("user_roles").select("user_id, role"),
+      supabase.from("employees").select("id, name, user_id, role, phone, employee_type").eq("status", "active"),
+    ]);
+
+    const rolesMap: Record<string, string> = {};
+    rolesData?.forEach(r => { rolesMap[r.user_id] = r.role; });
+
+    // Build contact list: start with profiles
+    const contactMap = new Map<string, { user_id: string; full_name: string | null; role?: string }>();
+    profilesData?.filter(p => p.user_id !== user?.id).forEach(p => {
+      contactMap.set(p.user_id, { user_id: p.user_id, full_name: p.full_name || "User", role: rolesMap[p.user_id] || "staff" });
+    });
+
+    // Add employees with user_id that aren't already in the map
+    employeesData?.forEach(emp => {
+      if (emp.user_id && emp.user_id !== user?.id && !contactMap.has(emp.user_id)) {
+        contactMap.set(emp.user_id, { user_id: emp.user_id, full_name: emp.name, role: emp.role || "staff" });
+      }
+    });
+
+    setAllProfiles(Array.from(contactMap.values()));
   }, [user]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);

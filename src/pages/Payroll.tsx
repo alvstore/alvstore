@@ -47,7 +47,7 @@ export default function Payroll() {
   const fetchData = async () => {
     setLoading(true);
     const [empRes, payRes] = await Promise.all([
-      supabase.from("employees").select("id, name, salary, role, status").eq("status", "active"),
+      supabase.from("employees").select("id, name, salary, role, status, employee_type").eq("status", "active").or("employee_type.eq.internal,employee_type.is.null"),
       supabase.from("payroll").select("*").eq("month", selectedMonth),
     ]);
     setEmployees(empRes.data || []);
