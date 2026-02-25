@@ -1,121 +1,146 @@
 
 
-# Full ERP End-to-End Audit, Bug Fix, and UI/UX Overhaul
+# ERP Production Upgrade -- Full System Audit and Architecture Improvement
 
-## Issues Found and Root Causes
+## Root Cause Analysis
 
-### CRITICAL BUG 1: Sidebar Text Invisible / Cut Off
-**Evidence**: Screenshots show sidebar nav items are barely visible -- only the active item and category headers show, rest appear as ghost text.
-**Root Cause**: In `AppSidebar.tsx` (lines 179-183), nav link text colors use Tailwind arbitrary values like `text-[hsl(var(--sidebar-foreground))/0.55]` and `text-[hsl(var(--sidebar-foreground))/0.65]`. The `/0.55` and `/0.65` opacity syntax inside `hsl()` via Tailwind arbitrary values does NOT work correctly -- Tailwind generates broken CSS. The same issue affects category labels (line 159) using `/0.38`.
-**Fix**: Replace all broken opacity color references with proper Tailwind opacity modifiers or explicit `rgba()` values. For example, change `text-[hsl(var(--sidebar-foreground))/0.65]` to `text-sidebar-foreground/65` (using Tailwind's built-in opacity modifier syntax).
+### CRITICAL: Sidebar Text Still Invisible
+**Root cause identified**: The `tailwind.config.ts` defines sidebar colors as `hsl(var(--sidebar-foreground))` -- a fully formed HSL color string. Tailwind's opacity modifier (`/55`, `/65`, `/40`) requires colors to be defined with the `<alpha-value>` placeholder pattern: `hsl(var(--sidebar-foreground) / <alpha-value>)`. Without this placeholder, classes like `text-sidebar-foreground/55` silently fail and produce no visible text color.
 
-### CRITICAL BUG 2: Chat "New Conversation" Shows No Users
-**Evidence**: User reports "no user to select to start chat."
-**Root Cause**: `fetchAllProfiles()` in `Chat.tsx` (line 101) queries the `profiles` table. Currently there is only 1 profile in the system (the logged-in admin). After filtering out `p.user_id !== user?.id` (line 108), the result is empty. The employees table has 2 records (Kuldeep Salvi and OGK) but they are not linked as auth users / do not have profiles.
-**Fix**: Modify chat user picker to ALSO pull from the `employees` table (which has actual team members) as contacts. Show employees who have `user_id` set as internal chat contacts. For employees without `user_id` (external), show only as WhatsApp contacts if they have a phone number. Additionally, in the internal tab, show existing profiles AND linked employees.
+**Fix**: Update `tailwind.config.ts` sidebar color definitions to use the alpha-value pattern. This is the ONLY correct fix.
 
-### BUG 3: Payroll Shows External Technicians
-**Evidence**: Screenshot shows "OGK" (Technician, external) in Payroll with salary ₹0. Payroll is for internal employees only.
-**Root Cause**: `Payroll.tsx` (line 50) queries `employees` with only `eq("status", "active")` filter -- does NOT filter by `employee_type`. External/outsourced technicians should NOT appear in payroll.
-**Fix**: Add `.neq("employee_type", "external")` or `.eq("employee_type", "internal")` filter. Also add a null-safe check since older records may not have `employee_type` set.
+### CRITICAL: Login "Failed to Fetch" Error
+Console logs show `TypeError: Failed to fetch` on `signInWithPassword`. This is a network/auth connectivity issue in the preview environment -- not a code bug. The auth flow code is correct.
 
-### BUG 4: Attendance Not Filtering by Employee Type
-**Evidence**: Attendance tracks all employees but should focus on internal staff. External technicians have their own attendance tracking mechanisms.
-**Root Cause**: `ManualAttendanceTab` in `Attendance.tsx` does not distinguish between internal and external employees.
-**Fix**: When showing the admin attendance view, join with `employees` table to show only internal employees, or at minimum add an "Internal / All" filter toggle.
+### Chat: No Users to Select
+The fix from the previous iteration (merging `profiles` + `employees`) is in place. The issue persists because employees in the database don't have `user_id` set (they were added without creating auth accounts). The chat user picker needs to also show employees WITHOUT `user_id` as "invite-only" contacts, and additionally show customers from the `customers` table who have phone numbers (for WhatsApp tab auto-suggestions).
 
-### BUG 5: Dashboard Shows Same Content on Every Page
-**Evidence**: Screenshots show the Dashboard content (Welcome back, KPI cards) is displayed when user navigates to Customers, Inventory, Attendance pages. The sidebar highlights different items but the main content stays as Dashboard.
-**Root Cause**: Need to check routing -- likely the `Outlet` is not rendering correctly or the route paths don't match. Looking at the screenshots, the URL bar shows `/customers`, `/inventory`, `/attendance` but the content is Dashboard. This suggests either the `Outlet` component is not receiving the child route properly, or the child routes are not matching.
-
-Actually, re-examining `AppLayout.tsx` -- it uses `<Outlet />` correctly. The issue is more likely that those page components are failing to render (throwing errors silently) and the error boundary falls back to Dashboard. Let me check if pages like `Customers.tsx` or `Inventory.tsx` have import/render errors.
-
-**Alternative root cause**: Looking at the screenshots more carefully, the URLs in the status bar show `/customers` and `/inventory`. The content area shows the Dashboard. This could mean the routes are defined but the page components crash on render, causing React to show nothing (and the Dashboard content bleeds through if it's a parent route issue). Since `App.tsx` uses flat routes under `AppLayout`, this shouldn't happen unless the child components error out.
-
-**Fix**: Need to audit `Customers.tsx` and `Inventory.tsx` for render errors. Add error boundaries. Also verify route registration in `App.tsx`.
-
-### UI/UX IMPROVEMENT 1: Adopt Reference Dashboard Design
-**Evidence**: User provided reference images showing a dark-themed "Visualization Suite" with left sidebar module selector (Sales, Finance, Inventory, Operations), prominent KPI cards with trend arrows, chart type switcher (Area/Bar/Line), and donut resource allocation chart.
-**Improvements**:
-- Add chart type toggle (Area / Bar / Line) to the Sales Trend chart
-- Add a metric selector dropdown to switch between data views (Revenue, Leads, etc.)
-- Add a donut chart for "Resource Allocation" showing repair status distribution
-- Improve KPI card design with larger values and trend indicators using real data
-- Add temporal scope filter (Today / 7 Days / 30 Days / Custom) to dashboard
-
-### UI/UX IMPROVEMENT 2: Employee Form Has Duplicate Field
-**Evidence**: `Employees.tsx` lines 289-294 show "Designation" field appears TWICE -- once in line 290 and again in line 293. The second should be "Salary" label.
-**Fix**: Remove duplicate designation field, keep the one with salary.
+### Payroll: External Technicians
+The `.or("employee_type.eq.internal,employee_type.is.null")` filter is already in place from the previous fix. The payroll module itself works correctly for internal employees.
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Critical Bug Fixes
+### Phase 1: Fix Sidebar Colors (Critical CSS Fix)
 
-**1. Fix Sidebar Text Visibility** (`src/components/layout/AppSidebar.tsx`)
-- Replace all `text-[hsl(var(--sidebar-foreground))/0.XX]` with proper Tailwind opacity classes
-- Replace `text-[hsl(var(--sidebar-accent-foreground))]` with `text-sidebar-accent-foreground`
-- Use standard Tailwind color/opacity: `text-sidebar-foreground/55`, `text-sidebar-foreground/65`, etc.
-- Test that all nav items, category labels, and separators are clearly visible
+**File: `tailwind.config.ts`**
+Update sidebar color definitions to support opacity modifiers:
+```typescript
+sidebar: {
+  DEFAULT: "hsl(var(--sidebar-background) / <alpha-value>)",
+  foreground: "hsl(var(--sidebar-foreground) / <alpha-value>)",
+  primary: "hsl(var(--sidebar-primary) / <alpha-value>)",
+  "primary-foreground": "hsl(var(--sidebar-primary-foreground) / <alpha-value>)",
+  accent: "hsl(var(--sidebar-accent) / <alpha-value>)",
+  "accent-foreground": "hsl(var(--sidebar-accent-foreground) / <alpha-value>)",
+  border: "hsl(var(--sidebar-border) / <alpha-value>)",
+  ring: "hsl(var(--sidebar-ring) / <alpha-value>)",
+  muted: "hsl(var(--sidebar-muted) / <alpha-value>)",
+},
+```
 
-**2. Fix Chat User Picker** (`src/pages/Chat.tsx`)
-- Modify `fetchAllProfiles()` to also query the `employees` table
-- Merge employees with `user_id` into the profiles list
-- Show role badges from the `employees.role` column
-- For employees without auth accounts, show them with a "(no login)" indicator
-- For external employees with phone numbers, auto-suggest them in the WhatsApp tab
+Also apply the same `<alpha-value>` pattern to ALL other color definitions (primary, secondary, muted, etc.) so opacity modifiers work consistently everywhere:
+```typescript
+foreground: "hsl(var(--foreground) / <alpha-value>)",
+background: "hsl(var(--background) / <alpha-value>)",
+// etc.
+```
 
-**3. Fix Payroll to Exclude External Employees** (`src/pages/Payroll.tsx`)
-- Add filter: `.or('employee_type.eq.internal,employee_type.is.null')` to exclude external/outsourced workers
-- Add a visual indicator column showing "Internal" badge
-- Show a separate section or note for external contractors if needed
+This is a one-time fix that unlocks `/XX` opacity modifiers across the entire app.
 
-**4. Fix Dashboard Rendering on Other Pages** (`src/App.tsx` + affected pages)
-- Audit route definitions to ensure no conflicts
-- Add React error boundaries around page components
-- Check `Customers.tsx`, `Inventory.tsx` for runtime errors that might cause silent failures
+### Phase 2: Chat User Picker Fix
 
-### Phase 2: UI/UX Dashboard Overhaul
+**File: `src/pages/Chat.tsx`**
+The `fetchAllProfiles` function already merges profiles and employees. The remaining issue is that employees without `user_id` cannot participate in internal chats (they have no auth account). Two fixes:
 
-**5. Dashboard Redesign** (`src/pages/Dashboard.tsx`)
-- Add temporal scope selector (Today / 7 Days / 30 Days)
-- Add chart type toggle (Area / Bar / Line) for the sales trend chart
-- Add donut chart showing repair status resource allocation
-- Compute real trend percentages by comparing current vs previous period
-- Improve KPI card styling to match reference: larger values, trend arrows with color coding
+1. Show employees without `user_id` in the WhatsApp tab auto-suggest list (if they have a phone number)
+2. For the internal tab, show ONLY contacts who have a `user_id` (auth account) -- these are the people who can actually log in and chat
+3. Add a visual indicator showing "No contacts available -- add employees with login accounts in Settings > Employees to enable internal chat"
 
-### Phase 3: Attendance & Employees Fixes
+### Phase 3: Attendance Dashboard Redesign
 
-**6. Attendance Employee Type Filter** (`src/pages/Attendance.tsx`)
-- Add "Internal / All" toggle to the attendance admin view
-- Show employee type badge in attendance records
+**File: `src/pages/Attendance.tsx`**
+Replace the current basic table view with an enterprise dashboard layout:
 
-**7. Fix Employee Form Duplicate** (`src/pages/Employees.tsx`)
-- Remove duplicate "Designation" field at line 293
-- Ensure the second grid row is Joining Date + Salary
+1. **KPI Cards Row**: Present Today, Absent Today, Late Arrivals, Total Internal Employees, Average Working Hours
+2. **Attendance Table**: Add columns for Avatar, Employee Name, Department, Check-In, Check-Out, Total Hours, Status (Present/Absent/Late/Half-Day)
+3. **Employee Type Filter**: Add "Internal / External / All" toggle above the table
+4. **Date Range Filter**: Add quick-select buttons (Today, This Week, This Month)
+5. Compute Present/Absent counts by cross-referencing `attendance_records` with internal `employees` for the selected date
 
-### Phase 4: Reports Dashboard Enhancement
+### Phase 4: Payroll System Upgrade
 
-**8. Reports Page** (`src/pages/Reports.tsx`)
-- Add repair revenue report tab
-- Add attendance summary report
-- Add employee performance metrics
+**File: `src/pages/Payroll.tsx`**
+Enhance the existing payroll module:
+
+1. **Attendance Integration**: When generating a salary slip, auto-calculate `presentDays` and `absentDays` from `attendance_records` for the selected month
+2. **Auto-Calculate Net Salary**: `netSalary = (basicSalary / totalWorkingDays * presentDays) - deductions + bonus`
+3. **Bulk Process**: Add "Generate All" button that creates payroll entries for all internal employees who don't have one yet for the selected month
+4. **Salary Slip PDF**: Add a "Download Slip" button per employee (uses `window.print()` on a styled slip component)
+5. **Status KPI Enhancement**: Add "Draft / Processed / Paid" counts to KPI row
+
+### Phase 5: Product Image System
+
+**File: `src/pages/ProductAdd.tsx`**
+1. Add "Paste Image URL" option alongside file upload
+2. Validate URL by attempting to load it as an `<img>` before saving
+3. Standardize image display: use `object-cover` with `aspect-square` for consistent 1:1 ratio display
+4. Apply the same image display standards in POS, Quotation, and Invoice components
+
+### Phase 6: Dashboard UI Enhancement (Reference Image Alignment)
+
+**File: `src/pages/Dashboard.tsx`**
+Based on the reference images (dark visualization suite with module selector):
+
+1. Add a "Scope" filter row: Today / 7 Days / 30 Days / 90 Days -- controls which time period all KPIs and charts use
+2. Add an "Operations" section below charts showing: Active Repairs by Status (stacked bar), Technician Workload Distribution (horizontal bar)
+3. Improve KPI cards with conditional trend arrows: green arrow up for positive trend, red arrow down for negative (computed from current vs previous period)
+4. Add a "Quick Actions" row: New Job Sheet, New Invoice, New POS Sale, Add Customer
+
+### Phase 7: Global Print/PDF Improvements
+
+No server-side PDF engine is needed. The current `window.print()` approach works. Improvements:
+
+1. **File: `src/index.css`**: Enhance print media styles to properly show business header, hide navigation, format tables, and handle page breaks
+2. **File: `src/pages/InvoicePreview.tsx`**: Wrap the document content in a `print-area` div
+3. **File: `src/pages/QuotationPreview.tsx`**: Same print-area wrapping
+4. **File: `src/pages/JobSheetDetail.tsx`**: Same print-area wrapping
+5. Add `@page { margin: 15mm; }` and proper table styling in print mode
+
+### Phase 8: Global UI Consistency Pass
+
+Apply across all modified files:
+- Consistent `gap-6` between major sections
+- Consistent card padding `p-5` for content areas
+- Loading skeletons instead of plain "Loading..." text
+- Consistent badge color scheme from the design system
+- Mobile-first responsive: stack columns on small screens
 
 ---
 
-## Files to Modify
+## Technical Summary
 
+### Files Modified
 ```text
-src/components/layout/AppSidebar.tsx  -- Fix broken color opacity syntax
-src/pages/Chat.tsx                    -- Fix user picker to show employees
-src/pages/Payroll.tsx                 -- Filter out external employees
-src/pages/Dashboard.tsx               -- UI/UX overhaul with chart toggles
-src/pages/Attendance.tsx              -- Employee type filter
-src/pages/Employees.tsx               -- Fix duplicate form field
-src/App.tsx                           -- Verify routing, add error boundaries
+tailwind.config.ts                -- Fix <alpha-value> for all colors (CRITICAL)
+src/pages/Chat.tsx                -- User picker: show "no contacts" message, WhatsApp auto-suggest
+src/pages/Attendance.tsx          -- KPI cards, employee type filter, enhanced table
+src/pages/Payroll.tsx             -- Attendance integration, bulk process, salary slip
+src/pages/Dashboard.tsx           -- Scope filter, quick actions, real trends
+src/pages/ProductAdd.tsx          -- URL paste option, aspect-ratio standardization
+src/index.css                     -- Enhanced print styles
 ```
 
-## Database Changes
-None required -- all fixes are frontend logic and CSS.
+### Database Changes
+None required. All improvements are frontend-only.
+
+### Implementation Order
+1. `tailwind.config.ts` -- sidebar visibility fix (must be first)
+2. `src/pages/Chat.tsx` -- user picker UX
+3. `src/pages/Attendance.tsx` -- dashboard redesign
+4. `src/pages/Payroll.tsx` -- enterprise upgrade
+5. `src/pages/Dashboard.tsx` -- scope filter and trends
+6. `src/pages/ProductAdd.tsx` -- image handling
+7. `src/index.css` -- print styles
 
