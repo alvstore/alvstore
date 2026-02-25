@@ -148,8 +148,39 @@ function ManualAttendanceTab() {
     else { toast.success("Checked out!"); fetchRecords(); }
   };
 
+  const presentCount = records.filter(r => r.check_in).length;
+  const completedCount = records.filter(r => r.check_in && r.check_out).length;
+
+  const calcHours = (r: AttendanceRecord) => {
+    if (!r.check_in || !r.check_out) return "—";
+    const diff = (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000;
+    return diff.toFixed(1) + "h";
+  };
+
   return (
     <div className="space-y-4">
+      {/* KPI Cards */}
+      {isAdmin && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card><CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-success/10"><LogIn className="h-5 w-5 text-success" /></div>
+            <div><p className="text-xl font-bold">{presentCount}</p><p className="text-[11px] text-muted-foreground">Present</p></div>
+          </CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-primary/10"><Users className="h-5 w-5 text-primary" /></div>
+            <div><p className="text-xl font-bold">{completedCount}</p><p className="text-[11px] text-muted-foreground">Completed</p></div>
+          </CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-warning/10"><Clock className="h-5 w-5 text-warning" /></div>
+            <div><p className="text-xl font-bold">{presentCount - completedCount}</p><p className="text-[11px] text-muted-foreground">Still Working</p></div>
+          </CardContent></Card>
+          <Card><CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-info/10"><Calendar className="h-5 w-5 text-info" /></div>
+            <div><p className="text-xl font-bold">{dateFilter === format(new Date(), "yyyy-MM-dd") ? "Today" : dateFilter}</p><p className="text-[11px] text-muted-foreground">Date</p></div>
+          </CardContent></Card>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex gap-2">
           {!todayRecord ? (
@@ -159,6 +190,10 @@ function ManualAttendanceTab() {
           ) : (
             <Badge className="bg-success/10 text-success py-2 px-4">✓ Completed for today</Badge>
           )}
+        </div>
+        <div className="flex gap-3 items-center">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="w-auto" />
         </div>
       </div>
 
@@ -177,28 +212,24 @@ function ManualAttendanceTab() {
         </Card>
       )}
 
-      <div className="flex gap-3 items-center">
-        <Calendar className="h-4 w-4 text-muted-foreground" />
-        <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="w-auto" />
-      </div>
-
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader><TableRow>
             {isAdmin && <TableHead>Employee</TableHead>}
-            <TableHead>Date</TableHead><TableHead>Check In</TableHead><TableHead>Check Out</TableHead><TableHead>Source</TableHead>
+            <TableHead>Date</TableHead><TableHead>Check In</TableHead><TableHead>Check Out</TableHead><TableHead>Hours</TableHead><TableHead>Source</TableHead>
           </TableRow></TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : records.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No records for this date</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No records for this date</TableCell></TableRow>
             ) : records.map(r => (
               <TableRow key={r.id}>
-                {isAdmin && <TableCell className="text-sm">{r.employee_name || r.employee_id.slice(0, 8) + "..."}</TableCell>}
+                {isAdmin && <TableCell className="text-sm font-medium">{r.employee_name || r.employee_id.slice(0, 8) + "..."}</TableCell>}
                 <TableCell>{format(new Date(r.date), "dd MMM yyyy")}</TableCell>
                 <TableCell>{r.check_in ? format(new Date(r.check_in), "hh:mm a") : "—"}</TableCell>
                 <TableCell>{r.check_out ? format(new Date(r.check_out), "hh:mm a") : "—"}</TableCell>
+                <TableCell className="font-medium">{calcHours(r)}</TableCell>
                 <TableCell><Badge variant="outline" className="capitalize">{r.source}</Badge></TableCell>
               </TableRow>
             ))}

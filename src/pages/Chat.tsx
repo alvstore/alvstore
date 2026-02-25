@@ -13,37 +13,30 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageCircle, Send, Plus, Search, Phone, Check, CheckCheck, Clock } from "lucide-react";
+import { MessageCircle, Send, Plus, Search, Phone, Check, CheckCheck, Clock, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface Conversation {
-  id: string;
-  type: string;
-  title: string | null;
-  participant_ids: string[];
-  last_message: string | null;
-  last_message_at: string | null;
-  created_at: string;
-  channel: string | null;
-  whatsapp_phone: string | null;
+  id: string; type: string; title: string | null; participant_ids: string[];
+  last_message: string | null; last_message_at: string | null; created_at: string;
+  channel: string | null; whatsapp_phone: string | null;
 }
 
 interface Message {
-  id: string;
-  conversation_id: string;
-  sender_id: string;
-  content: string;
-  read_at: string | null;
-  created_at: string;
-  channel: string | null;
-  delivery_status: string | null;
-  whatsapp_message_id: string | null;
+  id: string; conversation_id: string; sender_id: string; content: string;
+  read_at: string | null; created_at: string; channel: string | null;
+  delivery_status: string | null; whatsapp_message_id: string | null;
 }
 
 interface ProfileMap {
   [userId: string]: { full_name: string | null; avatar_url: string | null };
+}
+
+interface ContactEntry {
+  user_id: string; full_name: string | null; role?: string; phone?: string | null;
+  has_login: boolean; employee_type?: string;
 }
 
 export default function Chat() {
@@ -55,7 +48,8 @@ export default function Chat() {
   const [searchText, setSearchText] = useState("");
   const [profiles, setProfiles] = useState<ProfileMap>({});
   const [newSheetOpen, setNewSheetOpen] = useState(false);
-  const [allProfiles, setAllProfiles] = useState<{ user_id: string; full_name: string | null; role?: string }[]>([]);
+  const [allContacts, setAllContacts] = useState<ContactEntry[]>([]);
+  const [waContacts, setWaContacts] = useState<{ name: string; phone: string }[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const [channelFilter, setChannelFilter] = useState<"all" | "internal" | "whatsapp">("all");
@@ -68,28 +62,22 @@ export default function Chat() {
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     const { data, error } = await supabase
-      .from("chat_conversations")
-      .select("*")
+      .from("chat_conversations").select("*")
       .order("last_message_at", { ascending: false, nullsFirst: false });
     if (!error && data) setConversations(data as Conversation[]);
   }, [user]);
 
   const fetchMessages = useCallback(async (convoId: string) => {
     const { data, error } = await supabase
-      .from("chat_messages")
-      .select("*")
-      .eq("conversation_id", convoId)
-      .order("created_at", { ascending: true });
+      .from("chat_messages").select("*")
+      .eq("conversation_id", convoId).order("created_at", { ascending: true });
     if (!error && data) setMessages(data as Message[]);
   }, []);
 
   const fetchProfiles = useCallback(async (userIds: string[]) => {
     const missing = userIds.filter(id => !profiles[id]);
     if (missing.length === 0) return;
-    const { data } = await supabase
-      .from("profiles")
-      .select("user_id, full_name, avatar_url")
-      .in("user_id", missing);
+    const { data } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", missing);
     if (data) {
       const map: ProfileMap = { ...profiles };
       data.forEach(p => { map[p.user_id] = { full_name: p.full_name, avatar_url: p.avatar_url }; });
@@ -97,31 +85,46 @@ export default function Chat() {
     }
   }, [profiles]);
 
-  const fetchAllProfiles = useCallback(async () => {
-    // Fetch profiles (auth users) and employees table for team members
-    const [{ data: profilesData }, { data: rolesData }, { data: employeesData }] = await Promise.all([
+  const fetchAllContacts = useCallback(async () => {
+    const [{ data: profilesData }, { data: rolesData }, { data: employeesData }, { data: customersData }] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name"),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("employees").select("id, name, user_id, role, phone, employee_type").eq("status", "active"),
+      supabase.from("customers").select("id, name, phone").not("phone", "is", null).limit(50),
     ]);
 
     const rolesMap: Record<string, string> = {};
     rolesData?.forEach(r => { rolesMap[r.user_id] = r.role; });
 
-    // Build contact list: start with profiles
-    const contactMap = new Map<string, { user_id: string; full_name: string | null; role?: string }>();
+    // Build internal contacts (only people with user_id = can actually chat)
+    const contactMap = new Map<string, ContactEntry>();
     profilesData?.filter(p => p.user_id !== user?.id).forEach(p => {
-      contactMap.set(p.user_id, { user_id: p.user_id, full_name: p.full_name || "User", role: rolesMap[p.user_id] || "staff" });
+      contactMap.set(p.user_id, {
+        user_id: p.user_id, full_name: p.full_name || "User",
+        role: rolesMap[p.user_id] || "staff", has_login: true,
+      });
     });
 
-    // Add employees with user_id that aren't already in the map
     employeesData?.forEach(emp => {
       if (emp.user_id && emp.user_id !== user?.id && !contactMap.has(emp.user_id)) {
-        contactMap.set(emp.user_id, { user_id: emp.user_id, full_name: emp.name, role: emp.role || "staff" });
+        contactMap.set(emp.user_id, {
+          user_id: emp.user_id, full_name: emp.name, role: emp.role || "staff",
+          phone: emp.phone, has_login: true, employee_type: emp.employee_type || "internal",
+        });
       }
     });
 
-    setAllProfiles(Array.from(contactMap.values()));
+    setAllContacts(Array.from(contactMap.values()));
+
+    // Build WhatsApp auto-suggest contacts (employees + customers with phone)
+    const waSuggestions: { name: string; phone: string }[] = [];
+    employeesData?.forEach(emp => {
+      if (emp.phone) waSuggestions.push({ name: emp.name, phone: emp.phone });
+    });
+    customersData?.forEach(c => {
+      if (c.phone) waSuggestions.push({ name: c.name, phone: c.phone });
+    });
+    setWaContacts(waSuggestions);
   }, [user]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
@@ -144,16 +147,13 @@ export default function Chat() {
     const channel = supabase
       .channel(`chat-${selectedConvo}`)
       .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "chat_messages",
+        event: "INSERT", schema: "public", table: "chat_messages",
         filter: `conversation_id=eq.${selectedConvo}`,
       }, (payload) => {
         const newMsg = payload.new as Message;
         setMessages(prev => [...prev, newMsg]);
         fetchConversations();
-      })
-      .subscribe();
+      }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [selectedConvo, fetchConversations]);
 
@@ -172,38 +172,21 @@ export default function Chat() {
       setSendingWa(true);
       try {
         const { data, error } = await supabase.functions.invoke("send-whatsapp", {
-          body: {
-            to: convo.whatsapp_phone,
-            message: content,
-            conversation_id: selectedConvo,
-            sender_id: user.id,
-          },
+          body: { to: convo.whatsapp_phone, message: content, conversation_id: selectedConvo, sender_id: user.id },
         });
         if (error) throw error;
         if (!data?.success) throw new Error(data?.error || "Send failed");
       } catch (err: any) {
         toast.error(err.message || "WhatsApp send failed");
         setMessageText(content);
-      } finally {
-        setSendingWa(false);
-      }
-      // Update conversation
-      await supabase.from("chat_conversations").update({
-        last_message: content,
-        last_message_at: new Date().toISOString(),
-      }).eq("id", selectedConvo);
+      } finally { setSendingWa(false); }
+      await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
     } else {
       const { error } = await supabase.from("chat_messages").insert({
-        conversation_id: selectedConvo,
-        sender_id: user.id,
-        content,
-        channel: "internal",
+        conversation_id: selectedConvo, sender_id: user.id, content, channel: "internal",
       });
       if (error) { toast.error("Failed to send"); return; }
-      await supabase.from("chat_conversations").update({
-        last_message: content,
-        last_message_at: new Date().toISOString(),
-      }).eq("id", selectedConvo);
+      await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
     }
   };
 
@@ -213,47 +196,30 @@ export default function Chat() {
 
   const createConversation = async () => {
     if (!user) return;
-
     if (newChatType === "whatsapp") {
       if (!waPhone.trim()) { toast.error("Enter phone number"); return; }
       const { data, error } = await supabase.from("chat_conversations").insert({
-        type: "whatsapp",
-        channel: "whatsapp",
-        participant_ids: [user.id],
-        created_by: user.id,
-        title: waName || waPhone,
+        type: "whatsapp", channel: "whatsapp", participant_ids: [user.id],
+        created_by: user.id, title: waName || waPhone,
         whatsapp_phone: waPhone.replace(/\D/g, ""),
       }).select().single();
       if (error) { toast.error(error.message); return; }
-      setNewSheetOpen(false);
-      setWaPhone(""); setWaName("");
+      setNewSheetOpen(false); setWaPhone(""); setWaName("");
       fetchConversations();
       if (data) selectConvo(data.id);
       return;
     }
-
     if (!selectedUserId) return;
     const existing = conversations.find(c =>
-      c.channel !== "whatsapp" &&
-      c.participant_ids.length === 2 &&
-      c.participant_ids.includes(user.id) &&
-      c.participant_ids.includes(selectedUserId)
+      c.channel !== "whatsapp" && c.participant_ids.length === 2 &&
+      c.participant_ids.includes(user.id) && c.participant_ids.includes(selectedUserId)
     );
-    if (existing) {
-      selectConvo(existing.id);
-      setNewSheetOpen(false);
-      setSelectedUserId("");
-      return;
-    }
+    if (existing) { selectConvo(existing.id); setNewSheetOpen(false); setSelectedUserId(""); return; }
     const { data, error } = await supabase.from("chat_conversations").insert({
-      type: "internal",
-      channel: "internal",
-      participant_ids: [user.id, selectedUserId],
-      created_by: user.id,
+      type: "internal", channel: "internal", participant_ids: [user.id, selectedUserId], created_by: user.id,
     }).select().single();
     if (error) { toast.error(error.message); return; }
-    setNewSheetOpen(false);
-    setSelectedUserId("");
+    setNewSheetOpen(false); setSelectedUserId("");
     fetchConversations();
     if (data) selectConvo(data.id);
   };
@@ -289,7 +255,7 @@ export default function Chat() {
           <h1 className="text-2xl font-bold tracking-tight">Chat</h1>
           <p className="text-muted-foreground text-sm">Team & customer messaging</p>
         </div>
-        <Button onClick={() => { fetchAllProfiles(); setNewChatType("internal"); setNewSheetOpen(true); }}>
+        <Button onClick={() => { fetchAllContacts(); setNewChatType("internal"); setNewSheetOpen(true); }}>
           <Plus className="h-4 w-4 mr-2" />New Chat
         </Button>
       </div>
@@ -308,12 +274,8 @@ export default function Chat() {
             <Tabs value={channelFilter} onValueChange={v => setChannelFilter(v as any)}>
               <TabsList className="w-full h-8">
                 <TabsTrigger value="all" className="text-xs flex-1">All</TabsTrigger>
-                <TabsTrigger value="internal" className="text-xs flex-1">
-                  <MessageCircle className="h-3 w-3 mr-1" />Internal
-                </TabsTrigger>
-                <TabsTrigger value="whatsapp" className="text-xs flex-1">
-                  <Phone className="h-3 w-3 mr-1" />WhatsApp
-                </TabsTrigger>
+                <TabsTrigger value="internal" className="text-xs flex-1"><MessageCircle className="h-3 w-3 mr-1" />Internal</TabsTrigger>
+                <TabsTrigger value="whatsapp" className="text-xs flex-1"><Phone className="h-3 w-3 mr-1" />WhatsApp</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -323,19 +285,18 @@ export default function Chat() {
               <div className="text-center py-12 text-muted-foreground text-sm">
                 <MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-30" />
                 <p>No conversations yet</p>
+                <p className="text-xs mt-1">Click "New Chat" to start messaging</p>
               </div>
             ) : filteredConvos.map(c => (
               <button
-                key={c.id}
-                onClick={() => selectConvo(c.id)}
+                key={c.id} onClick={() => selectConvo(c.id)}
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors border-b border-border/30",
                   selectedConvo === c.id && "bg-primary/5 border-l-2 border-l-primary"
                 )}
               >
                 <Avatar className="h-10 w-10 shrink-0">
-                  <AvatarFallback className={cn(
-                    "text-xs font-semibold",
+                  <AvatarFallback className={cn("text-xs font-semibold",
                     c.channel === "whatsapp" ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
                   )}>
                     {c.channel === "whatsapp" ? <Phone className="h-4 w-4" /> : getInitials(getConvoName(c))}
@@ -355,9 +316,7 @@ export default function Chat() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {c.last_message || "No messages yet"}
-                  </p>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{c.last_message || "No messages yet"}</p>
                 </div>
               </button>
             ))}
@@ -365,10 +324,7 @@ export default function Chat() {
         </div>
 
         {/* Right Panel */}
-        <div className={cn(
-          "flex-1 flex flex-col bg-background/50",
-          !mobileShowChat ? "hidden md:flex" : "flex"
-        )}>
+        <div className={cn("flex-1 flex flex-col bg-background/50", !mobileShowChat ? "hidden md:flex" : "flex")}>
           {!selectedConvo ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               <div className="text-center">
@@ -383,8 +339,7 @@ export default function Chat() {
               <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50 bg-card">
                 <Button variant="ghost" size="sm" className="md:hidden" onClick={() => setMobileShowChat(false)}>←</Button>
                 <Avatar className="h-9 w-9">
-                  <AvatarFallback className={cn(
-                    "text-xs font-semibold",
+                  <AvatarFallback className={cn("text-xs font-semibold",
                     selectedConversation?.channel === "whatsapp" ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
                   )}>
                     {selectedConversation?.channel === "whatsapp"
@@ -394,17 +349,13 @@ export default function Chat() {
                 </Avatar>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold">
-                      {selectedConversation ? getConvoName(selectedConversation) : "Chat"}
-                    </p>
+                    <p className="text-sm font-semibold">{selectedConversation ? getConvoName(selectedConversation) : "Chat"}</p>
                     {selectedConversation?.channel === "whatsapp" && (
                       <Badge variant="outline" className="text-[10px] text-success border-success/30">WhatsApp</Badge>
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {selectedConversation?.channel === "whatsapp"
-                      ? selectedConversation.whatsapp_phone
-                      : "Internal"}
+                    {selectedConversation?.channel === "whatsapp" ? selectedConversation.whatsapp_phone : "Internal"}
                   </p>
                 </div>
               </div>
@@ -420,33 +371,20 @@ export default function Chat() {
                       <div className={cn("flex gap-2 max-w-[75%]", isMe && "flex-row-reverse")}>
                         {!isMe && (
                           <Avatar className="h-7 w-7 mt-1 shrink-0">
-                            <AvatarFallback className={cn(
-                              "text-[10px]",
-                              isWaMsg ? "bg-success/10 text-success" : "bg-muted"
-                            )}>
+                            <AvatarFallback className={cn("text-[10px]", isWaMsg ? "bg-success/10 text-success" : "bg-muted")}>
                               {isWaMsg ? <Phone className="h-3 w-3" /> : getInitials(senderName)}
                             </AvatarFallback>
                           </Avatar>
                         )}
                         <div>
-                          {!isMe && (
-                            <p className="text-[10px] text-muted-foreground mb-0.5 ml-1">{senderName}</p>
-                          )}
-                          <div className={cn(
-                            "rounded-2xl px-3.5 py-2 text-sm",
-                            isMe
-                              ? "bg-primary text-primary-foreground rounded-br-md"
-                              : "bg-muted rounded-bl-md"
+                          {!isMe && <p className="text-[10px] text-muted-foreground mb-0.5 ml-1">{senderName}</p>}
+                          <div className={cn("rounded-2xl px-3.5 py-2 text-sm",
+                            isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"
                           )}>
                             {msg.content}
                           </div>
-                          <div className={cn(
-                            "flex items-center gap-1 mt-0.5",
-                            isMe ? "justify-end mr-1" : "ml-1"
-                          )}>
-                            <span className="text-[10px] text-muted-foreground">
-                              {format(new Date(msg.created_at), "HH:mm")}
-                            </span>
+                          <div className={cn("flex items-center gap-1 mt-0.5", isMe ? "justify-end mr-1" : "ml-1")}>
+                            <span className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "HH:mm")}</span>
                             {isMe && isWaMsg && <DeliveryIcon status={msg.delivery_status} />}
                           </div>
                         </div>
@@ -462,10 +400,8 @@ export default function Chat() {
                 <div className="flex gap-2">
                   <Input
                     placeholder={selectedConversation?.channel === "whatsapp" ? "Type a WhatsApp message..." : "Type a message..."}
-                    value={messageText}
-                    onChange={e => setMessageText(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    className="flex-1"
+                    value={messageText} onChange={e => setMessageText(e.target.value)}
+                    onKeyDown={handleKeyPress} className="flex-1"
                   />
                   <Button onClick={sendMessage} disabled={!messageText.trim() || sendingWa}>
                     <Send className="h-4 w-4" />
@@ -487,36 +423,69 @@ export default function Chat() {
           <div className="space-y-4 mt-6">
             <Tabs value={newChatType} onValueChange={v => setNewChatType(v as any)}>
               <TabsList className="w-full">
-                <TabsTrigger value="internal" className="flex-1">
-                  <MessageCircle className="h-3.5 w-3.5 mr-1.5" />Internal
-                </TabsTrigger>
-                <TabsTrigger value="whatsapp" className="flex-1">
-                  <Phone className="h-3.5 w-3.5 mr-1.5" />WhatsApp
-                </TabsTrigger>
+                <TabsTrigger value="internal" className="flex-1"><MessageCircle className="h-3.5 w-3.5 mr-1.5" />Internal</TabsTrigger>
+                <TabsTrigger value="whatsapp" className="flex-1"><Phone className="h-3.5 w-3.5 mr-1.5" />WhatsApp</TabsTrigger>
               </TabsList>
             </Tabs>
 
             {newChatType === "internal" ? (
               <>
-                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                  <SelectContent>
-                    {allProfiles.map(p => (
-                      <SelectItem key={p.user_id} value={p.user_id}>
-                        <div className="flex items-center gap-2">
-                          <span>{p.full_name || "User"}</span>
-                          <Badge variant="outline" className="text-[10px] px-1 py-0 capitalize">{p.role || "staff"}</Badge>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button className="w-full" onClick={createConversation} disabled={!selectedUserId}>
-                  <MessageCircle className="h-4 w-4 mr-2" />Start Chat
-                </Button>
+                {allContacts.length === 0 ? (
+                  <div className="text-center py-8 space-y-3">
+                    <Users className="h-12 w-12 mx-auto text-muted-foreground/30" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">No contacts available</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Add employees with login accounts in<br />
+                        <span className="font-medium">Settings → Employees</span> to enable internal chat
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                      <SelectTrigger><SelectValue placeholder="Select team member" /></SelectTrigger>
+                      <SelectContent>
+                        {allContacts.map(p => (
+                          <SelectItem key={p.user_id} value={p.user_id}>
+                            <div className="flex items-center gap-2">
+                              <span>{p.full_name || "User"}</span>
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 capitalize">{p.role || "staff"}</Badge>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button className="w-full" onClick={createConversation} disabled={!selectedUserId}>
+                      <MessageCircle className="h-4 w-4 mr-2" />Start Chat
+                    </Button>
+                  </>
+                )}
               </>
             ) : (
               <>
+                {/* WhatsApp auto-suggest contacts */}
+                {waContacts.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Quick Select Contact</label>
+                    <Select onValueChange={(v) => {
+                      const contact = waContacts.find(c => c.phone === v);
+                      if (contact) { setWaPhone(contact.phone); setWaName(contact.name); }
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Select from contacts" /></SelectTrigger>
+                      <SelectContent>
+                        {waContacts.map((c, i) => (
+                          <SelectItem key={`${c.phone}-${i}`} value={c.phone}>
+                            <div className="flex items-center gap-2">
+                              <span>{c.name}</span>
+                              <span className="text-xs text-muted-foreground">{c.phone}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Contact Name</label>
                   <Input placeholder="Customer name" value={waName} onChange={e => setWaName(e.target.value)} />
