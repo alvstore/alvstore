@@ -10,7 +10,7 @@ import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
-interface NavItem { title: string; url: string; icon: React.ComponentType<{ className?: string }>; badge?: string; }
+interface NavItem { title: string; url: string; icon: React.ComponentType<{ className?: string }>; }
 interface NavCategory { label: string; items: NavItem[]; }
 
 const adminStaffNav: NavCategory[] = [
@@ -40,9 +40,7 @@ const adminStaffNav: NavCategory[] = [
   },
   {
     label: "Finance",
-    items: [
-      { title: "Transactions", url: "/finance", icon: CreditCard },
-    ],
+    items: [{ title: "Transactions", url: "/finance", icon: CreditCard }],
   },
   {
     label: "Repair",
@@ -123,29 +121,29 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r border-sidebar-border transition-all duration-300 ease-in-out flex flex-col",
-        "bg-sidebar",
-        collapsed ? "w-[60px]" : "w-[240px]"
+        "fixed left-0 top-0 z-40 h-screen border-r border-white/5 transition-all duration-300 ease-in-out flex flex-col",
+        "bg-[#080808]",
+        collapsed ? "w-[60px]" : "w-[260px]"
       )}
     >
       {/* Logo */}
       <div className={cn(
-        "flex items-center h-16 border-b border-sidebar-border shrink-0 overflow-hidden",
-        collapsed ? "justify-center px-2" : "px-5 gap-2.5"
+        "flex items-center h-16 border-b border-white/5 shrink-0 overflow-hidden",
+        collapsed ? "justify-center px-2" : "px-5 gap-3"
       )}>
-        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-sidebar-primary to-accent flex items-center justify-center shrink-0">
-          <Zap className="h-4 w-4 text-white" />
+        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center shrink-0">
+          <Zap className="h-4.5 w-4.5 text-white" />
         </div>
         {!collapsed && (
           <div className="flex flex-col leading-none">
-            <span className="text-[13px] font-bold text-sidebar-accent-foreground tracking-tight">ALVStore</span>
-            <span className="text-[9px] font-medium text-sidebar-foreground/45 tracking-widest uppercase">ERP 2026</span>
+            <span className="text-sm font-bold text-white tracking-tight">ALVStore</span>
+            <span className="text-[9px] font-medium text-zinc-500 tracking-widest uppercase">ERP Suite</span>
           </div>
         )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto scrollbar-thin py-4 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto scrollbar-thin py-4 space-y-1">
         {navCategories.map((category) => {
           const hasMultipleItems = category.items.length > 1;
           const expanded = isCategoryExpanded(category.label);
@@ -156,13 +154,13 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 hasMultipleItems ? (
                   <button
                     onClick={() => toggleCategory(category.label)}
-                    className="w-full flex items-center justify-between py-1.5 px-1 mb-0.5 text-[9px] font-semibold tracking-[0.12em] text-sidebar-foreground/40 uppercase hover:text-sidebar-foreground/60 transition-colors"
+                    className="w-full flex items-center justify-between py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-zinc-500 uppercase hover:text-zinc-400 transition-colors"
                   >
                     <span>{category.label}</span>
                     {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </button>
                 ) : (
-                  <p className="py-1.5 px-1 mb-0.5 text-[9px] font-semibold tracking-[0.12em] text-sidebar-foreground/40 uppercase">
+                  <p className="py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-zinc-500 uppercase">
                     {category.label}
                   </p>
                 )
@@ -176,27 +174,26 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                       to={item.url}
                       end={item.url === "/"}
                       className={cn(
-                        "group flex items-center rounded-lg text-[13px] font-medium transition-all duration-150",
+                        "group flex items-center rounded-xl text-[13px] font-medium transition-all duration-150",
                         collapsed
-                          ? "h-9 w-9 justify-center text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                          : "gap-2.5 px-2.5 py-2 w-full text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          ? "h-10 w-10 justify-center text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+                          : "gap-3 px-3 py-2.5 w-full text-zinc-400 hover:bg-white/5 hover:text-white"
                       )}
                       activeClassName={cn(
-                        "!text-sidebar-primary font-semibold",
+                        "!text-white font-semibold",
                         collapsed
-                          ? "bg-sidebar-primary/15"
-                          : "bg-sidebar-primary/12 shadow-[inset_2px_0_0] shadow-sidebar-primary"
+                          ? "bg-purple-500/10"
+                          : "bg-purple-500/10 shadow-[inset_3px_0_0] shadow-purple-500"
                       )}
                     >
-                      <item.icon className={cn("shrink-0", collapsed ? "h-4 w-4" : "h-3.5 w-3.5")} />
+                      <item.icon className={cn("shrink-0", collapsed ? "h-4.5 w-4.5" : "h-4 w-4")} />
                       {!collapsed && <span className="truncate">{item.title}</span>}
                     </NavLink>
                   ))}
                 </div>
               )}
 
-              {/* separator between categories */}
-              {!collapsed && <div className="h-px bg-sidebar-border/60 my-2 mx-1" />}
+              {!collapsed && <div className="h-px bg-white/5 my-2.5 mx-2" />}
             </div>
           );
         })}
@@ -205,9 +202,9 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
-        className="flex items-center justify-center h-11 border-t border-sidebar-border text-sidebar-foreground/40 hover:text-sidebar-foreground/80 hover:bg-sidebar-accent transition-all duration-150 shrink-0"
+        className="flex items-center justify-center h-12 border-t border-white/5 text-zinc-500 hover:text-white hover:bg-white/5 transition-all duration-150 shrink-0"
       >
-        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
       </button>
     </aside>
   );
