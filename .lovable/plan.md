@@ -1,146 +1,124 @@
 
+# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
-# ERP Production Upgrade -- Full System Audit and Architecture Improvement
+## Overview
 
-## Root Cause Analysis
+Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
 
-### CRITICAL: Sidebar Text Still Invisible
-**Root cause identified**: The `tailwind.config.ts` defines sidebar colors as `hsl(var(--sidebar-foreground))` -- a fully formed HSL color string. Tailwind's opacity modifier (`/55`, `/65`, `/40`) requires colors to be defined with the `<alpha-value>` placeholder pattern: `hsl(var(--sidebar-foreground) / <alpha-value>)`. Without this placeholder, classes like `text-sidebar-foreground/55` silently fail and produce no visible text color.
+## Phase 1: Theme Provider and Multiple Themes
 
-**Fix**: Update `tailwind.config.ts` sidebar color definitions to use the alpha-value pattern. This is the ONLY correct fix.
+### New File: `src/hooks/useTheme.tsx`
+Create a React context-based theme provider that:
+- Stores selected theme name in `localStorage` (key: `app-theme`)
+- Applies the theme by setting CSS variables on `document.documentElement`
+- Exposes `theme`, `setTheme`, and `themes` list
 
-### CRITICAL: Login "Failed to Fetch" Error
-Console logs show `TypeError: Failed to fetch` on `signInWithPassword`. This is a network/auth connectivity issue in the preview environment -- not a code bug. The auth flow code is correct.
+### Themes (6 total):
 
-### Chat: No Users to Select
-The fix from the previous iteration (merging `profiles` + `employees`) is in place. The issue persists because employees in the database don't have `user_id` set (they were added without creating auth accounts). The chat user picker needs to also show employees WITHOUT `user_id` as "invite-only" contacts, and additionally show customers from the `customers` table who have phone numbers (for WhatsApp tab auto-suggestions).
+1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
+2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
+3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
+4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
+5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
+6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
 
-### Payroll: External Technicians
-The `.or("employee_type.eq.internal,employee_type.is.null")` filter is already in place from the previous fix. The payroll module itself works correctly for internal employees.
+Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
 
----
+### Theme Switcher UI
+Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
 
-## Implementation Plan
+### Files:
+- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
+- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
+- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
+- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
 
-### Phase 1: Fix Sidebar Colors (Critical CSS Fix)
+### Adaptive Components
+The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
+- `bg-[#080808]` becomes `bg-background`
+- `bg-[#121212]` becomes `bg-card`
+- `text-white` becomes `text-foreground`
+- `text-zinc-500` becomes `text-muted-foreground`
+- `border-white/5` becomes `border-border`
 
-**File: `tailwind.config.ts`**
-Update sidebar color definitions to support opacity modifiers:
-```typescript
-sidebar: {
-  DEFAULT: "hsl(var(--sidebar-background) / <alpha-value>)",
-  foreground: "hsl(var(--sidebar-foreground) / <alpha-value>)",
-  primary: "hsl(var(--sidebar-primary) / <alpha-value>)",
-  "primary-foreground": "hsl(var(--sidebar-primary-foreground) / <alpha-value>)",
-  accent: "hsl(var(--sidebar-accent) / <alpha-value>)",
-  "accent-foreground": "hsl(var(--sidebar-accent-foreground) / <alpha-value>)",
-  border: "hsl(var(--sidebar-border) / <alpha-value>)",
-  ring: "hsl(var(--sidebar-ring) / <alpha-value>)",
-  muted: "hsl(var(--sidebar-muted) / <alpha-value>)",
-},
-```
+This ensures all themes work automatically.
 
-Also apply the same `<alpha-value>` pattern to ALL other color definitions (primary, secondary, muted, etc.) so opacity modifiers work consistently everywhere:
-```typescript
-foreground: "hsl(var(--foreground) / <alpha-value>)",
-background: "hsl(var(--background) / <alpha-value>)",
-// etc.
-```
+### Files to update for semantic colors:
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/layout/AppHeader.tsx`
+- `src/pages/Dashboard.tsx`
 
-This is a one-time fix that unlocks `/XX` opacity modifiers across the entire app.
+## Phase 2: KPI Card Redesign (Reference Match)
 
-### Phase 2: Chat User Picker Fix
+Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
 
-**File: `src/pages/Chat.tsx`**
-The `fetchAllProfiles` function already merges profiles and employees. The remaining issue is that employees without `user_id` cannot participate in internal chats (they have no auth account). Two fixes:
+**Layout per card:**
+- Top row: Label text (left) + arrow-up-right icon button (right corner)
+- Center: Large bold metric number (32-40px)
+- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
 
-1. Show employees without `user_id` in the WhatsApp tab auto-suggest list (if they have a phone number)
-2. For the internal tab, show ONLY contacts who have a `user_id` (auth account) -- these are the people who can actually log in and chat
-3. Add a visual indicator showing "No contacts available -- add employees with login accounts in Settings > Employees to enable internal chat"
+**Accent color system**: Each card gets a unique subtle background tint:
+- Card 1 (Revenue): Soft green background tint
+- Card 2 (Sales): White/neutral
+- Card 3 (Repairs): White/neutral
+- Card 4 (Pending): White/neutral
 
-### Phase 3: Attendance Dashboard Redesign
+The first card (most important KPI) gets a colored border-left accent strip.
 
-**File: `src/pages/Attendance.tsx`**
-Replace the current basic table view with an enterprise dashboard layout:
+**Contextual KPIs to display:**
+- Daily Cash Flow (from `finance_transactions`)
+- Store Sales with 18% GST indicator
+- Gym Revenue with 5% GST indicator
+- Active Repairs count
 
-1. **KPI Cards Row**: Present Today, Absent Today, Late Arrivals, Total Internal Employees, Average Working Hours
-2. **Attendance Table**: Add columns for Avatar, Employee Name, Department, Check-In, Check-Out, Total Hours, Status (Present/Absent/Late/Half-Day)
-3. **Employee Type Filter**: Add "Internal / External / All" toggle above the table
-4. **Date Range Filter**: Add quick-select buttons (Today, This Week, This Month)
-5. Compute Present/Absent counts by cross-referencing `attendance_records` with internal `employees` for the selected date
+## Phase 3: Employee Login Enforcement
 
-### Phase 4: Payroll System Upgrade
+### Problem
+Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
 
-**File: `src/pages/Payroll.tsx`**
-Enhance the existing payroll module:
+### Fix in `src/pages/Employees.tsx`:
+1. Add a prominent "Create with Login" toggle/checkbox in the employee form
+2. When toggled ON (default for internal employees), make email and password fields REQUIRED
+3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
+4. For existing employees without `user_id`, show a "Link Login Account" button that:
+   - Opens a mini-form asking for email + password
+   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
+   - Updates the employee record with the returned `user_id`
 
-1. **Attendance Integration**: When generating a salary slip, auto-calculate `presentDays` and `absentDays` from `attendance_records` for the selected month
-2. **Auto-Calculate Net Salary**: `netSalary = (basicSalary / totalWorkingDays * presentDays) - deductions + bonus`
-3. **Bulk Process**: Add "Generate All" button that creates payroll entries for all internal employees who don't have one yet for the selected month
-4. **Salary Slip PDF**: Add a "Download Slip" button per employee (uses `window.print()` on a styled slip component)
-5. **Status KPI Enhancement**: Add "Draft / Processed / Paid" counts to KPI row
+### Visual indicator in employee list:
+- Show a small shield/lock icon next to employees who have a linked auth account
+- Show a warning icon next to employees without one
 
-### Phase 5: Product Image System
+## Phase 4: Chart Theme Adaptation
 
-**File: `src/pages/ProductAdd.tsx`**
-1. Add "Paste Image URL" option alongside file upload
-2. Validate URL by attempting to load it as an `<img>` before saving
-3. Standardize image display: use `object-cover` with `aspect-square` for consistent 1:1 ratio display
-4. Apply the same image display standards in POS, Quotation, and Invoice components
+Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
+- Tooltip background: `hsl(var(--card))`
+- Tooltip border: `hsl(var(--border))`
+- Bar gradient: Use the theme's accent/success color
+- Axis text: `hsl(var(--muted-foreground))`
 
-### Phase 6: Dashboard UI Enhancement (Reference Image Alignment)
+This ensures charts look correct in both light and dark themes.
 
-**File: `src/pages/Dashboard.tsx`**
-Based on the reference images (dark visualization suite with module selector):
+## Files Summary
 
-1. Add a "Scope" filter row: Today / 7 Days / 30 Days / 90 Days -- controls which time period all KPIs and charts use
-2. Add an "Operations" section below charts showing: Active Repairs by Status (stacked bar), Technician Workload Distribution (horizontal bar)
-3. Improve KPI cards with conditional trend arrows: green arrow up for positive trend, red arrow down for negative (computed from current vs previous period)
-4. Add a "Quick Actions" row: New Job Sheet, New Invoice, New POS Sale, Add Customer
-
-### Phase 7: Global Print/PDF Improvements
-
-No server-side PDF engine is needed. The current `window.print()` approach works. Improvements:
-
-1. **File: `src/index.css`**: Enhance print media styles to properly show business header, hide navigation, format tables, and handle page breaks
-2. **File: `src/pages/InvoicePreview.tsx`**: Wrap the document content in a `print-area` div
-3. **File: `src/pages/QuotationPreview.tsx`**: Same print-area wrapping
-4. **File: `src/pages/JobSheetDetail.tsx`**: Same print-area wrapping
-5. Add `@page { margin: 15mm; }` and proper table styling in print mode
-
-### Phase 8: Global UI Consistency Pass
-
-Apply across all modified files:
-- Consistent `gap-6` between major sections
-- Consistent card padding `p-5` for content areas
-- Loading skeletons instead of plain "Loading..." text
-- Consistent badge color scheme from the design system
-- Mobile-first responsive: stack columns on small screens
-
----
-
-## Technical Summary
-
-### Files Modified
 ```text
-tailwind.config.ts                -- Fix <alpha-value> for all colors (CRITICAL)
-src/pages/Chat.tsx                -- User picker: show "no contacts" message, WhatsApp auto-suggest
-src/pages/Attendance.tsx          -- KPI cards, employee type filter, enhanced table
-src/pages/Payroll.tsx             -- Attendance integration, bulk process, salary slip
-src/pages/Dashboard.tsx           -- Scope filter, quick actions, real trends
-src/pages/ProductAdd.tsx          -- URL paste option, aspect-ratio standardization
-src/index.css                     -- Enhanced print styles
+NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
+EDIT: src/main.tsx                       -- Wrap in ThemeProvider
+EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
+EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
+EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
+EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
+EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
 ```
 
-### Database Changes
-None required. All improvements are frontend-only.
+## Database Changes
+None required.
 
-### Implementation Order
-1. `tailwind.config.ts` -- sidebar visibility fix (must be first)
-2. `src/pages/Chat.tsx` -- user picker UX
-3. `src/pages/Attendance.tsx` -- dashboard redesign
-4. `src/pages/Payroll.tsx` -- enterprise upgrade
-5. `src/pages/Dashboard.tsx` -- scope filter and trends
-6. `src/pages/ProductAdd.tsx` -- image handling
-7. `src/index.css` -- print styles
-
+## Implementation Order
+1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
+2. `src/index.css` -- Ensure variables are the correct defaults
+3. `src/main.tsx` -- Wire up provider
+4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
+5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
+6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
+7. `src/pages/Employees.tsx` -- Login enforcement
