@@ -121,23 +121,23 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r border-white/5 transition-all duration-300 ease-in-out flex flex-col",
-        "bg-[#080808]",
+        "fixed left-0 top-0 z-40 h-screen border-r border-border transition-all duration-300 ease-in-out flex flex-col",
+        "bg-sidebar",
         collapsed ? "w-[60px]" : "w-[260px]"
       )}
     >
       {/* Logo */}
       <div className={cn(
-        "flex items-center h-16 border-b border-white/5 shrink-0 overflow-hidden",
+        "flex items-center h-16 border-b border-border shrink-0 overflow-hidden",
         collapsed ? "justify-center px-2" : "px-5 gap-3"
       )}>
-        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center shrink-0">
-          <Zap className="h-4.5 w-4.5 text-white" />
+        <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center shrink-0">
+          <Zap className="h-4.5 w-4.5 text-primary-foreground" />
         </div>
         {!collapsed && (
           <div className="flex flex-col leading-none">
-            <span className="text-sm font-bold text-white tracking-tight">ALVStore</span>
-            <span className="text-[9px] font-medium text-zinc-500 tracking-widest uppercase">ERP Suite</span>
+            <span className="text-sm font-bold text-foreground tracking-tight">ALVStore</span>
+            <span className="text-[9px] font-medium text-muted-foreground tracking-widest uppercase">ERP Suite</span>
           </div>
         )}
       </div>
@@ -154,13 +154,13 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 hasMultipleItems ? (
                   <button
                     onClick={() => toggleCategory(category.label)}
-                    className="w-full flex items-center justify-between py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-zinc-500 uppercase hover:text-zinc-400 transition-colors"
+                    className="w-full flex items-center justify-between py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase hover:text-foreground/70 transition-colors"
                   >
                     <span>{category.label}</span>
                     {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </button>
                 ) : (
-                  <p className="py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-zinc-500 uppercase">
+                  <p className="py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                     {category.label}
                   </p>
                 )
@@ -176,14 +176,14 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                       className={cn(
                         "group flex items-center rounded-xl text-[13px] font-medium transition-all duration-150",
                         collapsed
-                          ? "h-10 w-10 justify-center text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
-                          : "gap-3 px-3 py-2.5 w-full text-zinc-400 hover:bg-white/5 hover:text-white"
+                          ? "h-10 w-10 justify-center text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          : "gap-3 px-3 py-2.5 w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       )}
                       activeClassName={cn(
-                        "!text-white font-semibold",
+                        "!text-sidebar-primary-foreground font-semibold",
                         collapsed
-                          ? "bg-purple-500/10"
-                          : "bg-purple-500/10 shadow-[inset_3px_0_0] shadow-purple-500"
+                          ? "bg-primary/10"
+                          : "bg-primary/10 shadow-[inset_3px_0_0] shadow-primary"
                       )}
                     >
                       <item.icon className={cn("shrink-0", collapsed ? "h-4.5 w-4.5" : "h-4 w-4")} />
@@ -193,7 +193,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 </div>
               )}
 
-              {!collapsed && <div className="h-px bg-white/5 my-2.5 mx-2" />}
+              {!collapsed && <div className="h-px bg-border my-2.5 mx-2" />}
             </div>
           );
         })}
@@ -202,7 +202,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
       {/* Collapse toggle */}
       <button
         onClick={onToggle}
-        className="flex items-center justify-center h-12 border-t border-white/5 text-zinc-500 hover:text-white hover:bg-white/5 transition-all duration-150 shrink-0"
+        className="flex items-center justify-center h-12 border-t border-border text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-all duration-150 shrink-0"
       >
         {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
       </button>

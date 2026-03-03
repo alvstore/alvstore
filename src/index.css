@@ -104,15 +104,15 @@
   .shadow-elevated { box-shadow: var(--shadow-md); }
   .shadow-floating { box-shadow: var(--shadow-lg); }
 
-  /* Glassmorphism */
+  /* Glassmorphism — adapts to theme mode */
   .glass {
-    background: rgba(18,18,18,0.72);
+    background: hsl(var(--card) / 0.72);
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid hsl(var(--border));
   }
   .glass-sidebar {
-    background: rgba(8,8,8,0.92);
+    background: hsl(var(--sidebar-background) / 0.92);
     backdrop-filter: blur(24px) saturate(160%);
     -webkit-backdrop-filter: blur(24px) saturate(160%);
   }

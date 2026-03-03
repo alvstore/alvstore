@@ -1,9 +1,8 @@
 import { useState } from "react";
 import {
-  DollarSign, TrendingUp, CreditCard, Wallet,
-  Package, Wrench, CheckCircle, Users, RefreshCw,
-  ArrowUpRight, ArrowDownRight, ShoppingCart, Clock,
-  BarChart2, LineChart as LineChartIcon, AreaChart as AreaChartIcon,
+  TrendingUp, CreditCard, Wallet,
+  Package, Wrench, Users, RefreshCw,
+  ArrowUpRight, ShoppingCart, Clock,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,7 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfDay, startOfMonth } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 
-// --- Data fetchers (keep existing) ---
+// --- Data fetchers ---
 async function fetchKpis() {
   const today = startOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
@@ -81,20 +80,13 @@ function fmt(n: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
 
-// KPI Card component matching Dribbble reference
-function KpiCard({ label, value, trend, icon: Icon, accentColor, isLoading }: {
+// KPI Card — uses semantic tokens
+function KpiCard({ label, value, trend, icon: Icon, accentClass, isLoading }: {
   label: string; value: string; trend?: string; icon: React.ComponentType<{ className?: string }>;
-  accentColor: string; isLoading: boolean;
+  accentClass: string; isLoading: boolean;
 }) {
-  const bgMap: Record<string, string> = {
-    purple: "bg-purple-500/10", green: "bg-emerald-500/10", blue: "bg-blue-500/10", orange: "bg-orange-500/10",
-  };
-  const textMap: Record<string, string> = {
-    purple: "text-purple-400", green: "text-emerald-400", blue: "text-blue-400", orange: "text-orange-400",
-  };
-
   return (
-    <Card className="border-white/5">
+    <Card>
       <CardContent className="p-5">
         {isLoading ? (
           <div className="space-y-3">
@@ -104,17 +96,19 @@ function KpiCard({ label, value, trend, icon: Icon, accentColor, isLoading }: {
           </div>
         ) : (
           <div className="space-y-3">
-            {/* Icon container */}
-            <div className={`h-11 w-11 rounded-xl ${bgMap[accentColor]} flex items-center justify-center`}>
-              <Icon className={`h-5 w-5 ${textMap[accentColor]}`} />
+            <div className="flex items-start justify-between">
+              <div className={`h-11 w-11 rounded-xl ${accentClass} flex items-center justify-center`}>
+                <Icon className="h-5 w-5" />
+              </div>
+              <button className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
             </div>
-            {/* Label */}
-            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</p>
-            {/* Value */}
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
             <div className="flex items-end justify-between">
-              <p className="text-2xl font-bold text-white">{value}</p>
+              <p className="text-2xl font-bold text-foreground">{value}</p>
               {trend && (
-                <div className="flex items-center gap-1 text-emerald-400">
+                <div className="flex items-center gap-1 text-success">
                   <ArrowUpRight className="h-3.5 w-3.5" />
                   <span className="text-[11px] font-medium">{trend}</span>
                 </div>
@@ -126,15 +120,6 @@ function KpiCard({ label, value, trend, icon: Icon, accentColor, isLoading }: {
     </Card>
   );
 }
-
-const tooltipStyle = {
-  background: "#121212",
-  border: "1px solid rgba(255,255,255,0.05)",
-  borderRadius: "12px",
-  fontSize: "12px",
-  color: "#fff",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-};
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -153,12 +138,12 @@ export default function Dashboard() {
 
   const paymentBadge = (status: string) => {
     const styles: Record<string, string> = {
-      paid: "bg-emerald-500/10 text-emerald-400",
-      unpaid: "bg-red-500/10 text-red-400",
-      partial: "bg-orange-500/10 text-orange-400",
+      paid: "bg-success/10 text-success",
+      unpaid: "bg-destructive/10 text-destructive",
+      partial: "bg-warning/10 text-warning",
     };
     return (
-      <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full capitalize ${styles[status] || "bg-white/5 text-zinc-400"}`}>
+      <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full capitalize ${styles[status] || "bg-muted text-muted-foreground"}`}>
         {status}
       </span>
     );
@@ -169,42 +154,42 @@ export default function Dashboard() {
       {/* Header section */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Dashboard</h1>
-          <p className="text-sm text-zinc-500 mt-1">Welcome back — here's your business overview</p>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">Welcome back — here's your business overview</p>
         </div>
         <button
           onClick={refresh}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/5 text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white transition-colors"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted border border-border text-sm font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Refresh
         </button>
       </div>
 
-      {/* Primary KPI Cards - Dribbble style */}
+      {/* Primary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Monthly Revenue" value={kpis ? fmt(kpis.revenue) : "—"} trend="This month" icon={TrendingUp} accentColor="purple" isLoading={kpiLoading} />
-        <KpiCard label="Total Sales" value={kpis ? fmt(kpis.salesMonth) : "—"} trend="POS total" icon={ShoppingCart} accentColor="green" isLoading={kpiLoading} />
-        <KpiCard label="Customers" value={kpis ? String(kpis.totalCustomers) : "—"} icon={Users} accentColor="blue" isLoading={kpiLoading} />
-        <KpiCard label="Active Repairs" value={kpis ? String(kpis.activeRepairs) : "—"} trend={kpis ? `${kpis.completedToday} done today` : undefined} icon={Wrench} accentColor="orange" isLoading={kpiLoading} />
+        <KpiCard label="Monthly Revenue" value={kpis ? fmt(kpis.revenue) : "—"} trend="This month" icon={TrendingUp} accentClass="bg-primary/10 text-primary" isLoading={kpiLoading} />
+        <KpiCard label="Total Sales" value={kpis ? fmt(kpis.salesMonth) : "—"} trend="POS total" icon={ShoppingCart} accentClass="bg-success/10 text-success" isLoading={kpiLoading} />
+        <KpiCard label="Customers" value={kpis ? String(kpis.totalCustomers) : "—"} icon={Users} accentClass="bg-info/10 text-info" isLoading={kpiLoading} />
+        <KpiCard label="Active Repairs" value={kpis ? String(kpis.activeRepairs) : "—"} trend={kpis ? `${kpis.completedToday} done today` : undefined} icon={Wrench} accentClass="bg-warning/10 text-warning" isLoading={kpiLoading} />
       </div>
 
       {/* Secondary stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Cash Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, color: "text-purple-400" },
-          { label: "Pending Payments", value: kpis ? fmt(kpis.pendingPayments) : "—", icon: Clock, color: "text-orange-400" },
-          { label: "Invoices (Month)", value: kpis ? fmt(kpis.invoicesMonth) : "—", icon: CreditCard, color: "text-blue-400" },
-          { label: "Low Stock Items", value: kpis ? String(kpis.lowStock) : "—", icon: Package, color: "text-red-400" },
+          { label: "Cash Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, cls: "text-primary" },
+          { label: "Pending Payments", value: kpis ? fmt(kpis.pendingPayments) : "—", icon: Clock, cls: "text-warning" },
+          { label: "Invoices (Month)", value: kpis ? fmt(kpis.invoicesMonth) : "—", icon: CreditCard, cls: "text-info" },
+          { label: "Low Stock Items", value: kpis ? String(kpis.lowStock) : "—", icon: Package, cls: "text-destructive" },
         ].map((s) => (
-          <Card key={s.label} className="border-white/5">
+          <Card key={s.label}>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className={`h-9 w-9 rounded-xl bg-white/5 flex items-center justify-center ${s.color}`}>
+              <div className={`h-9 w-9 rounded-xl bg-muted flex items-center justify-center ${s.cls}`}>
                 <s.icon className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-[11px] text-zinc-500 font-medium">{s.label}</p>
-                <p className="text-lg font-bold text-white">{kpiLoading ? "—" : s.value}</p>
+                <p className="text-[11px] text-muted-foreground font-medium">{s.label}</p>
+                <p className="text-lg font-bold text-foreground">{kpiLoading ? "—" : s.value}</p>
               </div>
             </CardContent>
           </Card>
@@ -214,16 +199,16 @@ export default function Dashboard() {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Weekly Sales Bar Chart */}
-        <Card className="border-white/5">
+        <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-base font-semibold text-white">Sales Analytics</CardTitle>
-                <p className="text-xs text-zinc-500 mt-0.5">Last 7 days</p>
+                <CardTitle className="text-base font-semibold">Sales Analytics</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Last 7 days</p>
               </div>
               <div className="text-right">
-                <p className="text-lg font-bold text-white">{kpis ? fmt(kpis.salesMonth) : "—"}</p>
-                <p className="text-[11px] text-zinc-500">This Month</p>
+                <p className="text-lg font-bold text-foreground">{kpis ? fmt(kpis.salesMonth) : "—"}</p>
+                <p className="text-[11px] text-muted-foreground">This Month</p>
               </div>
             </div>
           </CardHeader>
@@ -233,13 +218,23 @@ export default function Dashboard() {
                 <BarChart data={weeklySales}>
                   <defs>
                     <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.9} />
-                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0.3} />
+                      <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.3} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="name" stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [fmt(value), "Sales"]} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "12px",
+                      fontSize: "12px",
+                      color: "hsl(var(--foreground))",
+                    }}
+                    formatter={(value: number) => [fmt(value), "Sales"]}
+                    cursor={{ fill: "hsl(var(--muted) / 0.3)" }}
+                  />
                   <Bar dataKey="sales" fill="url(#barGrad)" radius={[8, 8, 0, 0]} barSize={32} />
                 </BarChart>
               </ResponsiveContainer>
@@ -248,10 +243,10 @@ export default function Dashboard() {
         </Card>
 
         {/* Repair Breakdown - Donut */}
-        <Card className="border-white/5">
+        <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold text-white">Repair Progress</CardTitle>
-            <p className="text-xs text-zinc-500">Current status breakdown</p>
+            <CardTitle className="text-base font-semibold">Repair Progress</CardTitle>
+            <p className="text-xs text-muted-foreground">Current status breakdown</p>
           </CardHeader>
           <CardContent className="pt-0">
             <ResponsiveContainer width="100%" height={240}>
@@ -259,8 +254,16 @@ export default function Dashboard() {
                 <Pie data={repairBreakdown || []} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={3} dataKey="value" strokeWidth={0}>
                   {(repairBreakdown || []).map((entry, index) => <Cell key={index} fill={entry.color} />)}
                 </Pie>
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", color: "#a1a1aa" }} />
+                <Tooltip
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    fontSize: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", color: "hsl(var(--muted-foreground))" }} />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
@@ -268,38 +271,38 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Invoices */}
-      <Card className="border-white/5">
+      <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-base font-semibold text-white">Recent Invoices</CardTitle>
-              <p className="text-xs text-zinc-500">Latest transactions</p>
+              <CardTitle className="text-base font-semibold">Recent Invoices</CardTitle>
+              <p className="text-xs text-muted-foreground">Latest transactions</p>
             </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="space-y-0">
             {(recentInvoices || []).map((inv: any) => (
-              <div key={inv.id} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
+              <div key={inv.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
                 <div className="flex items-center gap-3">
                   <Avatar className="h-9 w-9">
-                    <AvatarFallback className="text-[11px] bg-purple-500/10 text-purple-400 font-semibold">
+                    <AvatarFallback className="text-[11px] bg-primary/10 text-primary font-semibold">
                       {(inv.customers?.name || "?").slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="text-sm font-medium text-white">{inv.customers?.name || "Unknown"}</p>
-                    <p className="text-[11px] text-zinc-500">{inv.invoice_number}</p>
+                    <p className="text-sm font-medium text-foreground">{inv.customers?.name || "Unknown"}</p>
+                    <p className="text-[11px] text-muted-foreground">{inv.invoice_number}</p>
                   </div>
                 </div>
                 <div className="text-right flex items-center gap-3">
-                  <p className="text-sm font-semibold text-white">{fmt(inv.total || 0)}</p>
+                  <p className="text-sm font-semibold text-foreground">{fmt(inv.total || 0)}</p>
                   {paymentBadge(inv.payment_status || "unpaid")}
                 </div>
               </div>
             ))}
             {(!recentInvoices || recentInvoices.length === 0) && (
-              <p className="text-sm text-zinc-500 text-center py-8">No recent invoices</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No recent invoices</p>
             )}
           </div>
         </CardContent>
