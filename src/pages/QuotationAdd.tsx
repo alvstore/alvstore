@@ -295,10 +295,29 @@ export default function QuotationAdd() {
 
               <Separator />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Salesperson</Label>
-                  <Input placeholder="Enter salesperson name" value={salesperson} onChange={e => setSalesperson(e.target.value)} />
+                  <Select value={salesperson} onValueChange={setSalesperson}>
+                    <SelectTrigger><SelectValue placeholder="Select salesperson" /></SelectTrigger>
+                    <SelectContent>
+                      {employees.map(e => <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Payment Terms</Label>
+                  <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+                    <SelectTrigger><SelectValue placeholder="Select terms" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
+                      <SelectItem value="net_7">Net 7</SelectItem>
+                      <SelectItem value="net_15">Net 15</SelectItem>
+                      <SelectItem value="net_30">Net 30</SelectItem>
+                      <SelectItem value="net_45">Net 45</SelectItem>
+                      <SelectItem value="net_60">Net 60</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-muted-foreground">Notes</Label>
