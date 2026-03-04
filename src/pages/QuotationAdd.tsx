@@ -36,6 +36,7 @@ export default function QuotationAdd() {
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
   const [salesperson, setSalesperson] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("");
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [gstInclusive, setGstInclusive] = useState(false);
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
