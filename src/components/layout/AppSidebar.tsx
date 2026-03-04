@@ -47,7 +47,10 @@ const adminStaffNav: NavCategory[] = [
   },
   {
     label: "Repair",
-    items: [{ title: "Job Sheets", url: "/repairs", icon: Wrench }],
+    items: [
+      { title: "Job Sheets", url: "/repairs", icon: Wrench },
+      { title: "Technicians", url: "/technicians", icon: UserCog },
+    ],
   },
   {
     label: "Collaboration",
