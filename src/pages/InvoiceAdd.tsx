@@ -36,6 +36,7 @@ export default function InvoiceAdd() {
   const [dateIssued] = useState(new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
   const [salesperson, setSalesperson] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("");
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [gstInclusive, setGstInclusive] = useState(false);
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
