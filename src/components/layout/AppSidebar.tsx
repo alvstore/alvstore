@@ -30,6 +30,7 @@ const adminStaffNav: NavCategory[] = [
     items: [
       { title: "Quotations", url: "/sales", icon: ShoppingCart },
       { title: "Invoices", url: "/invoices", icon: Receipt },
+      { title: "Delivery Challans", url: "/challans", icon: Truck },
     ],
   },
   {
