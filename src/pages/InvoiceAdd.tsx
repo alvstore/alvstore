@@ -25,6 +25,7 @@ export default function InvoiceAdd() {
   const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
   const [business, setBusiness] = useState<BusinessSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const isEditing = !!editId;
