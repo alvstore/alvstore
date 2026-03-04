@@ -4,6 +4,8 @@ import {
   Wrench, Clock, CreditCard, BarChart3, FileText, Settings,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
   Target, ClipboardList, Receipt, UserCog,
+  Wallet, Shield, MessageCircle, CalendarDays, Zap, Truck,
+  Target, ClipboardList, Receipt, UserCog,
   Wallet, Shield, MessageCircle, CalendarDays, Zap,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
