@@ -44,7 +44,7 @@ export default function DeliveryChallanPreview() {
 
   const updateStatus = async (status: string) => {
     if (!id) return;
-    await supabase.from("delivery_challans").update({ status } as any).eq("id", id);
+    await (supabase as any).from("delivery_challans").update({ status }).eq("id", id);
     setChallan(prev => prev ? { ...prev, status } : prev);
     toast.success(`Status updated to ${status}`);
   };
