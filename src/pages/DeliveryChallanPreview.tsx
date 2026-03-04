@@ -34,9 +34,9 @@ export default function DeliveryChallanPreview() {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const { data: ch } = await supabase.from("delivery_challans").select("*, customers(name, phone, address)").eq("id", id).single();
+      const { data: ch } = await (supabase as any).from("delivery_challans").select("*, customers(name, phone, address)").eq("id", id).single();
       setChallan(ch as any);
-      const { data: itms } = await supabase.from("delivery_challan_items").select("*").eq("challan_id", id);
+      const { data: itms } = await (supabase as any).from("delivery_challan_items").select("*").eq("challan_id", id);
       setItems((itms || []) as any);
       setLoading(false);
     })();
