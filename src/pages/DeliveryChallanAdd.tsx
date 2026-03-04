@@ -42,9 +42,9 @@ export default function DeliveryChallanAdd() {
   useEffect(() => {
     if (!editId) return;
     (async () => {
-      const { data: ch } = await supabase.from("delivery_challans").select("*").eq("id", editId).single();
+      const { data: ch } = await (supabase as any).from("delivery_challans").select("*").eq("id", editId).single();
       if (ch) { setCustomerId((ch as any).customer_id || ""); setNotes((ch as any).notes || ""); }
-      const { data: itms } = await supabase.from("delivery_challan_items").select("*").eq("challan_id", editId);
+      const { data: itms } = await (supabase as any).from("delivery_challan_items").select("*").eq("challan_id", editId);
       if (itms) setItems(itms.map((i: any) => ({ product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
     })();
   }, [editId]);
