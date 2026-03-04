@@ -48,6 +48,10 @@ import QuotationAdd from "./pages/QuotationAdd";
 import CalendarPage from "./pages/CalendarPage";
 import BarcodeManager from "./pages/BarcodeManager";
 import FollowUps from "./pages/FollowUps";
+import Technicians from "./pages/Technicians";
+import DeliveryChallans from "./pages/DeliveryChallans";
+import DeliveryChallanAdd from "./pages/DeliveryChallanAdd";
+import DeliveryChallanPreview from "./pages/DeliveryChallanPreview";
 
 const queryClient = new QueryClient();
 
