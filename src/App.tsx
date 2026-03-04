@@ -48,6 +48,10 @@ import QuotationAdd from "./pages/QuotationAdd";
 import CalendarPage from "./pages/CalendarPage";
 import BarcodeManager from "./pages/BarcodeManager";
 import FollowUps from "./pages/FollowUps";
+import Technicians from "./pages/Technicians";
+import DeliveryChallans from "./pages/DeliveryChallans";
+import DeliveryChallanAdd from "./pages/DeliveryChallanAdd";
+import DeliveryChallanPreview from "./pages/DeliveryChallanPreview";
 
 const queryClient = new QueryClient();
 
@@ -101,7 +105,12 @@ const App = () => (
               <Route path="/payments" element={<Finance />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/customers" element={<Customers />} />
-              <Route path="/technicians" element={<TechnicianDashboard />} />
+              <Route path="/technicians" element={<Technicians />} />
+              <Route path="/technicians/dashboard" element={<TechnicianDashboard />} />
+              <Route path="/challans" element={<DeliveryChallans />} />
+              <Route path="/challans/new" element={<DeliveryChallanAdd />} />
+              <Route path="/challans/:id/edit" element={<DeliveryChallanAdd />} />
+              <Route path="/challans/:id" element={<DeliveryChallanPreview />} />
               <Route path="/employees" element={<Employees />} />
               <Route path="/payroll" element={<Payroll />} />
               <Route path="/tasks" element={<Tasks />} />

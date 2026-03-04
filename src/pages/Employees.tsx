@@ -67,7 +67,7 @@ export default function Employees() {
 
   const fetchEmployees = async () => {
     setLoading(true);
-    let query = supabase.from("employees").select("*").order("created_at", { ascending: false });
+    let query = supabase.from("employees").select("*").neq("role", "technician").order("created_at", { ascending: false });
     if (roleFilter !== "all") query = query.eq("role", roleFilter);
     if (search) query = query.ilike("name", `%${search}%`);
     const { data, error } = await query;

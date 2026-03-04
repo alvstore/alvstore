@@ -1,193 +1,124 @@
 
-
-# Comprehensive ERP Upgrade: 9-Point Implementation Plan
+# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
 ## Overview
 
-Nine distinct improvements spanning dashboard redesign, theme addition, new Delivery Challan module, chat enhancements, technician separation, finance KPIs, salesperson/signature settings, and attendance restructuring.
+Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
 
----
+## Phase 1: Theme Provider and Multiple Themes
 
-## 1. Dashboard Redesign with KPI Cards (Matching Reference)
+### New File: `src/hooks/useTheme.tsx`
+Create a React context-based theme provider that:
+- Stores selected theme name in `localStorage` (key: `app-theme`)
+- Applies the theme by setting CSS variables on `document.documentElement`
+- Exposes `theme`, `setTheme`, and `themes` list
 
-**File: `src/pages/Dashboard.tsx`**
+### Themes (6 total):
 
-Replace the current dashboard layout with the Dribbble reference design:
-- **Header**: "Dashboard" title + subtitle + "Add Project" / "Import Data" action buttons (right-aligned)
-- **KPI Cards Row** (4 cards): Replicate the exact reference layout -- label top-left, arrow-up-right icon top-right, large bold metric center, trend text with wave icon at bottom. Cards: Total Revenue, Sales (Month), Active Repairs, Pending Payments
-- **Analytics Section** (2-col): "Project Analytics" bar chart (weekly sales with green gradient bars, day labels S-M-T-W-T-F-S) + "Reminders" card (next calendar event with "Start Meeting" button)
-- **Bottom Section** (3-col): "Team Collaboration" card (employee list with status badges), "Project Progress" donut chart (repair completion %), and "Recent Invoices" list with "Time Tracker" accent card
-- Fix right-side alignment: ensure all grid items align flush-right with consistent gap spacing
+1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
+2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
+3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
+4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
+5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
+6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
 
-## 2. Add "Donezo" Green/White Theme
+Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
 
-**File: `src/hooks/useTheme.tsx`**
+### Theme Switcher UI
+Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
 
-Add a 7th theme matching the uploaded Dribbble reference (white background, forest green accents, warm cream cards):
-- Name: `"donezo"`
-- Label: `"Donezo"`
-- Background: `#F5F5F0` (warm gray), Card: `#FFFFFF`, Primary: Forest Green `#065F46`
-- Success: `#065F46`, borders: `#E5E7EB`, muted-foreground: zinc-500
-- isDark: false
+### Files:
+- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
+- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
+- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
+- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
 
-## 3. Delivery Challan Module (New Feature)
+### Adaptive Components
+The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
+- `bg-[#080808]` becomes `bg-background`
+- `bg-[#121212]` becomes `bg-card`
+- `text-white` becomes `text-foreground`
+- `text-zinc-500` becomes `text-muted-foreground`
+- `border-white/5` becomes `border-border`
 
-**Database**: Create `delivery_challans` and `delivery_challan_items` tables via migration:
-- `delivery_challans`: id, challan_number, customer_id, status (draft/sent/delivered/invoiced), invoice_id (nullable FK), notes, created_by, created_at
-- `delivery_challan_items`: id, challan_id, product_id, product_name, quantity, unit_price, total
-- RLS policies for authenticated users
+This ensures all themes work automatically.
 
-**New Files**:
-- `src/pages/DeliveryChallans.tsx` -- list page with KPI cards (Total, Sent, Delivered, Converted to Invoice) + table
-- `src/pages/DeliveryChallanAdd.tsx` -- create/edit form (reuse document pattern from QuotationAdd)
-- `src/pages/DeliveryChallanPreview.tsx` -- preview + print + "Convert to Invoice" button
+### Files to update for semantic colors:
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/layout/AppHeader.tsx`
+- `src/pages/Dashboard.tsx`
 
-**Route & Sidebar**:
-- Add routes in `App.tsx`: `/challans`, `/challans/new`, `/challans/:id`
-- Add "Delivery Challans" nav item under Sales category in `AppSidebar.tsx`
+## Phase 2: KPI Card Redesign (Reference Match)
 
-## 4. Chat: Read/Sent/Seen Status + File Attachments
+Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
 
-**Database Migration**:
-- Add columns to `chat_messages`: `read_at` already exists, add `delivered_at` timestamp, `file_url` text, `file_name` text, `file_type` text
-- Create storage bucket `chat-files` for file uploads
+**Layout per card:**
+- Top row: Label text (left) + arrow-up-right icon button (right corner)
+- Center: Large bold metric number (32-40px)
+- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
 
-**File: `src/pages/Chat.tsx`**:
-- **Read receipts**: When user views a message, update `read_at`. Show tick icons: single grey (sent), double grey (delivered), double blue (read)
-- **File upload**: Add paperclip button next to send. Upload to `chat-files` bucket, store URL in message. Render image previews inline, file links for documents
-- Mark messages as read when conversation is opened (`read_at = now()` for all unread messages from other sender)
+**Accent color system**: Each card gets a unique subtle background tint:
+- Card 1 (Revenue): Soft green background tint
+- Card 2 (Sales): White/neutral
+- Card 3 (Repairs): White/neutral
+- Card 4 (Pending): White/neutral
 
-## 5. Separate Technicians from Employees
+The first card (most important KPI) gets a colored border-left accent strip.
 
-**New File: `src/pages/Technicians.tsx`**:
-- Dedicated page listing employees where `role = 'technician'`
-- KPI cards: Total Technicians, Active Jobs, Completed Today, Average Rating
-- Table: Avatar, Name, Phone, Active Jobs, Status
-- Create/Edit sheet with technician-specific fields (specialization, skills)
-- "Assign to Job" quick action
+**Contextual KPIs to display:**
+- Daily Cash Flow (from `finance_transactions`)
+- Store Sales with 18% GST indicator
+- Gym Revenue with 5% GST indicator
+- Active Repairs count
 
-**File: `src/pages/Employees.tsx`**: Filter out technicians (`role != 'technician'`) from the default employee list
+## Phase 3: Employee Login Enforcement
 
-**Sidebar**: Add "Technicians" under Repair category. Update route in `App.tsx` from `/technicians` (currently TechnicianDashboard) to use new Technicians page, and keep TechnicianDashboard at `/technicians/dashboard`
+### Problem
+Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
 
-## 6. Finance Redesign with More KPI Cards
+### Fix in `src/pages/Employees.tsx`:
+1. Add a prominent "Create with Login" toggle/checkbox in the employee form
+2. When toggled ON (default for internal employees), make email and password fields REQUIRED
+3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
+4. For existing employees without `user_id`, show a "Link Login Account" button that:
+   - Opens a mini-form asking for email + password
+   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
+   - Updates the employee record with the returned `user_id`
 
-**File: `src/pages/Finance.tsx`**:
-- Add a prominent KPI row at top (before tabs): Total Balance, Today's Income, Today's Expenses, Net Profit (Month), Pending Receivables, Cash in Hand
-- Each KPI card uses the icon-on-top layout matching the dashboard reference
-- Add "ALVStore" vs "Incline Gym" transaction filter toggle
-- Improve chart section with theme-aware colors
+### Visual indicator in employee list:
+- Show a small shield/lock icon next to employees who have a linked auth account
+- Show a warning icon next to employees without one
 
-## 7. Salesperson Auto-populate + Payment Terms + Signature Upload
+## Phase 4: Chart Theme Adaptation
 
-**Files: `src/pages/QuotationAdd.tsx`, `src/pages/InvoiceAdd.tsx`**:
-- Replace the text "Salesperson" input with a `<Select>` dropdown populated from `employees` table (role = staff/admin)
-- Add "Payment Terms" dropdown: Net 7, Net 15, Net 30, Net 45, Net 60, Due on Receipt, Custom
-- Store selected payment_terms in quotation/invoice record
+Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
+- Tooltip background: `hsl(var(--card))`
+- Tooltip border: `hsl(var(--border))`
+- Bar gradient: Use the theme's accent/success color
+- Axis text: `hsl(var(--muted-foreground))`
 
-**File: `src/pages/Settings.tsx`**:
-- Add "Document Settings" section under Organization group
-- Upload signature image (stored in Supabase storage `signatures` bucket)
-- Toggle: "Show signature on Quotations", "Show signature on Invoices"
-- Store signature_url in `business_settings.integrations` JSON
-
-**Database Migration**: Add `salesperson_id`, `payment_terms` columns to `quotations` and `invoices` tables
-
-## 8. Attendance Page Restructure
-
-**File: `src/pages/Attendance.tsx`**:
-- Move Devices, Sync Logs, Employee Mapping, Departments tabs to Settings page (under a new "Hikvision" or "Devices" section) -- they are system configuration, not daily attendance
-- Keep only the main Attendance tab on this page
-- Add **KPI Cards**: Present Today, Absent Today, Late Arrivals, On Leave, Total Employees
-- Add **Calendar View** tab: Monthly calendar grid showing attendance dots per day per employee
-- Add **Month-wise Download**: Select month, generate CSV/print of all employee attendance for that month
-- Admin can click any day on calendar to see detailed attendance for that date
-
-## 9. Right-Side Alignment Fix
-
-**File: `src/pages/Dashboard.tsx`** (covered in item 1):
-- Ensure grid columns use consistent `gap-4` or `gap-6`
-- KPI cards must be equal width in their grid
-- Charts and bottom panels align to the same right edge
-- No orphan padding or margin on the rightmost column
-
----
-
-## Database Migrations Required
-
-```sql
--- Delivery Challans
-CREATE TABLE public.delivery_challans (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  challan_number text NOT NULL DEFAULT '',
-  customer_id uuid REFERENCES public.customers(id),
-  status text NOT NULL DEFAULT 'draft',
-  notes text,
-  invoice_id uuid,
-  created_by uuid,
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE public.delivery_challan_items (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  challan_id uuid REFERENCES public.delivery_challans(id) ON DELETE CASCADE,
-  product_id uuid,
-  product_name text,
-  quantity integer DEFAULT 1,
-  unit_price numeric DEFAULT 0,
-  total numeric DEFAULT 0
-);
-
-ALTER TABLE public.delivery_challans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.delivery_challan_items ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Auth users manage challans" ON public.delivery_challans FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Auth users manage challan items" ON public.delivery_challan_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
--- Chat file columns
-ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS file_url text;
-ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS file_name text;
-ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS file_type text;
-ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS delivered_at timestamptz;
-
--- Salesperson + payment terms
-ALTER TABLE public.quotations ADD COLUMN IF NOT EXISTS salesperson_id uuid;
-ALTER TABLE public.quotations ADD COLUMN IF NOT EXISTS payment_terms text;
-ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS salesperson_id uuid;
-ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS payment_terms text;
-```
+This ensures charts look correct in both light and dark themes.
 
 ## Files Summary
 
 ```text
-MIGRATIONS:  delivery_challans, chat_messages columns, quotation/invoice columns
-NEW:         src/pages/DeliveryChallans.tsx
-NEW:         src/pages/DeliveryChallanAdd.tsx
-NEW:         src/pages/DeliveryChallanPreview.tsx
-NEW:         src/pages/Technicians.tsx
-EDIT:        src/hooks/useTheme.tsx              -- Add Donezo theme
-EDIT:        src/pages/Dashboard.tsx              -- Full KPI redesign
-EDIT:        src/pages/Chat.tsx                   -- Read receipts + file upload
-EDIT:        src/pages/Employees.tsx              -- Filter out technicians
-EDIT:        src/pages/Finance.tsx                -- KPI cards row
-EDIT:        src/pages/QuotationAdd.tsx           -- Salesperson select + payment terms
-EDIT:        src/pages/InvoiceAdd.tsx             -- Salesperson select + payment terms
-EDIT:        src/pages/Settings.tsx               -- Signature upload + Hikvision tabs
-EDIT:        src/pages/Attendance.tsx             -- Remove device tabs, add calendar
-EDIT:        src/components/layout/AppSidebar.tsx -- Add Delivery Challans + Technicians
-EDIT:        src/App.tsx                          -- New routes
+NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
+EDIT: src/main.tsx                       -- Wrap in ThemeProvider
+EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
+EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
+EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
+EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
+EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
 ```
 
-## Implementation Order
-1. Database migrations (foundation for new features)
-2. `src/hooks/useTheme.tsx` -- Donezo theme
-3. `src/pages/Dashboard.tsx` -- KPI redesign
-4. `src/pages/DeliveryChallans.tsx` + Add/Preview -- new module
-5. `src/pages/Chat.tsx` -- file attachments + read receipts
-6. `src/pages/Technicians.tsx` + Employees filter
-7. `src/pages/Finance.tsx` -- KPI cards
-8. `src/pages/QuotationAdd.tsx` + `InvoiceAdd.tsx` -- salesperson/payment terms
-9. `src/pages/Attendance.tsx` -- restructure + calendar
-10. `src/pages/Settings.tsx` -- signature upload + Hikvision tabs
-11. `src/App.tsx` + `AppSidebar.tsx` -- routes and navigation
+## Database Changes
+None required.
 
+## Implementation Order
+1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
+2. `src/index.css` -- Ensure variables are the correct defaults
+3. `src/main.tsx` -- Wire up provider
+4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
+5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
+6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
+7. `src/pages/Employees.tsx` -- Login enforcement
