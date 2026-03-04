@@ -33,7 +33,7 @@ export default function DeliveryChallans() {
 
   const fetchChallans = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("delivery_challans").select("*, customers(name)")
       .order("created_at", { ascending: false });
     if (error) toast.error(error.message);

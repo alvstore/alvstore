@@ -64,7 +64,7 @@ export default function DeliveryChallanPreview() {
         quantity: i.quantity, unit_price: i.unit_price, total: i.total,
       }));
       await supabase.from("invoice_items").insert(invItems);
-      await supabase.from("delivery_challans").update({ status: "invoiced", invoice_id: inv.id } as any).eq("id", id);
+      await (supabase as any).from("delivery_challans").update({ status: "invoiced", invoice_id: inv.id }).eq("id", id);
       toast.success("Invoice created — " + (inv as any).invoice_number);
       navigate(`/invoices/${inv.id}`);
     } catch (err: any) { toast.error(err.message); }

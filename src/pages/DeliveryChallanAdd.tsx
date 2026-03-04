@@ -73,17 +73,17 @@ export default function DeliveryChallanAdd() {
     setSaving(true);
     try {
       if (isEditing) {
-        await supabase.from("delivery_challans").update({ customer_id: customerId, notes: notes || null } as any).eq("id", editId);
-        await supabase.from("delivery_challan_items").delete().eq("challan_id", editId);
-        await supabase.from("delivery_challan_items").insert(items.map(i => ({ challan_id: editId, product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
+        await (supabase as any).from("delivery_challans").update({ customer_id: customerId, notes: notes || null }).eq("id", editId);
+        await (supabase as any).from("delivery_challan_items").delete().eq("challan_id", editId);
+        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({ challan_id: editId, product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
         toast.success("Challan updated");
         navigate(`/challans/${editId}`);
       } else {
-        const { data: ch, error } = await supabase.from("delivery_challans").insert({
+        const { data: ch, error } = await (supabase as any).from("delivery_challans").insert({
           challan_number: "", customer_id: customerId, notes: notes || null, created_by: user?.id,
-        } as any).select().single();
+        }).select().single();
         if (error) throw error;
-        await supabase.from("delivery_challan_items").insert(items.map(i => ({ challan_id: (ch as any).id, product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
+        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({ challan_id: (ch as any).id, product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
         toast.success("Challan created — " + (ch as any).challan_number);
         navigate(`/challans/${(ch as any).id}`);
       }
