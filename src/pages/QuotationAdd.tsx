@@ -49,10 +49,12 @@ export default function QuotationAdd() {
       supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
       supabase.from("products").select("id, name, description, selling_price, gst_percentage").order("name"),
       supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url").limit(1).single(),
-    ]).then(([c, p, b]) => {
+      supabase.from("employees").select("id, name").in("role", ["admin", "staff"]).eq("status", "active").order("name"),
+    ]).then(([c, p, b, e]) => {
       setCustomers(c.data || []);
       setProducts(p.data || []);
       if (b.data) setBusiness(b.data);
+      setEmployees(e.data || []);
     });
   }, []);
 
