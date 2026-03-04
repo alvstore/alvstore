@@ -5,8 +5,6 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
   Target, ClipboardList, Receipt, UserCog,
   Wallet, Shield, MessageCircle, CalendarDays, Zap, Truck,
-  Target, ClipboardList, Receipt, UserCog,
-  Wallet, Shield, MessageCircle, CalendarDays, Zap,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
