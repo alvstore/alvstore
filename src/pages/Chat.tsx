@@ -13,7 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageCircle, Send, Plus, Search, Phone, Check, CheckCheck, Clock, UserPlus, Users } from "lucide-react";
+import { MessageCircle, Send, Plus, Search, Phone, Check, CheckCheck, Clock, UserPlus, Users, Paperclip, Image as ImageIcon, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,8 @@ interface Message {
   id: string; conversation_id: string; sender_id: string; content: string;
   read_at: string | null; created_at: string; channel: string | null;
   delivery_status: string | null; whatsapp_message_id: string | null;
+  file_url?: string | null; file_name?: string | null; file_type?: string | null;
+  delivered_at?: string | null;
 }
 
 interface ProfileMap {
@@ -57,7 +59,10 @@ export default function Chat() {
   const [waName, setWaName] = useState("");
   const [newChatType, setNewChatType] = useState<"internal" | "whatsapp">("internal");
   const [sendingWa, setSendingWa] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<{ file: File; preview?: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchConversations = useCallback(async () => {
     if (!user) return;
@@ -96,7 +101,6 @@ export default function Chat() {
     const rolesMap: Record<string, string> = {};
     rolesData?.forEach(r => { rolesMap[r.user_id] = r.role; });
 
-    // Build internal contacts (only people with user_id = can actually chat)
     const contactMap = new Map<string, ContactEntry>();
     profilesData?.filter(p => p.user_id !== user?.id).forEach(p => {
       contactMap.set(p.user_id, {
@@ -116,14 +120,9 @@ export default function Chat() {
 
     setAllContacts(Array.from(contactMap.values()));
 
-    // Build WhatsApp auto-suggest contacts (employees + customers with phone)
     const waSuggestions: { name: string; phone: string }[] = [];
-    employeesData?.forEach(emp => {
-      if (emp.phone) waSuggestions.push({ name: emp.name, phone: emp.phone });
-    });
-    customersData?.forEach(c => {
-      if (c.phone) waSuggestions.push({ name: c.name, phone: c.phone });
-    });
+    employeesData?.forEach(emp => { if (emp.phone) waSuggestions.push({ name: emp.name, phone: emp.phone }); });
+    customersData?.forEach(c => { if (c.phone) waSuggestions.push({ name: c.name, phone: c.phone }); });
     setWaContacts(waSuggestions);
   }, [user]);
 
@@ -136,10 +135,21 @@ export default function Chat() {
     if (allIds.size > 0) fetchProfiles(Array.from(allIds));
   }, [conversations, messages]);
 
+  // Mark messages as read when viewing a conversation
+  const markMessagesRead = useCallback(async (convoId: string) => {
+    if (!user) return;
+    await supabase.from("chat_messages")
+      .update({ read_at: new Date().toISOString() } as any)
+      .eq("conversation_id", convoId)
+      .neq("sender_id", user.id)
+      .is("read_at", null);
+  }, [user]);
+
   const selectConvo = (id: string) => {
     setSelectedConvo(id);
     setMobileShowChat(true);
     fetchMessages(id);
+    markMessagesRead(id);
   };
 
   useEffect(() => {
@@ -153,18 +163,58 @@ export default function Chat() {
         const newMsg = payload.new as Message;
         setMessages(prev => [...prev, newMsg]);
         fetchConversations();
+        // Auto-mark as read if from someone else
+        if (newMsg.sender_id !== user?.id) {
+          markMessagesRead(selectedConvo);
+        }
       }).subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [selectedConvo, fetchConversations]);
+  }, [selectedConvo, fetchConversations, user, markMessagesRead]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // File upload handler
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast.error("File size must be under 10MB"); return; }
+    const isImage = file.type.startsWith("image/");
+    const preview = isImage ? URL.createObjectURL(file) : undefined;
+    setPendingFile({ file, preview });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const uploadAndSend = async (file: File) => {
+    if (!selectedConvo || !user) return null;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `chat/${selectedConvo}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage.from("chat-files").upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from("chat-files").getPublicUrl(path);
+      return { url: urlData.publicUrl, name: file.name, type: file.type };
+    } catch (err: any) {
+      toast.error("Upload failed: " + err.message);
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const sendMessage = async () => {
-    if (!messageText.trim() || !selectedConvo || !user) return;
-    const content = messageText.trim();
+    if ((!messageText.trim() && !pendingFile) || !selectedConvo || !user) return;
+    const content = messageText.trim() || (pendingFile ? `📎 ${pendingFile.file.name}` : "");
     setMessageText("");
+
+    let fileData: { url: string; name: string; type: string } | null = null;
+    if (pendingFile) {
+      fileData = await uploadAndSend(pendingFile.file);
+      setPendingFile(null);
+    }
+
     const convo = conversations.find(c => c.id === selectedConvo);
     const isWhatsApp = convo?.channel === "whatsapp";
 
@@ -182,9 +232,15 @@ export default function Chat() {
       } finally { setSendingWa(false); }
       await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
     } else {
-      const { error } = await supabase.from("chat_messages").insert({
+      const insertPayload: any = {
         conversation_id: selectedConvo, sender_id: user.id, content, channel: "internal",
-      });
+      };
+      if (fileData) {
+        insertPayload.file_url = fileData.url;
+        insertPayload.file_name = fileData.name;
+        insertPayload.file_type = fileData.type;
+      }
+      const { error } = await supabase.from("chat_messages").insert(insertPayload);
       if (error) { toast.error("Failed to send"); return; }
       await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
     }
@@ -233,11 +289,12 @@ export default function Chat() {
 
   const getInitials = (name: string) => name.slice(0, 2).toUpperCase();
 
-  const DeliveryIcon = ({ status }: { status: string | null }) => {
-    if (status === "read") return <CheckCheck className="h-3 w-3 text-info" />;
-    if (status === "delivered") return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
-    if (status === "sent") return <Check className="h-3 w-3 text-muted-foreground" />;
-    return <Clock className="h-3 w-3 text-muted-foreground" />;
+  const DeliveryIcon = ({ msg }: { msg: Message }) => {
+    const isMe = msg.sender_id === user?.id;
+    if (!isMe) return null;
+    if (msg.read_at) return <CheckCheck className="h-3 w-3 text-info" />;
+    if (msg.delivered_at) return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
+    return <Check className="h-3 w-3 text-muted-foreground" />;
   };
 
   const filteredConvos = conversations.filter(c => {
@@ -247,6 +304,26 @@ export default function Chat() {
   });
 
   const selectedConversation = conversations.find(c => c.id === selectedConvo);
+
+  const isImageFile = (type?: string | null) => type?.startsWith("image/");
+
+  const FilePreview = ({ msg }: { msg: Message }) => {
+    if (!msg.file_url) return null;
+    if (isImageFile(msg.file_type)) {
+      return (
+        <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="block mt-1">
+          <img src={msg.file_url} alt={msg.file_name || "Image"} className="max-w-[220px] rounded-lg border border-border/50" />
+        </a>
+      );
+    }
+    return (
+      <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-2 mt-1 px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-xs">
+        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span className="truncate max-w-[160px]">{msg.file_name || "File"}</span>
+      </a>
+    );
+  };
 
   return (
     <div className="h-[calc(100vh-5rem)] flex flex-col">
@@ -381,11 +458,13 @@ export default function Chat() {
                           <div className={cn("rounded-2xl px-3.5 py-2 text-sm",
                             isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"
                           )}>
-                            {msg.content}
+                            {msg.content && !msg.content.startsWith("📎") && msg.content}
+                            {msg.content?.startsWith("📎") && !msg.file_url && msg.content}
+                            <FilePreview msg={msg} />
                           </div>
                           <div className={cn("flex items-center gap-1 mt-0.5", isMe ? "justify-end mr-1" : "ml-1")}>
                             <span className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "HH:mm")}</span>
-                            {isMe && isWaMsg && <DeliveryIcon status={msg.delivery_status} />}
+                            <DeliveryIcon msg={msg} />
                           </div>
                         </div>
                       </div>
@@ -395,15 +474,40 @@ export default function Chat() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* Pending file preview */}
+              {pendingFile && (
+                <div className="px-4 py-2 border-t border-border/50 bg-muted/30 flex items-center gap-3">
+                  {pendingFile.preview ? (
+                    <img src={pendingFile.preview} alt="Preview" className="h-12 w-12 rounded-lg object-cover border border-border" />
+                  ) : (
+                    <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{pendingFile.file.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{(pendingFile.file.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPendingFile(null)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+
               {/* Input Bar */}
               <div className="p-3 border-t border-border/50 bg-card">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv,.txt" onChange={handleFileSelect} />
+                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
                   <Input
                     placeholder={selectedConversation?.channel === "whatsapp" ? "Type a WhatsApp message..." : "Type a message..."}
                     value={messageText} onChange={e => setMessageText(e.target.value)}
                     onKeyDown={handleKeyPress} className="flex-1"
                   />
-                  <Button onClick={sendMessage} disabled={!messageText.trim() || sendingWa}>
+                  <Button onClick={sendMessage} disabled={(!messageText.trim() && !pendingFile) || sendingWa || uploading}>
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
@@ -464,7 +568,6 @@ export default function Chat() {
               </>
             ) : (
               <>
-                {/* WhatsApp auto-suggest contacts */}
                 {waContacts.length > 0 && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">Quick Select Contact</label>

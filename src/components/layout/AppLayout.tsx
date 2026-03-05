@@ -51,7 +51,7 @@ export function AppLayout() {
       {/* Main content */}
       <div className={cn("flex flex-col min-h-screen transition-all duration-300", collapsed ? "md:ml-[60px]" : "md:ml-[240px]")}>
         <AppHeader onMobileMenuToggle={() => setMobileOpen(!mobileOpen)} />
-        <main className="flex-1 p-4 md:p-6">
+        <main className="flex-1 p-4 md:p-6 md:pr-8">
           <Outlet />
         </main>
       </div>
