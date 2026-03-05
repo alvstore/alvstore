@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, Search, Wrench, Pencil, ShieldCheck, AlertTriangle, Link2, Users, CheckCircle2, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { AvatarUpload } from "@/components/AvatarUpload";
 
 interface Technician {
   id: string; user_id: string | null; name: string; phone: string | null;
