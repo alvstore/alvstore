@@ -212,7 +212,11 @@ export type Database = {
           content: string
           conversation_id: string
           created_at: string
+          delivered_at: string | null
           delivery_status: string | null
+          file_name: string | null
+          file_type: string | null
+          file_url: string | null
           id: string
           read_at: string | null
           sender_id: string | null
@@ -223,7 +227,11 @@ export type Database = {
           content: string
           conversation_id: string
           created_at?: string
+          delivered_at?: string | null
           delivery_status?: string | null
+          file_name?: string | null
+          file_type?: string | null
+          file_url?: string | null
           id?: string
           read_at?: string | null
           sender_id?: string | null
@@ -234,7 +242,11 @@ export type Database = {
           content?: string
           conversation_id?: string
           created_at?: string
+          delivered_at?: string | null
           delivery_status?: string | null
+          file_name?: string | null
+          file_type?: string | null
+          file_url?: string | null
           id?: string
           read_at?: string | null
           sender_id?: string | null
@@ -360,6 +372,88 @@ export type Database = {
           status?: string | null
         }
         Relationships: []
+      }
+      delivery_challan_items: {
+        Row: {
+          challan_id: string
+          id: string
+          product_id: string | null
+          product_name: string
+          quantity: number | null
+          total: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          challan_id: string
+          id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number | null
+          total?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          challan_id?: string
+          id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number | null
+          total?: number | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_challan_items_challan_id_fkey"
+            columns: ["challan_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_challans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_challans: {
+        Row: {
+          challan_number: string
+          created_at: string | null
+          created_by: string | null
+          customer_id: string | null
+          id: string
+          invoice_id: string | null
+          notes: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          challan_number?: string
+          created_at?: string | null
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          invoice_id?: string | null
+          notes?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          challan_number?: string
+          created_at?: string | null
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          invoice_id?: string | null
+          notes?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_challans_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       departments: {
         Row: {
@@ -986,8 +1080,10 @@ export type Database = {
           notes: string | null
           paid_amount: number | null
           payment_status: string | null
+          payment_terms: string | null
           public_token: string | null
           quotation_id: string | null
+          salesperson_id: string | null
           signature_data: string | null
           signature_name: string | null
           signed_at: string | null
@@ -1011,8 +1107,10 @@ export type Database = {
           notes?: string | null
           paid_amount?: number | null
           payment_status?: string | null
+          payment_terms?: string | null
           public_token?: string | null
           quotation_id?: string | null
+          salesperson_id?: string | null
           signature_data?: string | null
           signature_name?: string | null
           signed_at?: string | null
@@ -1036,8 +1134,10 @@ export type Database = {
           notes?: string | null
           paid_amount?: number | null
           payment_status?: string | null
+          payment_terms?: string | null
           public_token?: string | null
           quotation_id?: string | null
+          salesperson_id?: string | null
           signature_data?: string | null
           signature_name?: string | null
           signed_at?: string | null
@@ -1764,9 +1864,11 @@ export type Database = {
           id: string
           last_viewed_at: string | null
           notes: string | null
+          payment_terms: string | null
           public_token: string
           quotation_number: string
           reminder_sent_at: string | null
+          salesperson_id: string | null
           signature_data: string | null
           signature_name: string | null
           signed_at: string | null
@@ -1791,9 +1893,11 @@ export type Database = {
           id?: string
           last_viewed_at?: string | null
           notes?: string | null
+          payment_terms?: string | null
           public_token?: string
           quotation_number: string
           reminder_sent_at?: string | null
+          salesperson_id?: string | null
           signature_data?: string | null
           signature_name?: string | null
           signed_at?: string | null
@@ -1818,9 +1922,11 @@ export type Database = {
           id?: string
           last_viewed_at?: string | null
           notes?: string | null
+          payment_terms?: string | null
           public_token?: string
           quotation_number?: string
           reminder_sent_at?: string | null
+          salesperson_id?: string | null
           signature_data?: string | null
           signature_name?: string | null
           signed_at?: string | null
