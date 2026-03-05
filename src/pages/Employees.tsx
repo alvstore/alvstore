@@ -19,6 +19,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, Search, User, Pencil, Loader2, UserCog, ShieldCheck, AlertTriangle, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { AvatarUpload } from "@/components/AvatarUpload";
 
 type AppRole = "admin" | "staff" | "technician" | "customer";
 
@@ -332,7 +333,21 @@ export default function Employees() {
             <SheetDescription>{editId ? "Update employee details" : "Create a new employee with optional login account"}</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 mt-6">
-            <div className="space-y-1.5"><Label>Full Name *</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
+            <div className="flex items-center gap-4">
+              <AvatarUpload
+                currentUrl={editId ? employees.find(e => e.id === editId)?.avatar_url : undefined}
+                name={form.name}
+                folder="employees"
+                entityId={editId || undefined}
+                onUploaded={async (url) => {
+                  if (editId) {
+                    await supabase.from("employees").update({ avatar_url: url } as any).eq("id", editId);
+                    fetchEmployees();
+                  }
+                }}
+              />
+              <div className="flex-1 space-y-1.5"><Label>Full Name *</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Email {form.createLogin && !editId ? "*" : ""}</Label><Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></div>
               <div className="space-y-1.5"><Label>Phone</Label><Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></div>
