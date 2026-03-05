@@ -207,7 +207,21 @@ export default function Technicians() {
             <SheetDescription>Manage technician details and login</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 mt-6">
-            <div className="space-y-1.5"><Label>Full Name *</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
+            <div className="flex items-center gap-4">
+              <AvatarUpload
+                currentUrl={editId ? technicians.find(t => t.id === editId)?.avatar_url : undefined}
+                name={form.name}
+                folder="technicians"
+                entityId={editId || undefined}
+                onUploaded={async (url) => {
+                  if (editId) {
+                    await supabase.from("employees").update({ avatar_url: url } as any).eq("id", editId);
+                    fetchTechnicians();
+                  }
+                }}
+              />
+              <div className="flex-1 space-y-1.5"><Label>Full Name *</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></div>
               <div className="space-y-1.5"><Label>Phone</Label><Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></div>
