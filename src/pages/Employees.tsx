@@ -19,6 +19,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, Search, User, Pencil, Loader2, UserCog, ShieldCheck, AlertTriangle, Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { AvatarUpload } from "@/components/AvatarUpload";
 
 type AppRole = "admin" | "staff" | "technician" | "customer";
 
