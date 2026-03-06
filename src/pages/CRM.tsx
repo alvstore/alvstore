@@ -76,6 +76,7 @@ export default function CRM() {
       state: c.state || "",
       pincode: c.pincode || "",
       notes: c.notes || "",
+      avatar_url: c.avatar_url || "",
     });
     setSheetOpen(true);
   };
