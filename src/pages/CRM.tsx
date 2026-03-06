@@ -32,9 +32,16 @@ interface Customer {
   created_at: string;
 }
 
+interface Customer {
+  id: string; name: string; phone: string | null; email: string | null;
+  gst_number: string | null; address: string | null; city: string | null;
+  state: string | null; pincode: string | null; notes: string | null;
+  created_at: string; avatar_url?: string | null;
+}
+
 const emptyForm = {
   name: "", phone: "", email: "", gst_number: "",
-  address: "", city: "", state: "", pincode: "", notes: "",
+  address: "", city: "", state: "", pincode: "", notes: "", avatar_url: "",
 };
 
 export default function CRM() {
