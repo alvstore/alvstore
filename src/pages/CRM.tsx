@@ -18,19 +18,7 @@ import { AvatarUpload } from "@/components/AvatarUpload";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 
-interface Customer {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  gst_number: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  pincode: string | null;
-  notes: string | null;
-  created_at: string;
-}
+// Customer interface moved below imports
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
