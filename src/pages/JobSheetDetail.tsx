@@ -18,7 +18,8 @@ import {
   ArrowLeft, Copy, Loader2, User, Smartphone, ClipboardCheck,
   History, Shield, Upload, CheckCircle, Circle, Clock,
   FileText, Wrench, Package, Eye, Truck, IndianRupee, ArrowRightLeft, Printer,
-  Receipt, CreditCard, Plus, Download,
+  Receipt, CreditCard, Plus, Download, Phone, Hash, Power, PowerOff,
+  UserCheck, CalendarDays,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotification } from "@/lib/notifications";
@@ -81,16 +82,15 @@ export default function JobSheetDetail() {
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [repairParts, setRepairParts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creatorName, setCreatorName] = useState<string | null>(null);
   const [postChecklist, setPostChecklist] = useState<{ item: string; value: string }[]>(
     POST_REPAIR_ITEMS.map(item => ({ item, value: "" }))
   );
   const [techPaySheetOpen, setTechPaySheetOpen] = useState(false);
   const [techPayForm, setTechPayForm] = useState({ amount: "", method: "cash", notes: "" });
   const [actualCost, setActualCost] = useState("");
-  // Payment sheet
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "cash", notes: "" });
-  // Parts sheet
   const [partsSheetOpen, setPartsSheetOpen] = useState(false);
   const [partForm, setPartForm] = useState({ name: "", cost: "", gst_percentage: "18", quantity: "1" });
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
@@ -114,6 +114,12 @@ export default function JobSheetDetail() {
 
     if (jobRes.data.post_repair_checklist && (jobRes.data.post_repair_checklist as any[]).length > 0) {
       setPostChecklist(jobRes.data.post_repair_checklist as any);
+    }
+
+    // Fetch creator name
+    if (jobRes.data.created_by) {
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("user_id", jobRes.data.created_by).maybeSingle();
+      setCreatorName(profile?.full_name || null);
     }
 
     const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "technician");
@@ -183,7 +189,7 @@ export default function JobSheetDetail() {
     const { error } = await supabase.from("job_sheets").update({ device_sent_at: new Date().toISOString(), device_sent_by: user?.id } as any).eq("id", id);
     if (error) toast.error(error.message);
     else {
-      await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "device_sent_to_technician", details: "Device sent to technician for repair", user_id: user?.id });
+      await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "device_sent_to_technician", details: "Device sent to technician for repair", user_id: user?.id, user_role: hasRole("admin") ? "admin" : "staff" });
       toast.success("Device sent to technician recorded"); fetchAll();
     }
   };
@@ -193,7 +199,7 @@ export default function JobSheetDetail() {
     const { error } = await supabase.from("job_sheets").update({ device_received_at: new Date().toISOString(), device_received_by: user?.id } as any).eq("id", id);
     if (error) toast.error(error.message);
     else {
-      await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "device_received_from_technician", details: "Device received back from technician", user_id: user?.id });
+      await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "device_received_from_technician", details: "Device received back from technician", user_id: user?.id, user_role: hasRole("admin") ? "admin" : "staff" });
       toast.success("Device received recorded"); fetchAll();
     }
   };
@@ -216,7 +222,6 @@ export default function JobSheetDetail() {
     toast.success("Technician payment recorded"); setTechPaySheetOpen(false); fetchAll();
   };
 
-  // Generate Invoice from repair
   const generateInvoice = async () => {
     if (!id || !job) return;
     if (job.invoice_id) { toast.info("Invoice already generated"); navigate(`/invoices/${job.invoice_id}`); return; }
@@ -228,87 +233,49 @@ export default function JobSheetDetail() {
       const partsTotal = repairParts.reduce((s, p) => s + Number(p.total), 0);
 
       const invoiceData: any = {
-        customer_id: job.customer_id,
-        job_sheet_id: job.id,
+        customer_id: job.customer_id, job_sheet_id: job.id,
         gst_inclusive: job.gst_mode === "inclusive",
         discount_type: job.discount_type === "none" ? "percentage" : job.discount_type,
         discount_value: job.discount_type === "none" ? 0 : Number(job.discount_value) || 0,
-        subtotal: serviceCharge + partsTotal,
-        gst_amount: gstAmount,
-        total: totalAmount + partsTotal,
-        status: "draft",
-        payment_status: "unpaid",
-        created_by: user?.id,
+        subtotal: serviceCharge + partsTotal, gst_amount: gstAmount,
+        total: totalAmount + partsTotal, status: "draft", payment_status: "unpaid", created_by: user?.id,
       };
       const { data: invoice, error: invErr } = await supabase.from("invoices").insert(invoiceData).select().single();
       if (invErr) throw invErr;
 
-      // Add service charge as line item
       const items: any[] = [{ invoice_id: invoice.id, product_name: `Service Charge - ${job.device_type}`, unit_price: serviceCharge, quantity: 1, gst_percentage: Number(job.gst_percentage) || 18, total: serviceCharge }];
-      // Add parts as line items
       for (const part of repairParts) {
         items.push({ invoice_id: invoice.id, product_name: part.name, unit_price: Number(part.cost), quantity: part.quantity, gst_percentage: Number(part.gst_percentage) || 18, total: Number(part.total) });
       }
       await supabase.from("invoice_items").insert(items);
-
-      // Link invoice to job
       await supabase.from("job_sheets").update({ invoice_id: invoice.id, status: "invoice_generated" as any }).eq("id", id);
       await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "invoice_generated", details: `Invoice ${invoice.invoice_number} generated`, user_id: user?.id });
-
-      toast.success(`Invoice ${invoice.invoice_number} generated`);
-      fetchAll();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGeneratingInvoice(false);
-    }
+      toast.success(`Invoice ${invoice.invoice_number} generated`); fetchAll();
+    } catch (err: any) { toast.error(err.message); } finally { setGeneratingInvoice(false); }
   };
 
-  // Add Payment
   const addPayment = async () => {
     if (!id || !job) return;
     const amount = parseFloat(paymentForm.amount) || 0;
     if (amount <= 0) { toast.error("Enter valid amount"); return; }
-
     try {
-      // Insert payment
-      await supabase.from("payments").insert({
-        customer_id: job.customer_id,
-        job_sheet_id: id,
-        amount,
-        payment_method: paymentForm.method as any,
-        type: "invoice" as any,
-        status: "completed" as any,
-        notes: paymentForm.notes || `Payment for ${job.job_number}`,
-        created_by: user?.id,
-      });
-
-      // Sum payments linked to THIS job sheet only
+      await supabase.from("payments").insert({ customer_id: job.customer_id, job_sheet_id: id, amount, payment_method: paymentForm.method as any, type: "invoice" as any, status: "completed" as any, notes: paymentForm.notes || `Payment for ${job.job_number}`, created_by: user?.id });
       const { data: allPayments } = await supabase.from("payments").select("amount").eq("job_sheet_id", id).eq("status", "completed");
       const totalPaid = (allPayments || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
       const total = Number(job.total_amount) || 0;
       const newStatus = totalPaid >= total ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
       await supabase.from("job_sheets").update({ payment_status: newStatus } as any).eq("id", id);
-
-      // Update invoice if linked
       if (job.invoice_id) {
         const currentPaid = Number(job.paid_amount) || 0;
         const newPaid = currentPaid + amount;
         const invPayStatus = newPaid >= total ? "paid" : "partial";
         await supabase.from("invoices").update({ paid_amount: newPaid, payment_status: invPayStatus } as any).eq("id", job.invoice_id);
       }
-
       await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "payment_received", details: `Payment of ₹${amount} received via ${paymentForm.method}`, user_id: user?.id });
-
-      toast.success("Payment recorded");
-      setPaymentSheetOpen(false);
-      fetchAll();
-    } catch (err: any) {
-      toast.error(err.message);
-    }
+      toast.success("Payment recorded"); setPaymentSheetOpen(false); fetchAll();
+    } catch (err: any) { toast.error(err.message); }
   };
 
-  // Add Part
   const addPart = async () => {
     if (!id) return;
     const cost = parseFloat(partForm.cost) || 0;
@@ -316,21 +283,12 @@ export default function JobSheetDetail() {
     const gstPct = parseFloat(partForm.gst_percentage) || 18;
     if (!partForm.name.trim()) { toast.error("Enter part name"); return; }
     if (cost <= 0) { toast.error("Enter valid cost"); return; }
-
     const total = cost * qty;
-    const { error } = await supabase.from("repair_parts").insert({
-      job_sheet_id: id, name: partForm.name.trim(), cost, gst_percentage: gstPct, quantity: qty, total,
-    } as any);
+    const { error } = await supabase.from("repair_parts").insert({ job_sheet_id: id, name: partForm.name.trim(), cost, gst_percentage: gstPct, quantity: qty, total } as any);
     if (error) { toast.error(error.message); return; }
-
-    // Update parts_total on job_sheet
     const newPartsTotal = repairParts.reduce((s, p) => s + Number(p.total), 0) + total;
     await supabase.from("job_sheets").update({ parts_total: newPartsTotal } as any).eq("id", id);
-
-    toast.success("Part added");
-    setPartForm({ name: "", cost: "", gst_percentage: "18", quantity: "1" });
-    setPartsSheetOpen(false);
-    fetchAll();
+    toast.success("Part added"); setPartForm({ name: "", cost: "", gst_percentage: "18", quantity: "1" }); setPartsSheetOpen(false); fetchAll();
   };
 
   const handlePrint = () => window.print();
@@ -351,6 +309,11 @@ export default function JobSheetDetail() {
   const gstAmount = Number(job.gst_amount) || 0;
   const totalAmount = Number(job.total_amount) || 0;
 
+  // Device power status from pre-repair checklist
+  const powerOnItem = checklist.find((c: any) => c.item === "Device turns ON");
+  const devicePowerOn = powerOnItem?.value === "yes";
+  const devicePowerOff = powerOnItem?.value === "no";
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -366,80 +329,84 @@ export default function JobSheetDetail() {
             <Badge className={paymentStatusColors[job.payment_status] || "bg-muted text-muted-foreground"} variant="secondary">
               {job.payment_status || "unpaid"}
             </Badge>
+            {devicePowerOn && <Badge className="bg-success/10 text-success"><Power className="h-3 w-3 mr-1" />Power ON</Badge>}
+            {devicePowerOff && <Badge className="bg-destructive/10 text-destructive"><PowerOff className="h-3 w-3 mr-1" />Power OFF</Badge>}
           </div>
-          <p className="text-muted-foreground">{job.customers?.name}</p>
+          <div className="flex items-center gap-4 mt-1 flex-wrap text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{job.customers?.name}</span>
+            {job.customers?.phone && (
+              <a href={`tel:${job.customers.phone}`} className="flex items-center gap-1 text-primary hover:underline">
+                <Phone className="h-3 w-3" />{job.customers.phone}
+              </a>
+            )}
+            {job.serial_number && <span className="flex items-center gap-1"><Hash className="h-3 w-3" />SN: {job.serial_number}</span>}
+            {job.imei_number && <span className="flex items-center gap-1"><Hash className="h-3 w-3" />IMEI: {job.imei_number}</span>}
+          </div>
+          {creatorName && (
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+              <UserCheck className="h-3 w-3" />Created by {creatorName} on {new Date(job.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+            </p>
+          )}
         </div>
+      </div>
+
+      {/* Quick Info Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card><CardContent className="p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center"><Smartphone className="h-5 w-5 text-primary" /></div>
+          <div><p className="text-xs text-muted-foreground">Device</p><p className="text-sm font-semibold">{job.device_brand} {job.device_model || job.device_type}</p></div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-warning/10 flex items-center justify-center"><CalendarDays className="h-5 w-5 text-warning" /></div>
+          <div><p className="text-xs text-muted-foreground">Estimated</p><p className="text-sm font-semibold">{job.estimated_completion || "Not set"}</p></div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-success/10 flex items-center justify-center"><IndianRupee className="h-5 w-5 text-success" /></div>
+          <div><p className="text-xs text-muted-foreground">Total</p><p className="text-sm font-semibold">{fmt(totalAmount + partsTotal)}</p></div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3">
+          <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${techName ? "bg-info/10" : "bg-muted"}`}>
+            <User className={`h-5 w-5 ${techName ? "text-info" : "text-muted-foreground"}`} />
+          </div>
+          <div><p className="text-xs text-muted-foreground">Technician</p><p className="text-sm font-semibold">{techName || "Unassigned"}</p></div>
+        </CardContent></Card>
       </div>
 
       {/* Two-column layout */}
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Left column - Main content (70%) */}
         <div className="flex-1 space-y-6 min-w-0">
-          {/* Timeline */}
+
+          {/* Customer & Device Details */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><User className="h-4 w-4" /> Customer</CardTitle></CardHeader>
+              <CardContent className="text-sm space-y-1.5">
+                <p><span className="text-muted-foreground">Name:</span> <span className="font-medium">{job.customers?.name}</span></p>
+                <p><span className="text-muted-foreground">Phone:</span> {job.customers?.phone ? <a href={`tel:${job.customers.phone}`} className="text-primary hover:underline">{job.customers.phone}</a> : "—"}</p>
+                <p><span className="text-muted-foreground">Email:</span> {job.customers?.email || "—"}</p>
+                <p><span className="text-muted-foreground">GST:</span> {job.customers?.gst_number || "—"}</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Smartphone className="h-4 w-4" /> Device</CardTitle></CardHeader>
+              <CardContent className="text-sm space-y-1.5">
+                <p><span className="text-muted-foreground">Brand:</span> {job.device_brand} · <span className="text-muted-foreground">Type:</span> {job.device_type}</p>
+                <p><span className="text-muted-foreground">Model:</span> {job.device_model || "—"} · <span className="text-muted-foreground">Color:</span> {job.device_color || "—"}</p>
+                <p className="font-medium"><span className="text-muted-foreground">Serial #:</span> {job.serial_number || "—"}</p>
+                <p className="font-medium"><span className="text-muted-foreground">IMEI:</span> {job.imei_number || "—"}</p>
+                <p><span className="text-muted-foreground">Storage:</span> {job.storage_capacity || "—"}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Problem Description */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><History className="h-4 w-4" /> Repair Progress</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">Problem Description</CardTitle></CardHeader>
             <CardContent>
-              {isRejected ? (
-                <div className="flex items-center gap-3 text-destructive">
-                  <div className="w-8 h-8 rounded-full bg-destructive/15 flex items-center justify-center"><Circle className="h-4 w-4 fill-destructive text-destructive" /></div>
-                  <div><p className="font-medium">Rejected</p><p className="text-xs text-muted-foreground">Customer rejected the repair</p></div>
-                </div>
-              ) : (
-                <div className="relative">
-                  {TIMELINE_STEPS.map((step, idx) => {
-                    const isCompleted = idx < currentStatusIndex;
-                    const isCurrent = idx === currentStatusIndex;
-                    const isFuture = idx > currentStatusIndex;
-                    const StepIcon = step.icon;
-                    const logEntry = auditLog.find(l => l.details?.toLowerCase().includes(step.key.replace(/_/g, " ")) || (l.action === "created" && step.key === "created"));
-                    return (
-                      <div key={step.key} className="flex gap-4 relative">
-                        {idx < TIMELINE_STEPS.length - 1 && (
-                          <div className={`absolute left-4 top-9 w-0.5 h-[calc(100%-12px)] ${isCompleted ? "bg-primary" : "bg-border"}`} />
-                        )}
-                        <div className={`relative z-10 flex items-center justify-center w-8 h-8 rounded-full shrink-0 transition-all ${
-                          isCompleted ? "bg-primary text-primary-foreground" :
-                          isCurrent ? "bg-primary/20 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background" :
-                          "bg-muted text-muted-foreground"
-                        }`}>
-                          {isCompleted ? <CheckCircle className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
-                        </div>
-                        <div className={`pb-6 ${isFuture ? "opacity-40" : ""}`}>
-                          <p className={`text-sm font-medium ${isCurrent ? "text-primary" : ""}`}>{step.label}</p>
-                          {logEntry && <p className="text-xs text-muted-foreground">{new Date(logEntry.created_at).toLocaleString("en-IN")}</p>}
-                          {isCurrent && <span className="inline-block mt-1 text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">Current</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Customer */}
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><User className="h-4 w-4" /> Customer</CardTitle></CardHeader>
-            <CardContent className="text-sm grid grid-cols-2 gap-2">
-              <p><span className="text-muted-foreground">Name:</span> {job.customers?.name}</p>
-              <p><span className="text-muted-foreground">Phone:</span> {job.customers?.phone || "—"}</p>
-              <p><span className="text-muted-foreground">Email:</span> {job.customers?.email || "—"}</p>
-              <p><span className="text-muted-foreground">GST:</span> {job.customers?.gst_number || "—"}</p>
-            </CardContent>
-          </Card>
-
-          {/* Device */}
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Smartphone className="h-4 w-4" /> Device</CardTitle></CardHeader>
-            <CardContent className="text-sm grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <p><span className="text-muted-foreground">Brand:</span> {job.device_brand}</p>
-              <p><span className="text-muted-foreground">Type:</span> {job.device_type}</p>
-              <p><span className="text-muted-foreground">Model:</span> {job.device_model || "—"}</p>
-              <p><span className="text-muted-foreground">Serial:</span> {job.serial_number || "—"}</p>
-              <p><span className="text-muted-foreground">IMEI:</span> {job.imei_number || "—"}</p>
-              <p><span className="text-muted-foreground">Color:</span> {job.device_color || "—"}</p>
-              <p><span className="text-muted-foreground">Storage:</span> {job.storage_capacity || "—"}</p>
-              <p><span className="text-muted-foreground">Problem:</span> {job.problem_description}</p>
+              <p className="text-sm">{job.problem_description}</p>
+              {job.staff_notes && <p className="text-sm text-muted-foreground mt-2 italic">Staff Notes: {job.staff_notes}</p>}
             </CardContent>
           </Card>
 
@@ -447,12 +414,7 @@ export default function JobSheetDetail() {
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><IndianRupee className="h-4 w-4" /> Billing Summary</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Service Charge</span>
-                <span>{fmt(serviceCharge)}</span>
-              </div>
-
-              {/* Parts List */}
+              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Service Charge</span><span>{fmt(serviceCharge)}</span></div>
               {repairParts.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">Parts Used</p>
@@ -473,33 +435,11 @@ export default function JobSheetDetail() {
                   </div>
                 </div>
               )}
-
-              {partsTotal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Parts Total</span>
-                  <span>{fmt(partsTotal)}</span>
-                </div>
-              )}
-
-              {discount > 0 && (
-                <div className="flex justify-between text-sm text-destructive">
-                  <span>Discount ({job.discount_type === "percentage" ? `${discountVal}%` : "Fixed"})</span>
-                  <span>-{fmt(discount)}</span>
-                </div>
-              )}
-
-              {job.gst_mode !== "none" && gstAmount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">GST ({job.gst_percentage}% {job.gst_mode})</span>
-                  <span>{fmt(gstAmount)}</span>
-                </div>
-              )}
-
+              {partsTotal > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Parts Total</span><span>{fmt(partsTotal)}</span></div>}
+              {discount > 0 && <div className="flex justify-between text-sm text-destructive"><span>Discount ({job.discount_type === "percentage" ? `${discountVal}%` : "Fixed"})</span><span>-{fmt(discount)}</span></div>}
+              {job.gst_mode !== "none" && gstAmount > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">GST ({job.gst_percentage}% {job.gst_mode})</span><span>{fmt(gstAmount)}</span></div>}
               <Separator />
-              <div className="flex justify-between font-bold text-base">
-                <span>Grand Total</span>
-                <span className="text-primary">{fmt(totalAmount + partsTotal)}</span>
-              </div>
+              <div className="flex justify-between font-bold text-base"><span>Grand Total</span><span className="text-primary">{fmt(totalAmount + partsTotal)}</span></div>
             </CardContent>
           </Card>
 
@@ -534,7 +474,7 @@ export default function JobSheetDetail() {
                           <td className="px-3 py-1.5">{item.item}</td>
                           <td className="px-3 py-1.5 text-right">
                             <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${item.value === "yes" ? "bg-success/15 text-success" : item.value === "no" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
-                              {item.value === "na" ? "N/A" : item.value}
+                              {item.value === "na" ? "N/A" : item.value || "—"}
                             </span>
                           </td>
                         </tr>
@@ -574,32 +514,12 @@ export default function JobSheetDetail() {
               </CardContent>
             </Card>
           )}
-
-          {/* Audit Log */}
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" /> Audit Log</CardTitle></CardHeader>
-            <CardContent>
-              {auditLog.length === 0 ? <p className="text-sm text-muted-foreground">No audit entries yet.</p> : (
-                <div className="space-y-3">
-                  {auditLog.map(entry => (
-                    <div key={entry.id} className="flex gap-3 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                      <div>
-                        <p className="font-medium capitalize">{entry.action.replace(/_/g, " ")}</p>
-                        {entry.details && <p className="text-xs text-muted-foreground">{entry.details}</p>}
-                        <p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString("en-IN")}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Right column - Sticky Sidebar (30%) */}
-        <div className="lg:w-72 shrink-0">
+        {/* Right column - Timeline + Actions (30%) */}
+        <div className="lg:w-80 shrink-0">
           <div className="sticky top-4 space-y-4">
+
             {/* Actions Card */}
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">Actions</CardTitle></CardHeader>
@@ -653,20 +573,6 @@ export default function JobSheetDetail() {
               </Card>
             )}
 
-            {techName && (
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Assigned Technician</p>
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-4 w-4 text-primary" />
-                    </div>
-                    <span className="text-sm font-medium">{techName}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Status Update */}
             {(isAdminStaff || hasRole("technician")) && !["delivered", "rejected"].includes(job.status) && (
               <Card>
@@ -684,20 +590,20 @@ export default function JobSheetDetail() {
 
             {/* Device Movement */}
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ArrowRightLeft className="h-4 w-4" /> Device Movement</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ArrowRightLeft className="h-4 w-4" /> Device Custody</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-xs">
-                <div className="p-2 bg-muted/50 rounded">
-                  <p className="text-muted-foreground">Sent to Tech</p>
+                <div className="p-2.5 bg-muted/50 rounded-lg">
+                  <p className="text-muted-foreground">Sent to Technician</p>
                   <p className="font-medium">{job.device_sent_at ? new Date(job.device_sent_at).toLocaleString("en-IN") : "Not yet"}</p>
                 </div>
-                <div className="p-2 bg-muted/50 rounded">
+                <div className="p-2.5 bg-muted/50 rounded-lg">
                   <p className="text-muted-foreground">Received Back</p>
                   <p className="font-medium">{job.device_received_at ? new Date(job.device_received_at).toLocaleString("en-IN") : "Not yet"}</p>
                 </div>
                 {isAdminStaff && (
                   <div className="flex flex-col gap-1.5">
                     {!job.device_sent_at && job.assigned_technician_id && (
-                      <Button size="sm" variant="outline" className="w-full text-xs" onClick={sendToTechnician}><Truck className="h-3 w-3 mr-1" /> Send to Tech</Button>
+                      <Button size="sm" variant="outline" className="w-full text-xs" onClick={sendToTechnician}><Truck className="h-3 w-3 mr-1" /> Send to Technician</Button>
                     )}
                     {job.device_sent_at && !job.device_received_at && (
                       <Button size="sm" variant="outline" className="w-full text-xs" onClick={receiveFromTechnician}><Truck className="h-3 w-3 mr-1" /> Receive Device</Button>
@@ -713,9 +619,7 @@ export default function JobSheetDetail() {
               <CardContent className="space-y-2 text-xs">
                 <div className="flex justify-between"><span className="text-muted-foreground">Estimated</span><span>{job.estimated_cost ? fmt(Number(job.estimated_cost)) : "—"}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Actual</span><span>{job.actual_cost ? fmt(Number(job.actual_cost)) : "—"}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Tech Payment</span>
-                  <span>{job.technician_payment ? fmt(Number(job.technician_payment)) : "—"}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Tech Payment</span><span>{job.technician_payment ? fmt(Number(job.technician_payment)) : "—"}</span></div>
                 {(isAdminStaff || hasRole("technician")) && (
                   <>
                     <Separator />
@@ -729,6 +633,69 @@ export default function JobSheetDetail() {
                       </Button>
                     )}
                   </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Timeline */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><History className="h-4 w-4" /> Repair Timeline</CardTitle></CardHeader>
+              <CardContent>
+                {isRejected ? (
+                  <div className="flex items-center gap-3 text-destructive">
+                    <div className="w-8 h-8 rounded-full bg-destructive/15 flex items-center justify-center"><Circle className="h-4 w-4 fill-destructive text-destructive" /></div>
+                    <div><p className="font-medium">Rejected</p><p className="text-xs text-muted-foreground">Customer rejected the repair</p></div>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    {TIMELINE_STEPS.map((step, idx) => {
+                      const isCompleted = idx < currentStatusIndex;
+                      const isCurrent = idx === currentStatusIndex;
+                      const isFuture = idx > currentStatusIndex;
+                      const StepIcon = step.icon;
+                      const logEntry = auditLog.find(l => l.details?.toLowerCase().includes(step.key.replace(/_/g, " ")) || (l.action === "created" && step.key === "created"));
+                      return (
+                        <div key={step.key} className="flex gap-3 relative">
+                          {idx < TIMELINE_STEPS.length - 1 && (
+                            <div className={`absolute left-[14px] top-8 w-0.5 h-[calc(100%-8px)] ${isCompleted ? "bg-primary" : "bg-border"}`} />
+                          )}
+                          <div className={`relative z-10 flex items-center justify-center w-7 h-7 rounded-full shrink-0 transition-all ${
+                            isCompleted ? "bg-primary text-primary-foreground" :
+                            isCurrent ? "bg-primary/20 text-primary ring-2 ring-primary ring-offset-1 ring-offset-background" :
+                            "bg-muted text-muted-foreground"
+                          }`}>
+                            {isCompleted ? <CheckCircle className="h-3.5 w-3.5" /> : <StepIcon className="h-3.5 w-3.5" />}
+                          </div>
+                          <div className={`pb-4 ${isFuture ? "opacity-40" : ""}`}>
+                            <p className={`text-xs font-medium ${isCurrent ? "text-primary" : ""}`}>{step.label}</p>
+                            {logEntry && <p className="text-[10px] text-muted-foreground">{new Date(logEntry.created_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+                            {isCurrent && <span className="inline-block mt-0.5 text-[9px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">Current</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Audit Log */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" /> Audit Log</CardTitle></CardHeader>
+              <CardContent>
+                {auditLog.length === 0 ? <p className="text-xs text-muted-foreground">No audit entries yet.</p> : (
+                  <div className="space-y-2.5 max-h-64 overflow-y-auto">
+                    {auditLog.map(entry => (
+                      <div key={entry.id} className="flex gap-2 text-xs">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                        <div>
+                          <p className="font-medium capitalize">{entry.action.replace(/_/g, " ")}</p>
+                          {entry.details && <p className="text-muted-foreground">{entry.details}</p>}
+                          <p className="text-muted-foreground">{new Date(entry.created_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>
