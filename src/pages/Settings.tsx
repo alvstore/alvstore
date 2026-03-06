@@ -45,6 +45,7 @@ const SETTINGS_SECTIONS = [
   { id: "users", label: "User Management", icon: Shield, group: "Account", adminOnly: true },
   { id: "business", label: "Business Info", icon: Building2, group: "Organization", adminOnly: true },
   { id: "gst", label: "GST Settings", icon: Receipt, group: "Organization", adminOnly: true },
+  { id: "documents", label: "Document Settings", icon: FileText, group: "Organization", adminOnly: true },
   { id: "email", label: "Email / SMTP", icon: Mail, group: "Integrations", adminOnly: true },
   { id: "sms", label: "SMS Gateway", icon: MessageSquare, group: "Integrations", adminOnly: true },
   { id: "whatsapp", label: "WhatsApp", icon: Phone, group: "Integrations", adminOnly: true },
