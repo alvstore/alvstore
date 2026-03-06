@@ -69,6 +69,7 @@ export default function Settings() {
       case "users": return isAdmin ? <UsersTab /> : null;
       case "business": return isAdmin ? <BusinessTab /> : null;
       case "gst": return isAdmin ? <GSTTab /> : null;
+      case "documents": return isAdmin ? <DocumentSettingsTab /> : null;
       case "email": return isAdmin ? <EmailTab /> : null;
       case "sms": return isAdmin ? <SMSTab /> : null;
       case "whatsapp": return isAdmin ? <WhatsAppTab /> : null;
