@@ -45,6 +45,7 @@ const SETTINGS_SECTIONS = [
   { id: "users", label: "User Management", icon: Shield, group: "Account", adminOnly: true },
   { id: "business", label: "Business Info", icon: Building2, group: "Organization", adminOnly: true },
   { id: "gst", label: "GST Settings", icon: Receipt, group: "Organization", adminOnly: true },
+  { id: "documents", label: "Document Settings", icon: FileText, group: "Organization", adminOnly: true },
   { id: "email", label: "Email / SMTP", icon: Mail, group: "Integrations", adminOnly: true },
   { id: "sms", label: "SMS Gateway", icon: MessageSquare, group: "Integrations", adminOnly: true },
   { id: "whatsapp", label: "WhatsApp", icon: Phone, group: "Integrations", adminOnly: true },
@@ -68,6 +69,7 @@ export default function Settings() {
       case "users": return isAdmin ? <UsersTab /> : null;
       case "business": return isAdmin ? <BusinessTab /> : null;
       case "gst": return isAdmin ? <GSTTab /> : null;
+      case "documents": return isAdmin ? <DocumentSettingsTab /> : null;
       case "email": return isAdmin ? <EmailTab /> : null;
       case "sms": return isAdmin ? <SMSTab /> : null;
       case "whatsapp": return isAdmin ? <WhatsAppTab /> : null;
@@ -397,6 +399,87 @@ function GSTTab() {
         <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save GST Settings</Button>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Document Settings Tab ──────────────────────────────────────
+function DocumentSettingsTab() {
+  const { user } = useAuth();
+  const [signatureUrl, setSignatureUrl] = useState("");
+  const [showOnQuotations, setShowOnQuotations] = useState(false);
+  const [showOnInvoices, setShowOnInvoices] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [settingsId, setSettingsId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.from("business_settings").select("id, integrations").limit(1).single().then(({ data }) => {
+      if (data) {
+        setSettingsId(data.id);
+        const int = (data.integrations as Record<string, any>) || {};
+        setSignatureUrl(int.signature_url || "");
+        setShowOnQuotations(int.show_signature_quotations === true);
+        setShowOnInvoices(int.show_signature_invoices === true);
+      }
+    });
+  }, []);
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    const file = files[0];
+    const ext = file.name.split(".").pop();
+    const path = `signatures/signature_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("uploads").upload(path, file);
+    if (error) { toast.error(error.message); setUploading(false); return; }
+    const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(path);
+    setSignatureUrl(urlData.publicUrl);
+    setUploading(false);
+    toast.success("Signature uploaded");
+  };
+
+  const saveSettings = async () => {
+    if (!settingsId) return;
+    setSaving(true);
+    const { data: current } = await supabase.from("business_settings").select("integrations").eq("id", settingsId).single();
+    const existing = (current?.integrations as Record<string, any>) || {};
+    const updated = { ...existing, signature_url: signatureUrl, show_signature_quotations: showOnQuotations, show_signature_invoices: showOnInvoices };
+    const { error } = await supabase.from("business_settings").update({ integrations: updated }).eq("id", settingsId);
+    if (error) toast.error(error.message); else toast.success("Document settings saved");
+    setSaving(false);
+  };
+
+  return (
+    <div className="grid gap-6 max-w-2xl">
+      <Card>
+        <CardHeader><CardTitle>Signature Settings</CardTitle><CardDescription>Upload a signature image for documents</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          {signatureUrl && (
+            <div className="border rounded-lg p-4 bg-muted/30">
+              <img src={signatureUrl} alt="Signature" className="max-h-20 w-auto" />
+            </div>
+          )}
+          <div>
+            <Label>Upload Signature Image</Label>
+            <label className="mt-2 flex items-center gap-2 text-sm text-primary cursor-pointer">
+              <Camera className="h-4 w-4" /> {uploading ? "Uploading..." : "Choose file"}
+              <input type="file" accept="image/*" className="hidden" onChange={e => handleUpload(e.target.files)} disabled={uploading} />
+            </label>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Show on Quotations</Label>
+              <input type="checkbox" checked={showOnQuotations} onChange={e => setShowOnQuotations(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>Show on Invoices</Label>
+              <input type="checkbox" checked={showOnInvoices} onChange={e => setShowOnInvoices(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            </div>
+          </div>
+          <Button onClick={saveSettings} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Document Settings</Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

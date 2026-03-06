@@ -14,25 +14,22 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import { Plus, Search, Pencil, Trash2, Users, UserPlus, MapPin, Building2 } from "lucide-react";
+import { AvatarUpload } from "@/components/AvatarUpload";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 
+// Customer interface moved below imports
+
 interface Customer {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  gst_number: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  pincode: string | null;
-  notes: string | null;
-  created_at: string;
+  id: string; name: string; phone: string | null; email: string | null;
+  gst_number: string | null; address: string | null; city: string | null;
+  state: string | null; pincode: string | null; notes: string | null;
+  created_at: string; avatar_url?: string | null;
 }
 
 const emptyForm = {
   name: "", phone: "", email: "", gst_number: "",
-  address: "", city: "", state: "", pincode: "", notes: "",
+  address: "", city: "", state: "", pincode: "", notes: "", avatar_url: "",
 };
 
 export default function CRM() {
@@ -79,6 +76,7 @@ export default function CRM() {
       state: c.state || "",
       pincode: c.pincode || "",
       notes: c.notes || "",
+      avatar_url: c.avatar_url || "",
     });
     setSheetOpen(true);
   };
