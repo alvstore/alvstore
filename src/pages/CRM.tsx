@@ -14,6 +14,8 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import { Plus, Search, Pencil, Trash2, Users, UserPlus, MapPin, Building2 } from "lucide-react";
+import { AvatarUpload } from "@/components/AvatarUpload";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 
 interface Customer {
