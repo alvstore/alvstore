@@ -186,20 +186,30 @@ function ProfileTab() {
 }
 
 // ─── Users Tab ──────────────────────────────────────────────────
+interface EmployeeLink { id: string; name: string; designation: string | null; role: string | null; }
+
 function UsersTab() {
-  const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [users, setUsers] = useState<(UserWithRole & { employee?: EmployeeLink | null })[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchUsers = async () => {
     setLoading(true);
-    const { data: profiles } = await supabase.from("profiles").select("*");
-    const { data: roles } = await supabase.from("user_roles").select("*");
-    if (profiles && roles) {
-      setUsers(profiles.map(p => ({
+    const [profilesRes, rolesRes, employeesRes] = await Promise.all([
+      supabase.from("profiles").select("*"),
+      supabase.from("user_roles").select("*"),
+      supabase.from("employees").select("id, name, designation, role, user_id"),
+    ]);
+    const profiles = profilesRes.data || [];
+    const roles = rolesRes.data || [];
+    const employees = employeesRes.data || [];
+    setUsers(profiles.map(p => {
+      const emp = employees.find(e => e.user_id === p.user_id);
+      return {
         profile: p,
         role: (roles.find(r => r.user_id === p.user_id)?.role || "staff") as AppRole,
-      })));
-    }
+        employee: emp ? { id: emp.id, name: emp.name, designation: emp.designation, role: emp.role } : null,
+      };
+    }));
     setLoading(false);
   };
 
@@ -219,13 +229,13 @@ function UsersTab() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user accounts and roles</CardDescription></CardHeader>
+      <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user accounts and roles. Auth role determines access level. Employee link shows HR record.</CardDescription></CardHeader>
       <CardContent>
         {loading ? <p className="text-muted-foreground py-6 text-center">Loading...</p> : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead><TableHead>Phone</TableHead><TableHead>Current Role</TableHead><TableHead>Change Role</TableHead>
+                <TableHead>Name</TableHead><TableHead>Phone</TableHead><TableHead>Auth Role</TableHead><TableHead>Employee Link</TableHead><TableHead>Change Role</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -234,6 +244,16 @@ function UsersTab() {
                   <TableCell className="font-medium">{u.profile.full_name || "—"}</TableCell>
                   <TableCell>{u.profile.phone || "—"}</TableCell>
                   <TableCell><Badge className={roleColors[u.role]}>{u.role}</Badge></TableCell>
+                  <TableCell>
+                    {u.employee ? (
+                      <div className="text-xs">
+                        <span className="font-medium text-foreground">{u.employee.designation || u.employee.role || "Employee"}</span>
+                        <span className="text-muted-foreground ml-1">({u.employee.name})</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Not linked</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Select value={u.role} onValueChange={(v) => updateRole(u.profile.user_id, v as AppRole)}>
                       <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
