@@ -18,8 +18,6 @@ import { AvatarUpload } from "@/components/AvatarUpload";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 
-// Customer interface moved below imports
-
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
   gst_number: string | null; address: string | null; city: string | null;
@@ -54,52 +52,29 @@ export default function CRM() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchCustomers();
-  }, [search]);
+  useEffect(() => { fetchCustomers(); }, [search]);
 
-  const openNew = () => {
-    setEditId(null);
-    setForm(emptyForm);
-    setSheetOpen(true);
-  };
+  const openNew = () => { setEditId(null); setForm(emptyForm); setSheetOpen(true); };
 
   const openEdit = (c: Customer) => {
     setEditId(c.id);
     setForm({
-      name: c.name,
-      phone: c.phone || "",
-      email: c.email || "",
-      gst_number: c.gst_number || "",
-      address: c.address || "",
-      city: c.city || "",
-      state: c.state || "",
-      pincode: c.pincode || "",
-      notes: c.notes || "",
-      avatar_url: c.avatar_url || "",
+      name: c.name, phone: c.phone || "", email: c.email || "",
+      gst_number: c.gst_number || "", address: c.address || "",
+      city: c.city || "", state: c.state || "", pincode: c.pincode || "",
+      notes: c.notes || "", avatar_url: c.avatar_url || "",
     });
     setSheetOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
-
+    if (!form.name.trim()) { toast.error("Name is required"); return; }
     if (editId) {
-      const { error } = await supabase
-        .from("customers")
-        .update({ ...form })
-        .eq("id", editId);
-      if (error) toast.error(error.message);
-      else toast.success("Customer updated");
+      const { error } = await supabase.from("customers").update({ ...form }).eq("id", editId);
+      if (error) toast.error(error.message); else toast.success("Customer updated");
     } else {
-      const { error } = await supabase
-        .from("customers")
-        .insert({ ...form, created_by: user?.id });
-      if (error) toast.error(error.message);
-      else toast.success("Customer created");
+      const { error } = await supabase.from("customers").insert({ ...form, created_by: user?.id });
+      if (error) toast.error(error.message); else toast.success("Customer created");
     }
     setSheetOpen(false);
     fetchCustomers();
@@ -109,17 +84,13 @@ export default function CRM() {
     if (!confirm("Delete this customer?")) return;
     const { error } = await supabase.from("customers").delete().eq("id", id);
     if (error) toast.error(error.message);
-    else {
-      toast.success("Customer deleted");
-      fetchCustomers();
-    }
+    else { toast.success("Customer deleted"); fetchCustomers(); }
   };
 
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  // KPI calculations
   const totalCustomers = customers.length;
   const withEmail = customers.filter(c => c.email).length;
   const withGST = customers.filter(c => c.gst_number).length;
@@ -132,12 +103,9 @@ export default function CRM() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">CRM</h1>
           <p className="text-sm text-muted-foreground">Manage your customers</p>
         </div>
-        <Button onClick={openNew}>
-          <Plus className="h-4 w-4 mr-2" /> Add Customer
-        </Button>
+        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" /> Add Customer</Button>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Total Customers", value: totalCustomers, icon: Users, bg: "bg-primary/10", iconColor: "text-primary" },
@@ -159,20 +127,13 @@ export default function CRM() {
         ))}
       </div>
 
-      {/* Search */}
       <div className="flex flex-col sm:flex-row gap-3 items-start">
         <div className="relative max-w-sm w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, phone, email..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <Input placeholder="Search by name, phone, email..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
 
-      {/* Table - Materialize inspired */}
       <Card className="border-border/50 shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
@@ -187,28 +148,23 @@ export default function CRM() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : customers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
-                  <Users className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">No customers found. Add your first customer!</p>
-                </TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                <Users className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">No customers found. Add your first customer!</p>
+              </TableCell></TableRow>
             ) : (
               customers.map((c) => (
                 <TableRow key={c.id} className="border-border/50 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate(`/customers/${c.id}`)}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-semibold text-primary">
+                      <Avatar className="h-9 w-9 border border-border">
+                        {c.avatar_url && <AvatarImage src={c.avatar_url} alt={c.name} />}
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                           {c.name.slice(0, 2).toUpperCase()}
-                        </span>
-                      </div>
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate sm:hidden">{c.phone || c.email || ""}</p>
@@ -221,18 +177,12 @@ export default function CRM() {
                   <TableCell className="hidden lg:table-cell">
                     {c.gst_number ? (
                       <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">{c.gst_number}</span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    )}
+                    ) : <span className="text-sm text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1 justify-end" onClick={e => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEdit(c)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(c.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -242,16 +192,24 @@ export default function CRM() {
         </Table>
       </Card>
 
-      {/* Slide-over form */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{editId ? "Edit Customer" : "Add Customer"}</SheetTitle>
-            <SheetDescription>
-              {editId ? "Update customer details" : "Fill in the customer information"}
-            </SheetDescription>
+            <SheetDescription>{editId ? "Update customer details" : "Fill in the customer information"}</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 mt-6">
+            {/* Avatar Upload */}
+            <div className="flex justify-center">
+              <AvatarUpload
+                currentUrl={form.avatar_url || null}
+                name={form.name || "New"}
+                folder="customers"
+                entityId={editId || undefined}
+                onUploaded={(url) => updateField("avatar_url", url)}
+                size="lg"
+              />
+            </div>
             {[
               { key: "name", label: "Name *", type: "text" },
               { key: "phone", label: "Phone", type: "tel" },
@@ -264,24 +222,14 @@ export default function CRM() {
             ].map((field) => (
               <div key={field.key} className="space-y-1.5">
                 <Label className="text-xs font-medium">{field.label}</Label>
-                <Input
-                  type={field.type}
-                  value={(form as any)[field.key]}
-                  onChange={(e) => updateField(field.key, e.target.value)}
-                />
+                <Input type={field.type} value={(form as any)[field.key]} onChange={(e) => updateField(field.key, e.target.value)} />
               </div>
             ))}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notes</Label>
-              <Textarea
-                value={form.notes}
-                onChange={(e) => updateField("notes", e.target.value)}
-                rows={3}
-              />
+              <Textarea value={form.notes} onChange={(e) => updateField("notes", e.target.value)} rows={3} />
             </div>
-            <Button className="w-full" onClick={handleSave}>
-              {editId ? "Update Customer" : "Create Customer"}
-            </Button>
+            <Button className="w-full" onClick={handleSave}>{editId ? "Update Customer" : "Create Customer"}</Button>
           </div>
         </SheetContent>
       </Sheet>

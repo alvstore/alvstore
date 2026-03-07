@@ -169,38 +169,27 @@ export default function Finance() {
 
         {/* ─── DASHBOARD ─────────────────────────── */}
         <TabsContent value="dashboard" className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: "Cash Balance", value: cashBalance, icon: Wallet, color: "bg-success/10 text-success" },
-              { label: "Bank Balance", value: bankBalance, icon: Landmark, color: "bg-primary/10 text-primary" },
-              { label: "Net Balance", value: netBalance, icon: DollarSign, color: "bg-accent/10 text-accent-foreground" },
-              { label: "Pending Payments", value: 0, icon: TrendingUp, color: "bg-warning/10 text-warning", hidden: true },
-            ].filter(k => !k.hidden).map(kpi => (
-              <Card key={kpi.label}>
-                <CardContent className="p-4">
-                  <div className={`p-2 rounded-lg w-fit ${kpi.color} mb-2`}>
-                    <kpi.icon className="h-4 w-4" />
-                  </div>
-                  <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                  <p className="text-xl font-bold">₹{kpi.value.toLocaleString()}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Today Income", value: todayIncome, icon: TrendingUp, color: "bg-info/10 text-info" },
+              { label: "Total Balance", value: netBalance, icon: DollarSign, color: "bg-primary/10 text-primary" },
+              { label: "Cash in Hand", value: cashBalance, icon: Wallet, color: "bg-success/10 text-success" },
+              { label: "Bank Balance", value: bankBalance, icon: Landmark, color: "bg-info/10 text-info" },
+              { label: "Today Income", value: todayIncome, icon: TrendingUp, color: "bg-success/10 text-success" },
               { label: "Today Expense", value: todayExpense, icon: TrendingDown, color: "bg-destructive/10 text-destructive" },
-              { label: "Monthly Income", value: monthlyIncome, icon: TrendingUp, color: "bg-success/10 text-success" },
-              { label: "Monthly Expense", value: monthlyExpense, icon: TrendingDown, color: "bg-warning/10 text-warning" },
+              { label: "Net Profit", value: monthlyIncome - monthlyExpense, icon: BarChart3, color: (monthlyIncome - monthlyExpense) >= 0 ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive" },
             ].map(kpi => (
-              <Card key={kpi.label}>
+              <Card key={kpi.label} className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
-                  <div className={`p-2 rounded-lg w-fit ${kpi.color} mb-2`}>
-                    <kpi.icon className="h-4 w-4" />
+                  <div className="flex items-start justify-between mb-3">
+                    <div className={`h-10 w-10 rounded-xl ${kpi.color} flex items-center justify-center`}>
+                      <kpi.icon className="h-4.5 w-4.5" />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                  <p className="text-lg font-bold">₹{kpi.value.toLocaleString()}</p>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{kpi.label}</p>
+                  <p className="text-xl font-bold text-foreground">₹{kpi.value.toLocaleString("en-IN")}</p>
+                  {kpi.label === "Net Profit" && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">This month</p>
+                  )}
                 </CardContent>
               </Card>
             ))}

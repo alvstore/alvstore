@@ -186,20 +186,30 @@ function ProfileTab() {
 }
 
 // ─── Users Tab ──────────────────────────────────────────────────
+interface EmployeeLink { id: string; name: string; designation: string | null; role: string | null; }
+
 function UsersTab() {
-  const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [users, setUsers] = useState<(UserWithRole & { employee?: EmployeeLink | null })[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchUsers = async () => {
     setLoading(true);
-    const { data: profiles } = await supabase.from("profiles").select("*");
-    const { data: roles } = await supabase.from("user_roles").select("*");
-    if (profiles && roles) {
-      setUsers(profiles.map(p => ({
+    const [profilesRes, rolesRes, employeesRes] = await Promise.all([
+      supabase.from("profiles").select("*"),
+      supabase.from("user_roles").select("*"),
+      supabase.from("employees").select("id, name, designation, role, user_id"),
+    ]);
+    const profiles = profilesRes.data || [];
+    const roles = rolesRes.data || [];
+    const employees = employeesRes.data || [];
+    setUsers(profiles.map(p => {
+      const emp = employees.find(e => e.user_id === p.user_id);
+      return {
         profile: p,
         role: (roles.find(r => r.user_id === p.user_id)?.role || "staff") as AppRole,
-      })));
-    }
+        employee: emp ? { id: emp.id, name: emp.name, designation: emp.designation, role: emp.role } : null,
+      };
+    }));
     setLoading(false);
   };
 
@@ -219,13 +229,13 @@ function UsersTab() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user accounts and roles</CardDescription></CardHeader>
+      <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user accounts and roles. Auth role determines access level. Employee link shows HR record.</CardDescription></CardHeader>
       <CardContent>
         {loading ? <p className="text-muted-foreground py-6 text-center">Loading...</p> : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead><TableHead>Phone</TableHead><TableHead>Current Role</TableHead><TableHead>Change Role</TableHead>
+                <TableHead>Name</TableHead><TableHead>Phone</TableHead><TableHead>Auth Role</TableHead><TableHead>Employee Link</TableHead><TableHead>Change Role</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -234,6 +244,16 @@ function UsersTab() {
                   <TableCell className="font-medium">{u.profile.full_name || "—"}</TableCell>
                   <TableCell>{u.profile.phone || "—"}</TableCell>
                   <TableCell><Badge className={roleColors[u.role]}>{u.role}</Badge></TableCell>
+                  <TableCell>
+                    {u.employee ? (
+                      <div className="text-xs">
+                        <span className="font-medium text-foreground">{u.employee.designation || u.employee.role || "Employee"}</span>
+                        <span className="text-muted-foreground ml-1">({u.employee.name})</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Not linked</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Select value={u.role} onValueChange={(v) => updateRole(u.profile.user_id, v as AppRole)}>
                       <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
@@ -889,6 +909,9 @@ function HikvisionTab() {
         </Card>
       )}
 
+      {/* Sync Status Dashboard */}
+      <HikvisionSyncDashboard />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Sync Settings</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -906,6 +929,74 @@ function HikvisionTab() {
 
       <Button onClick={saveIntegrations} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Hikvision Settings</Button>
     </div>
+  );
+}
+
+// ─── Hikvision Sync Dashboard ───────────────────────────────────
+function HikvisionSyncDashboard() {
+  const [syncLogs, setSyncLogs] = useState<Array<{ id: string; action: string; status: string; records_synced: number | null; error_message: string | null; created_at: string }>>([]);
+  const [deviceCount, setDeviceCount] = useState(0);
+  const [mappedCount, setMappedCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const [logsRes, devRes, mapRes] = await Promise.all([
+        supabase.from("hikvision_sync_log").select("*").order("created_at", { ascending: false }).limit(5),
+        supabase.from("hikvision_devices").select("id", { count: "exact", head: true }),
+        supabase.from("hikvision_employee_mapping").select("id", { count: "exact", head: true }),
+      ]);
+      setSyncLogs(logsRes.data || []);
+      setDeviceCount(devRes.count || 0);
+      setMappedCount(mapRes.count || 0);
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) return null;
+
+  const lastSync = syncLogs.length > 0 ? syncLogs[0] : null;
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Sync Status Dashboard</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg bg-muted/50 p-3 text-center">
+            <p className="text-2xl font-bold text-foreground">{deviceCount}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Devices</p>
+          </div>
+          <div className="rounded-lg bg-muted/50 p-3 text-center">
+            <p className="text-2xl font-bold text-foreground">{mappedCount}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Mapped Employees</p>
+          </div>
+          <div className="rounded-lg bg-muted/50 p-3 text-center">
+            <p className="text-sm font-medium text-foreground">{lastSync ? new Date(lastSync.created_at).toLocaleString() : "Never"}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Sync</p>
+          </div>
+        </div>
+
+        {syncLogs.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recent Sync Logs</p>
+            <div className="space-y-1.5">
+              {syncLogs.map(log => (
+                <div key={log.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${log.status === "success" ? "bg-green-500" : "bg-red-500"}`} />
+                    <span className="font-medium">{log.action}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {log.records_synced != null && <span className="text-muted-foreground">{log.records_synced} records</span>}
+                    <span className="text-muted-foreground">{new Date(log.created_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

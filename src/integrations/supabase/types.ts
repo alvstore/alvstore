@@ -376,6 +376,9 @@ export type Database = {
       delivery_challan_items: {
         Row: {
           challan_id: string
+          gst_amount: number | null
+          gst_percentage: number | null
+          hsn_code: string | null
           id: string
           product_id: string | null
           product_name: string
@@ -385,6 +388,9 @@ export type Database = {
         }
         Insert: {
           challan_id: string
+          gst_amount?: number | null
+          gst_percentage?: number | null
+          hsn_code?: string | null
           id?: string
           product_id?: string | null
           product_name?: string
@@ -394,6 +400,9 @@ export type Database = {
         }
         Update: {
           challan_id?: string
+          gst_amount?: number | null
+          gst_percentage?: number | null
+          hsn_code?: string | null
           id?: string
           product_id?: string | null
           product_name?: string
@@ -417,33 +426,54 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           customer_id: string | null
+          delivery_person: string | null
+          gst_amount: number | null
+          gst_inclusive: boolean | null
           id: string
           invoice_id: string | null
           notes: string | null
+          receiver_signature: string | null
           status: string
+          subtotal: number | null
+          total: number | null
           updated_at: string | null
+          vehicle_number: string | null
         }
         Insert: {
           challan_number?: string
           created_at?: string | null
           created_by?: string | null
           customer_id?: string | null
+          delivery_person?: string | null
+          gst_amount?: number | null
+          gst_inclusive?: boolean | null
           id?: string
           invoice_id?: string | null
           notes?: string | null
+          receiver_signature?: string | null
           status?: string
+          subtotal?: number | null
+          total?: number | null
           updated_at?: string | null
+          vehicle_number?: string | null
         }
         Update: {
           challan_number?: string
           created_at?: string | null
           created_by?: string | null
           customer_id?: string | null
+          delivery_person?: string | null
+          gst_amount?: number | null
+          gst_inclusive?: boolean | null
           id?: string
           invoice_id?: string | null
           notes?: string | null
+          receiver_signature?: string | null
           status?: string
+          subtotal?: number | null
+          total?: number | null
           updated_at?: string | null
+          vehicle_number?: string | null
         }
         Relationships: [
           {

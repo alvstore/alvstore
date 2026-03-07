@@ -1,135 +1,124 @@
 
+# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
-# Comprehensive Audit & Enhancement Plan
+## Overview
 
-## Scope: 7 Items
+Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
 
----
+## Phase 1: Theme Provider and Multiple Themes
 
-## 1. CRM: Avatar Upload in Form + Avatar Display in Table
+### New File: `src/hooks/useTheme.tsx`
+Create a React context-based theme provider that:
+- Stores selected theme name in `localStorage` (key: `app-theme`)
+- Applies the theme by setting CSS variables on `document.documentElement`
+- Exposes `theme`, `setTheme`, and `themes` list
 
-**File: `src/pages/CRM.tsx`**
+### Themes (6 total):
 
-- **Sheet form** (line ~254): Add `<AvatarUpload>` component above the form fields, passing `currentUrl={form.avatar_url}`, `folder="customers"`, `entityId={editId}`, and `onUploaded` to update `form.avatar_url`
-- **Table rows** (line ~206-210): Replace the hardcoded initials circle with `<Avatar>` + `<AvatarImage src={c.avatar_url}>` + `<AvatarFallback>` so uploaded customer photos display in the list
+1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
+2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
+3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
+4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
+5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
+6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
 
----
+Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
 
-## 2. Finance KPI Redesign
+### Theme Switcher UI
+Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
 
-**File: `src/pages/Finance.tsx`**
+### Files:
+- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
+- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
+- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
+- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
 
-Replace the current 2-row KPI grid (lines 172-207) with a single prominent 6-card KPI row matching the Dashboard reference style:
-- **Cards**: Total Balance, Cash in Hand, Bank Balance, Today Income, Today Expense, Net Profit (Month = monthlyIncome - monthlyExpense)
-- Each card: icon top-left in colored pill, label, large bold metric, small trend text
-- Use the same `KpiCard`-style layout as Dashboard (icon + arrow-up-right + metric + subtitle)
-- Apply theme-aware chart tooltip styling to the existing bar/pie charts (use `hsl(var(--card))` etc.)
+### Adaptive Components
+The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
+- `bg-[#080808]` becomes `bg-background`
+- `bg-[#121212]` becomes `bg-card`
+- `text-white` becomes `text-foreground`
+- `text-zinc-500` becomes `text-muted-foreground`
+- `border-white/5` becomes `border-border`
 
----
+This ensures all themes work automatically.
 
-## 3. Delivery Challan Enhancement
+### Files to update for semantic colors:
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/layout/AppHeader.tsx`
+- `src/pages/Dashboard.tsx`
 
-**File: `src/pages/DeliveryChallanAdd.tsx`**
+## Phase 2: KPI Card Redesign (Reference Match)
 
-Add fields for:
-- **Delivery Person Name** (text input)
-- **Vehicle Number** (text input)  
-- **Receiver Signature** (use `SignaturePad` component already in `src/components/documents/SignaturePad.tsx`)
-- **GST Details**: Add GST inclusive/exclusive toggle, CGST/SGST calculation per item (reuse the pattern from `InvoiceAdd.tsx`)
-- **HSN Code** column in items table
+Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
 
-**Database Migration**: Add columns to `delivery_challans`:
-```sql
-ALTER TABLE public.delivery_challans ADD COLUMN IF NOT EXISTS delivery_person text;
-ALTER TABLE public.delivery_challans ADD COLUMN IF NOT EXISTS vehicle_number text;
-ALTER TABLE public.delivery_challans ADD COLUMN IF NOT EXISTS receiver_signature text;
-ALTER TABLE public.delivery_challans ADD COLUMN IF NOT EXISTS gst_inclusive boolean DEFAULT false;
-ALTER TABLE public.delivery_challans ADD COLUMN IF NOT EXISTS subtotal numeric DEFAULT 0;
-ALTER TABLE public.delivery_challans ADD COLUMN IF NOT EXISTS gst_amount numeric DEFAULT 0;
-ALTER TABLE public.delivery_challans ADD COLUMN IF NOT EXISTS total numeric DEFAULT 0;
+**Layout per card:**
+- Top row: Label text (left) + arrow-up-right icon button (right corner)
+- Center: Large bold metric number (32-40px)
+- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
 
-ALTER TABLE public.delivery_challan_items ADD COLUMN IF NOT EXISTS hsn_code text;
-ALTER TABLE public.delivery_challan_items ADD COLUMN IF NOT EXISTS gst_percentage numeric DEFAULT 18;
-ALTER TABLE public.delivery_challan_items ADD COLUMN IF NOT EXISTS gst_amount numeric DEFAULT 0;
-```
+**Accent color system**: Each card gets a unique subtle background tint:
+- Card 1 (Revenue): Soft green background tint
+- Card 2 (Sales): White/neutral
+- Card 3 (Repairs): White/neutral
+- Card 4 (Pending): White/neutral
 
-**File: `src/pages/DeliveryChallanPreview.tsx`**: Display delivery person, vehicle number, GST breakdown, and signature image in preview. Update print layout.
+The first card (most important KPI) gets a colored border-left accent strip.
 
----
+**Contextual KPIs to display:**
+- Daily Cash Flow (from `finance_transactions`)
+- Store Sales with 18% GST indicator
+- Gym Revenue with 5% GST indicator
+- Active Repairs count
 
-## 4. Settings: Fix User Management Display
+## Phase 3: Employee Login Enforcement
 
-**File: `src/pages/Settings.tsx`** (UsersTab, line ~188)
+### Problem
+Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
 
-Issue: "Kuldeep Salvi" shows as "admin" in user_roles but displays in User Management under employees context. The `UsersTab` correctly reads from `profiles` + `user_roles` and shows role. The label "admin" is correct -- the user is asking why it says "employee" somewhere.
+### Fix in `src/pages/Employees.tsx`:
+1. Add a prominent "Create with Login" toggle/checkbox in the employee form
+2. When toggled ON (default for internal employees), make email and password fields REQUIRED
+3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
+4. For existing employees without `user_id`, show a "Link Login Account" button that:
+   - Opens a mini-form asking for email + password
+   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
+   - Updates the employee record with the returned `user_id`
 
-**Fix**: In the UsersTab, also show the `employees` table entry if one exists, and display whether the user is linked to an employee record. Add an "Employee Link" column showing the employee's designation (Admin/Staff/Technician) to clarify the distinction between auth role and employee record type.
+### Visual indicator in employee list:
+- Show a small shield/lock icon next to employees who have a linked auth account
+- Show a warning icon next to employees without one
 
----
+## Phase 4: Chart Theme Adaptation
 
-## 5. Dashboard Improvements
+Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
+- Tooltip background: `hsl(var(--card))`
+- Tooltip border: `hsl(var(--border))`
+- Bar gradient: Use the theme's accent/success color
+- Axis text: `hsl(var(--muted-foreground))`
 
-**File: `src/pages/Dashboard.tsx`**
-
-- Add quick-action buttons below header: "New Sale" (→ /pos), "New Quotation" (→ /quotations/new), "New Invoice" (→ /invoices/new), "New Repair" (→ /job-sheets/create)
-- Improve chart card titles with period selectors
-- Add "Today's Sales" KPI as a prominent first card instead of Monthly Revenue
-
----
-
-## 6. Sidebar Content Spacing Fix
-
-**File: `src/components/layout/AppLayout.tsx`**
-
-Current: `<main className="flex-1 p-4 md:p-6 md:pr-8">`
-
-The content is too close to the sidebar on the left side. Add left padding:
-```
-md:p-6 md:pl-8 md:pr-8
-```
-
-This ensures equal breathing room on both sides of the content area.
-
----
-
-## 7. Hikvision Integration Audit
-
-**File: `src/pages/Settings.tsx`** (HikvisionTab)
-
-Review the Hikvision section -- currently it has test/sync buttons. Verify:
-- The "Test Connection" button calls the edge function with `action: "test"`
-- "Sync Employees" calls `action: "sync-employees"`
-- "Sync Attendance" calls `action: "sync-attendance"` or `action: "sync"`
-
-Check if the edge function `hikvision-sync` properly handles these actions end-to-end. The Hikvision tab in Settings needs a status dashboard showing:
-- Last sync timestamp
-- Devices found count
-- Employees mapped count  
-- Recent sync log entries (last 5)
-
-**File: `src/pages/Settings.tsx`** -- Enhance HikvisionTab to fetch and display `hikvision_sync_log` entries and `hikvision_devices` count as a mini-dashboard within the settings panel.
-
----
+This ensures charts look correct in both light and dark themes.
 
 ## Files Summary
 
 ```text
-MIGRATION:  delivery_challans + delivery_challan_items columns
-EDIT:       src/pages/CRM.tsx                    -- Avatar in form + table
-EDIT:       src/pages/Finance.tsx                 -- KPI redesign  
-EDIT:       src/pages/DeliveryChallanAdd.tsx      -- Delivery person, vehicle, GST, signature
-EDIT:       src/pages/DeliveryChallanPreview.tsx   -- Display new fields
-EDIT:       src/pages/Dashboard.tsx               -- Quick actions + improvements
-EDIT:       src/pages/Settings.tsx                -- UsersTab clarity + Hikvision dashboard
-EDIT:       src/components/layout/AppLayout.tsx   -- Left spacing fix
+NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
+EDIT: src/main.tsx                       -- Wrap in ThemeProvider
+EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
+EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
+EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
+EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
+EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
 ```
 
-## Implementation Order
-1. Database migration (delivery challan columns)
-2. `AppLayout.tsx` -- spacing fix (quick win)
-3. `CRM.tsx` -- avatar integration
-4. `Finance.tsx` -- KPI redesign
-5. `DeliveryChallanAdd.tsx` + `DeliveryChallanPreview.tsx` -- full enhancement
-6. `Dashboard.tsx` -- quick actions
-7. `Settings.tsx` -- UsersTab + Hikvision dashboard
+## Database Changes
+None required.
 
+## Implementation Order
+1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
+2. `src/index.css` -- Ensure variables are the correct defaults
+3. `src/main.tsx` -- Wire up provider
+4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
+5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
+6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
+7. `src/pages/Employees.tsx` -- Login enforcement

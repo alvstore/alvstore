@@ -9,12 +9,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Send, Save, Trash2, Plus } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { ArrowLeft, Send, Trash2, Plus, Truck, Car } from "lucide-react";
 import { toast } from "sonner";
 
-interface Product { id: string; name: string; selling_price: number | null; }
-interface Customer { id: string; name: string; phone: string | null; address: string | null; }
-interface ChallanItem { product_id: string | null; product_name: string; quantity: number; unit_price: number; total: number; }
+interface Product { id: string; name: string; selling_price: number | null; gst_percentage: number | null; }
+interface Customer { id: string; name: string; phone: string | null; address: string | null; gst_number: string | null; }
+interface ChallanItem {
+  product_id: string | null; product_name: string; quantity: number;
+  unit_price: number; total: number; hsn_code: string; gst_percentage: number; gst_amount: number;
+}
 
 export default function DeliveryChallanAdd() {
   const { user } = useAuth();
@@ -27,12 +31,15 @@ export default function DeliveryChallanAdd() {
 
   const [customerId, setCustomerId] = useState("");
   const [notes, setNotes] = useState("");
+  const [deliveryPerson, setDeliveryPerson] = useState("");
+  const [vehicleNumber, setVehicleNumber] = useState("");
+  const [gstInclusive, setGstInclusive] = useState(false);
   const [items, setItems] = useState<ChallanItem[]>([]);
 
   useEffect(() => {
     Promise.all([
-      supabase.from("customers").select("id, name, phone, address").order("name"),
-      supabase.from("products").select("id, name, selling_price").order("name"),
+      supabase.from("customers").select("id, name, phone, address, gst_number").order("name"),
+      supabase.from("products").select("id, name, selling_price, gst_percentage").order("name"),
     ]).then(([c, p]) => {
       setCustomers(c.data || []);
       setProducts(p.data || []);
@@ -43,49 +50,84 @@ export default function DeliveryChallanAdd() {
     if (!editId) return;
     (async () => {
       const { data: ch } = await (supabase as any).from("delivery_challans").select("*").eq("id", editId).single();
-      if (ch) { setCustomerId((ch as any).customer_id || ""); setNotes((ch as any).notes || ""); }
+      if (ch) {
+        setCustomerId(ch.customer_id || "");
+        setNotes(ch.notes || "");
+        setDeliveryPerson(ch.delivery_person || "");
+        setVehicleNumber(ch.vehicle_number || "");
+        setGstInclusive(ch.gst_inclusive || false);
+      }
       const { data: itms } = await (supabase as any).from("delivery_challan_items").select("*").eq("challan_id", editId);
-      if (itms) setItems(itms.map((i: any) => ({ product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
+      if (itms) setItems(itms.map((i: any) => ({
+        product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, unit_price: i.unit_price, total: i.total,
+        hsn_code: i.hsn_code || "", gst_percentage: i.gst_percentage ?? 18, gst_amount: i.gst_amount || 0,
+      })));
     })();
   }, [editId]);
 
   const addItem = (productId: string) => {
     const p = products.find(pr => pr.id === productId);
     if (!p) return;
-    setItems([...items, { product_id: p.id, product_name: p.name, quantity: 1, unit_price: p.selling_price || 0, total: p.selling_price || 0 }]);
+    const price = p.selling_price || 0;
+    const gstPct = p.gst_percentage ?? 18;
+    const gstAmt = gstInclusive ? (price * gstPct) / (100 + gstPct) : (price * gstPct) / 100;
+    setItems([...items, {
+      product_id: p.id, product_name: p.name, quantity: 1,
+      unit_price: price, total: price, hsn_code: "", gst_percentage: gstPct, gst_amount: gstAmt,
+    }]);
+  };
+
+  const recalcItem = (item: ChallanItem): ChallanItem => {
+    const base = item.quantity * item.unit_price;
+    const gstAmt = gstInclusive
+      ? (base * item.gst_percentage) / (100 + item.gst_percentage)
+      : (base * item.gst_percentage) / 100;
+    return { ...item, total: base, gst_amount: Math.round(gstAmt * 100) / 100 };
   };
 
   const updateItem = (idx: number, updates: Partial<ChallanItem>) => {
-    setItems(items.map((item, i) => {
-      if (i !== idx) return item;
-      const u = { ...item, ...updates };
-      u.total = u.quantity * u.unit_price;
-      return u;
-    }));
+    setItems(items.map((item, i) => i !== idx ? item : recalcItem({ ...item, ...updates })));
   };
 
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-  const grandTotal = items.reduce((s, i) => s + i.total, 0);
+
+  const subtotal = items.reduce((s, i) => s + i.total, 0);
+  const totalGst = items.reduce((s, i) => s + i.gst_amount, 0);
+  const grandTotal = gstInclusive ? subtotal : subtotal + totalGst;
 
   const handleSave = async () => {
     if (!customerId) { toast.error("Select a customer"); return; }
     if (items.length === 0) { toast.error("Add at least one item"); return; }
     setSaving(true);
     try {
+      const challanPayload: any = {
+        customer_id: customerId, notes: notes || null,
+        delivery_person: deliveryPerson || null, vehicle_number: vehicleNumber || null,
+        gst_inclusive: gstInclusive, subtotal, gst_amount: totalGst, total: grandTotal,
+      };
       if (isEditing) {
-        await (supabase as any).from("delivery_challans").update({ customer_id: customerId, notes: notes || null }).eq("id", editId);
+        await (supabase as any).from("delivery_challans").update(challanPayload).eq("id", editId);
         await (supabase as any).from("delivery_challan_items").delete().eq("challan_id", editId);
-        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({ challan_id: editId, product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
+        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
+          challan_id: editId, product_id: i.product_id, product_name: i.product_name,
+          quantity: i.quantity, unit_price: i.unit_price, total: i.total,
+          hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
+        })));
         toast.success("Challan updated");
         navigate(`/challans/${editId}`);
       } else {
         const { data: ch, error } = await (supabase as any).from("delivery_challans").insert({
-          challan_number: "", customer_id: customerId, notes: notes || null, created_by: user?.id,
+          challan_number: "", ...challanPayload, created_by: user?.id,
         }).select().single();
         if (error) throw error;
-        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({ challan_id: (ch as any).id, product_id: i.product_id, product_name: i.product_name, quantity: i.quantity, unit_price: i.unit_price, total: i.total })));
-        toast.success("Challan created — " + (ch as any).challan_number);
-        navigate(`/challans/${(ch as any).id}`);
+        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
+          challan_id: ch.id, product_id: i.product_id, product_name: i.product_name,
+          quantity: i.quantity, unit_price: i.unit_price, total: i.total,
+          hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
+        })));
+        toast.success("Challan created — " + ch.challan_number);
+        navigate(`/challans/${ch.id}`);
       }
     } catch (err: any) { toast.error(err.message); }
     setSaving(false);
@@ -105,6 +147,7 @@ export default function DeliveryChallanAdd() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-8 space-y-6">
+          {/* Customer & Delivery Info */}
           <Card className="border-border/50">
             <CardContent className="p-6 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -120,12 +163,34 @@ export default function DeliveryChallanAdd() {
                     <p className="text-sm font-medium">{selectedCustomer.name}</p>
                     {selectedCustomer.phone && <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>}
                     {selectedCustomer.address && <p className="text-xs text-muted-foreground">{selectedCustomer.address}</p>}
+                    {selectedCustomer.gst_number && <p className="text-xs font-mono text-muted-foreground">GST: {selectedCustomer.gst_number}</p>}
                   </div>
                 )}
               </div>
 
               <Separator />
 
+              {/* Delivery Person & Vehicle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Truck className="h-3.5 w-3.5" />Delivery Person</Label>
+                  <Input value={deliveryPerson} onChange={e => setDeliveryPerson(e.target.value)} placeholder="Driver / delivery person name" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Car className="h-3.5 w-3.5" />Vehicle Number</Label>
+                  <Input value={vehicleNumber} onChange={e => setVehicleNumber(e.target.value)} placeholder="e.g. MH-12-AB-1234" />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* GST Toggle */}
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">GST Inclusive</Label>
+                <Switch checked={gstInclusive} onCheckedChange={setGstInclusive} />
+              </div>
+
+              {/* Items */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-semibold">Items</Label>
@@ -145,8 +210,10 @@ export default function DeliveryChallanAdd() {
                     <table className="w-full text-sm">
                       <thead><tr className="bg-muted/50 border-b">
                         <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Item</th>
+                        <th className="text-left px-2 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-20">HSN</th>
                         <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-24">Rate</th>
-                        <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-20">Qty</th>
+                        <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-16">Qty</th>
+                        <th className="text-right px-2 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-16">GST%</th>
                         <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-24">Total</th>
                         <th className="w-10"></th>
                       </tr></thead>
@@ -154,8 +221,10 @@ export default function DeliveryChallanAdd() {
                         {items.map((item, idx) => (
                           <tr key={idx} className="border-b border-border/50 last:border-0">
                             <td className="px-4 py-3 font-medium">{item.product_name}</td>
+                            <td className="px-2 py-3"><Input className="h-8 text-xs" value={item.hsn_code} onChange={e => updateItem(idx, { hsn_code: e.target.value })} placeholder="HSN" /></td>
                             <td className="px-3 py-3"><Input type="number" className="h-8 text-sm text-right" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} /></td>
                             <td className="px-3 py-3"><Input type="number" min="1" className="h-8 text-sm text-right" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} /></td>
+                            <td className="px-2 py-3"><Input type="number" className="h-8 text-sm text-right" value={item.gst_percentage} onChange={e => updateItem(idx, { gst_percentage: parseFloat(e.target.value) || 0 })} /></td>
                             <td className="px-4 py-3 text-right font-semibold">₹{item.total.toFixed(2)}</td>
                             <td className="pr-2 py-3"><Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeItem(idx)}><Trash2 className="h-3.5 w-3.5" /></Button></td>
                           </tr>
@@ -171,11 +240,16 @@ export default function DeliveryChallanAdd() {
                 <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Delivery instructions..." />
               </div>
 
+              {/* Totals */}
               <div className="flex justify-end">
-                <div className="w-full max-w-xs">
+                <div className="w-full max-w-xs space-y-1.5">
                   <Separator className="mb-3" />
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">CGST</span><span>₹{(totalGst / 2).toFixed(2)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">SGST</span><span>₹{(totalGst / 2).toFixed(2)}</span></div>
+                  <Separator />
                   <div className="flex justify-between items-baseline">
-                    <span className="font-semibold">Total</span>
+                    <span className="font-semibold">Grand Total</span>
                     <span className="text-xl font-bold">₹{grandTotal.toFixed(2)}</span>
                   </div>
                 </div>
