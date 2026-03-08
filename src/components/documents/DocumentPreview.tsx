@@ -50,7 +50,7 @@ export function DocumentPreview({
           </div>
         </DialogHeader>
 
-        <div className="space-y-6 p-2" id="document-preview-content">
+        <div className="space-y-6 p-2 print-area" id="document-preview-content">
           <BusinessHeader />
 
           <div className="flex items-start justify-between gap-4">
