@@ -52,6 +52,7 @@ import Technicians from "./pages/Technicians";
 import DeliveryChallans from "./pages/DeliveryChallans";
 import DeliveryChallanAdd from "./pages/DeliveryChallanAdd";
 import DeliveryChallanPreview from "./pages/DeliveryChallanPreview";
+import LandingPage from "./pages/LandingPage";
 
 const queryClient = new QueryClient();
 

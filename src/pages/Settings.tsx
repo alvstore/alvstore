@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   User, Shield, Building2, Receipt, Mail, MessageSquare, Phone,
-  Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File,
+  Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock,
   Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
