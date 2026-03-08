@@ -204,7 +204,7 @@ export default function DeliveryChallanPreview() {
           </Card>
         </div>
 
-        <div className="lg:col-span-4 space-y-4">
+        <div className="lg:col-span-4 space-y-4 no-print">
           <Card>
             <CardContent className="p-5 space-y-3">
               <Button variant="outline" className="w-full" onClick={() => navigate(`/challans/${id}/edit`)}>

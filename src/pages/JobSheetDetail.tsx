@@ -577,7 +577,7 @@ export default function JobSheetDetail() {
         </div>
 
         {/* Right column - Timeline + Actions (30%) */}
-        <div className="lg:w-80 shrink-0">
+        <div className="lg:w-80 shrink-0 no-print">
           <div className="sticky top-4 space-y-4">
 
             {/* Actions Card */}

@@ -56,7 +56,7 @@ export default function PublicInvoice() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
-        <Card className="border-border shadow-sm">
+        <Card className="border-border shadow-sm print-area">
           <CardContent className="p-6 md:p-8 space-y-6">
             <BusinessHeader />
             <Separator />

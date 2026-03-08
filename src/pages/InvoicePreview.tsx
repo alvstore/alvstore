@@ -218,7 +218,7 @@ export default function InvoicePreview() {
         </div>
 
         {/* Right Action Sidebar */}
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-4 no-print">
           <div className="lg:sticky lg:top-6 space-y-4">
             <Card className="shadow-sm border-border/50">
               <CardContent className="p-5 space-y-3">
