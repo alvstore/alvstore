@@ -96,7 +96,7 @@ export default function DeliveryChallanPreview() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-8 print-area">
           <Card>
             <CardContent className="p-6 space-y-6">
               {/* Header */}
