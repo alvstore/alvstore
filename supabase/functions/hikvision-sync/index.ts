@@ -148,6 +148,122 @@ async function findDeviceInCloud(areaDomain: string, accessToken: string, device
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ISAPI Passthrough via Cloud Gateway
+// ═══════════════════════════════════════════════════════════════
+async function cloudApiIsapi(
+  areaDomain: string, accessToken: string, deviceSerial: string,
+  isapiPath: string, isapiBody: unknown
+): Promise<any> {
+  console.log(`[cloudApiIsapi] ${isapiPath} -> device ${deviceSerial}`);
+  const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/isapi`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({
+      deviceSerial,
+      isapi: {
+        method: "POST",
+        url: isapiPath,
+        contentType: "application/json",
+        body: isapiBody,
+      },
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  const result = await resp.json();
+  console.log(`[cloudApiIsapi] response: errorCode=${result.errorCode}, preview: ${JSON.stringify(result).substring(0, 500)}`);
+  if (result.errorCode && result.errorCode !== "0") {
+    throw new Error(`ISAPI passthrough error ${result.errorCode}: ${result.errorMessage || result.message || JSON.stringify(result).substring(0, 200)}`);
+  }
+  // The actual ISAPI response is in result.data.response or result.data
+  return result.data?.response || result.data || result;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ISAPI: Sync employees from device (UserInfo/Search)
+// ═══════════════════════════════════════════════════════════════
+async function isapiSyncEmployees(
+  areaDomain: string, accessToken: string, deviceSerial: string,
+  deviceId: string, supabase: any
+): Promise<{ success: boolean; records_synced: number; method: string }> {
+  console.log(`[isapiSyncEmployees] Starting for device ${deviceSerial}`);
+
+  let totalSynced = 0;
+  let searchPos = 0;
+  const pageSize = 30;
+  let hasMore = true;
+
+  while (hasMore) {
+    const searchBody = {
+      UserInfoSearchCond: {
+        searchID: "isapi-sync-" + Date.now(),
+        searchResultPosition: searchPos,
+        maxResults: pageSize,
+      },
+    };
+
+    const result = await cloudApiIsapi(
+      areaDomain, accessToken, deviceSerial,
+      "/ISAPI/AccessControl/UserInfo/Search?format=json",
+      searchBody
+    );
+
+    // Parse response - may be nested in different ways
+    const searchResult = result?.UserInfoSearch || result;
+    const totalMatches = parseInt(searchResult?.totalMatches || searchResult?.numOfMatches || "0", 10);
+    const users: any[] = searchResult?.UserInfo || [];
+
+    console.log(`[isapiSyncEmployees] Got ${users.length} users (total: ${totalMatches}, pos: ${searchPos})`);
+
+    if (users.length === 0) {
+      // If first page returns 0, device may not support this endpoint
+      if (searchPos === 0 && totalMatches === 0) {
+        throw new Error("Device returned 0 users via ISAPI UserInfo/Search - device may not support this endpoint or has no registered users");
+      }
+      break;
+    }
+
+    for (const user of users) {
+      const employeeCode = user.employeeNo || user.employeeID || "";
+      const employeeName = user.name || user.userName || "";
+      if (!employeeCode) continue;
+
+      // Upsert into mapping
+      await supabase.from("hikvision_employee_mapping").upsert({
+        device_employee_code: employeeCode,
+        device_employee_name: employeeName,
+        device_id: deviceId,
+        card_number: user.numOfCard ? String(user.numOfCard) : null,
+        synced_at: new Date().toISOString(),
+      }, { onConflict: "device_employee_code,device_id" });
+
+      // Link or create ERP employee
+      const { data: existingEmp } = await supabase
+        .from("employees").select("id").eq("device_employee_code", employeeCode).maybeSingle();
+
+      if (!existingEmp && employeeName) {
+        const { data: newEmp } = await supabase.from("employees").insert({
+          name: employeeName, device_employee_code: employeeCode, role: "staff", status: "active",
+        }).select("id").single();
+        if (newEmp) {
+          await supabase.from("hikvision_employee_mapping")
+            .update({ erp_employee_id: newEmp.id }).eq("device_employee_code", employeeCode).eq("device_id", deviceId);
+        }
+      } else if (existingEmp) {
+        await supabase.from("hikvision_employee_mapping")
+          .update({ erp_employee_id: existingEmp.id }).eq("device_employee_code", employeeCode).eq("device_id", deviceId);
+      }
+      totalSynced++;
+    }
+
+    searchPos += users.length;
+    hasMore = searchPos < totalMatches;
+  }
+
+  console.log(`[isapiSyncEmployees] Completed. Total: ${totalSynced}`);
+  return { success: true, records_synced: totalSynced, method: "isapi_passthrough" };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Cloud API: Sync employees via person/synchronize
 // ═══════════════════════════════════════════════════════════════
 async function cloudSyncEmployees(
