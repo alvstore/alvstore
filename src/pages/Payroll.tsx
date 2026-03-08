@@ -285,7 +285,9 @@ export default function PayrollPage() {
                           <CheckCircle className="h-3 w-3 mr-1" />Mark Paid
                         </Button>
                       ) : (
-                        <Badge variant="outline" className="text-[10px]">✓ Done</Badge>
+                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => printPayslip(emp, p)}>
+                          <Printer className="h-3 w-3 mr-1" />Print Slip
+                        </Button>
                       )}
                     </TableCell>
                   </TableRow>
