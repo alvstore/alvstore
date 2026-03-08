@@ -95,7 +95,7 @@ export default function PublicJobSheet() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6 print-area">
         <div className="text-center">
           <h1 className="text-2xl font-bold">{job.job_number}</h1>
           <Badge className={statusColors[job.status] || ""} variant="secondary">{job.status.replace(/_/g, " ")}</Badge>

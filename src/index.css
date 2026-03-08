@@ -175,17 +175,57 @@
     font-size: 12pt;
   }
 
-  body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
+  /* Hide everything except printable content */
+  .no-print,
+  nav,
+  header,
+  aside,
+  [data-sidebar],
+  button,
+  .sidebar,
+  [role="navigation"],
+  [data-radix-scroll-area-viewport] + div,
+  .fixed,
+  .sticky {
+    display: none !important;
+  }
+
+  /* Show print-area and ensure it fills the page */
   .print-area {
+    display: block !important;
+    visibility: visible !important;
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
+    z-index: 9999;
   }
 
-  .no-print, nav, header, aside, [data-sidebar], button:not(.print-keep), .sidebar, [role="navigation"] {
-    display: none !important;
+  .print-area * {
+    visibility: visible !important;
+  }
+
+  /* When print-area exists, hide siblings */
+  body:has(.print-area) * {
+    visibility: hidden;
+  }
+  body:has(.print-area) .print-area,
+  body:has(.print-area) .print-area * {
+    visibility: visible !important;
+  }
+
+  /* Watermark */
+  .print-area::after {
+    content: "ORIGINAL COPY — DO NOT ALTER";
+    position: fixed;
+    bottom: 10mm;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 8pt;
+    color: #ccc;
+    letter-spacing: 2px;
+    z-index: 10000;
   }
 
   table {
@@ -212,5 +252,12 @@
   .badge, [class*="Badge"] {
     border: 1px solid #999 !important;
     padding: 1px 6px !important;
+  }
+
+  /* Payslip print window */
+  .payslip-print {
+    font-family: Arial, sans-serif;
+    color: #000;
+    background: #fff;
   }
 }

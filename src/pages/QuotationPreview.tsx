@@ -123,7 +123,7 @@ export default function QuotationPreview() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Document */}
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-8 print-area">
           <Card className="shadow-sm border-border/50">
             <CardContent className="p-6 md:p-8 space-y-6">
               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
@@ -195,7 +195,7 @@ export default function QuotationPreview() {
         </div>
 
         {/* Right Action Sidebar */}
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-4 no-print">
           <div className="lg:sticky lg:top-6 space-y-4">
             <Card className="shadow-sm border-border/50">
               <CardContent className="p-5 space-y-3">

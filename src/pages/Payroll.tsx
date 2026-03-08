@@ -135,6 +135,54 @@ export default function PayrollPage() {
     else { toast.success("Marked as paid"); fetchData(); }
   };
 
+  const printPayslip = (emp: Employee, p: Payroll) => {
+    const monthLabel = new Date(p.month + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    const w = window.open("", "_blank", "width=800,height=600");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>Payslip - ${emp.name}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 40px; color: #000; }
+        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 16px; margin-bottom: 24px; }
+        .header h1 { font-size: 18px; margin: 0 0 4px; }
+        .header p { font-size: 12px; color: #666; margin: 0; }
+        .info { display: flex; justify-content: space-between; margin-bottom: 24px; }
+        .info div { font-size: 13px; }
+        .info .label { color: #666; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        th, td { border: 1px solid #ddd; padding: 10px 14px; text-align: left; font-size: 13px; }
+        th { background: #f5f5f5; font-weight: 600; }
+        .total td { font-weight: 700; font-size: 14px; border-top: 2px solid #333; }
+        .watermark { text-align: center; color: #ccc; font-size: 9px; letter-spacing: 2px; margin-top: 40px; }
+        .footer { text-align: center; font-size: 11px; color: #999; margin-top: 30px; }
+        @media print { body { padding: 20px; } }
+      </style>
+    </head><body>
+      <div class="header">
+        <h1>SALARY SLIP</h1>
+        <p>${monthLabel}</p>
+      </div>
+      <div class="info">
+        <div><span class="label">Employee:</span> <strong>${emp.name}</strong></div>
+        <div><span class="label">Role:</span> ${emp.role}</div>
+        <div><span class="label">Paid On:</span> ${p.paid_date ? new Date(p.paid_date).toLocaleDateString("en-IN") : "—"}</div>
+      </div>
+      <table>
+        <thead><tr><th>Component</th><th style="text-align:right">Amount (₹)</th></tr></thead>
+        <tbody>
+          <tr><td>Basic Salary</td><td style="text-align:right">${p.basic_salary.toLocaleString("en-IN")}</td></tr>
+          <tr><td>Bonus</td><td style="text-align:right">+ ${p.bonus.toLocaleString("en-IN")}</td></tr>
+          <tr><td>Deductions</td><td style="text-align:right">- ${p.deductions.toLocaleString("en-IN")}</td></tr>
+          <tr class="total"><td>Net Salary</td><td style="text-align:right">₹${p.net_salary.toLocaleString("en-IN")}</td></tr>
+        </tbody>
+      </table>
+      ${p.notes ? `<p style="font-size:12px;color:#666;">Notes: ${p.notes}</p>` : ""}
+      <div class="watermark">ORIGINAL COPY — DO NOT ALTER</div>
+      <div class="footer">This is a computer-generated payslip and does not require a signature.</div>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => { w.print(); }, 500);
+  };
+
   const totalPayable = payrolls.reduce((s, p) => s + p.net_salary, 0);
   const totalPaid = payrolls.filter(p => p.payment_status === "paid").reduce((s, p) => s + p.net_salary, 0);
   const totalPending = totalPayable - totalPaid;
@@ -237,7 +285,9 @@ export default function PayrollPage() {
                           <CheckCircle className="h-3 w-3 mr-1" />Mark Paid
                         </Button>
                       ) : (
-                        <Badge variant="outline" className="text-[10px]">✓ Done</Badge>
+                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => printPayslip(emp, p)}>
+                          <Printer className="h-3 w-3 mr-1" />Print Slip
+                        </Button>
                       )}
                     </TableCell>
                   </TableRow>
