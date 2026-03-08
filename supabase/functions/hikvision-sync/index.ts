@@ -148,7 +148,7 @@ async function findDeviceInCloud(areaDomain: string, accessToken: string, device
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ISAPI Passthrough via Cloud Gateway (tries multiple endpoints)
+// ISAPI Transparent Channel via Cloud Gateway
 // ═══════════════════════════════════════════════════════════════
 async function cloudApiIsapi(
   areaDomain: string, accessToken: string, deviceSerial: string,
@@ -156,50 +156,62 @@ async function cloudApiIsapi(
 ): Promise<any> {
   console.log(`[cloudApiIsapi] ${isapiPath} -> device ${deviceSerial}`);
   
-  // Try multiple known transparent/ISAPI passthrough endpoints
+  // HPP transparent channel requires x-devserial header
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "x-devserial": deviceSerial,
+  };
+
+  // Try transparent endpoints (v2 first, then v1)
   const endpoints = [
-    { path: "/api/hpcgw/v2/device/transparent", body: { deviceSerial, cmdUrl: isapiPath, inputJson: isapiBody } },
-    { path: "/api/hpcgw/v1/device/transparent", body: { deviceSerial, cmdUrl: isapiPath, inputJson: isapiBody } },
-    { path: "/api/hpcgw/v1/device/isapi", body: { deviceSerial, isapi: { method: "POST", url: isapiPath, contentType: "application/json", body: isapiBody } } },
-    { path: "/api/hpcgw/v2/device/isapi", body: { deviceSerial, isapi: { method: "POST", url: isapiPath, contentType: "application/json", body: isapiBody } } },
+    "/api/hpcgw/v2/device/transparent",
+    "/api/hpcgw/v1/device/transparent",
   ];
+
+  // Build the transparent channel body - wraps the ISAPI command
+  const transparentBody = {
+    url: isapiPath,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(isapiBody),
+  };
 
   let lastError = "";
   for (const ep of endpoints) {
     try {
-      console.log(`[cloudApiIsapi] Trying ${ep.path}...`);
-      const resp = await fetch(`${areaDomain}${ep.path}`, {
+      console.log(`[cloudApiIsapi] Trying ${ep} with x-devserial header...`);
+      const resp = await fetch(`${areaDomain}${ep}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify(ep.body),
+        headers,
+        body: JSON.stringify(transparentBody),
         signal: AbortSignal.timeout(30000),
       });
       const result = await resp.json();
-      console.log(`[cloudApiIsapi] ${ep.path} response: status=${resp.status}, errorCode=${result.errorCode}, preview: ${JSON.stringify(result).substring(0, 500)}`);
+      console.log(`[cloudApiIsapi] ${ep} response: status=${resp.status}, preview: ${JSON.stringify(result).substring(0, 800)}`);
       
       if (resp.status === 404) {
-        lastError = `${ep.path} returned 404`;
+        lastError = `${ep} returned 404`;
         continue;
       }
       if (result.errorCode && result.errorCode !== "0") {
-        lastError = `${ep.path}: ${result.errorCode} - ${result.errorMessage || result.message || ""}`;
+        lastError = `${ep}: ${result.errorCode} - ${result.errorMessage || result.message || ""}`;
         continue;
       }
       
-      // Success - parse the ISAPI response from various wrapper formats
-      const isapiResp = result.data?.response || result.data?.outputJson || result.data?.result || result.data || result;
-      // If outputJson is a string, parse it
+      // Parse the ISAPI response - may be in data.body, data.response, or data directly
+      let isapiResp = result.data?.body || result.data?.response || result.data?.outputJson || result.data || result;
       if (typeof isapiResp === "string") {
-        try { return JSON.parse(isapiResp); } catch { return isapiResp; }
+        try { isapiResp = JSON.parse(isapiResp); } catch { /* keep as string */ }
       }
       return isapiResp;
     } catch (e) {
-      lastError = `${ep.path}: ${e instanceof Error ? e.message : "unknown"}`;
+      lastError = `${ep}: ${e instanceof Error ? e.message : "unknown"}`;
       console.warn(`[cloudApiIsapi] ${lastError}`);
     }
   }
   
-  throw new Error(`All ISAPI passthrough endpoints failed. Last: ${lastError}`);
+  throw new Error(`All ISAPI transparent endpoints failed. Last: ${lastError}`);
 }
 
 // ═══════════════════════════════════════════════════════════════
