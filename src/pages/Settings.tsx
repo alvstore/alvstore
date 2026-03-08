@@ -1158,6 +1158,87 @@ function HikvisionTab() {
   );
 }
 
+// ─── Manual Employee Mapping ────────────────────────────────────
+function ManualEmployeeMapping({ savedDevices }: { savedDevices: Array<{ id: string; name: string; device_serial?: string }> }) {
+  const [empCode, setEmpCode] = useState("");
+  const [empName, setEmpName] = useState("");
+  const [selectedDevice, setSelectedDevice] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [mappings, setMappings] = useState<Array<{ id: string; device_employee_code: string; device_employee_name: string | null; erp_employee_id: string | null }>>([]);
+
+  const loadMappings = async () => {
+    const { data } = await supabase.from("hikvision_employee_mapping").select("id, device_employee_code, device_employee_name, erp_employee_id").order("created_at", { ascending: false }).limit(20);
+    setMappings(data || []);
+  };
+
+  useEffect(() => { loadMappings(); if (savedDevices.length > 0) setSelectedDevice(savedDevices[0].id); }, [savedDevices]);
+
+  const handleAdd = async () => {
+    if (!empCode.trim()) { toast.error("Employee code is required"); return; }
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+        body: { action: "manual-add-employee", device_id: selectedDevice || null, employee_code: empCode.trim(), employee_name: empName.trim() || undefined },
+      });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || "Failed");
+      toast.success(data.message || "Employee mapped");
+      setEmpCode(""); setEmpName("");
+      loadMappings();
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2"><Plus className="h-4 w-4" /> Manual Employee Mapping</CardTitle>
+        <CardDescription>If cloud sync isn't available, manually enter device employee codes to link with your system. You can find these codes on the biometric device's user list.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs">Employee Code (from device)</Label>
+            <Input placeholder="e.g. 1001" value={empCode} onChange={e => setEmpCode(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Employee Name</Label>
+            <Input placeholder="e.g. Rajat" value={empName} onChange={e => setEmpName(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">Device</Label>
+            <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+              <SelectTrigger><SelectValue placeholder="Select device" /></SelectTrigger>
+              <SelectContent>
+                {savedDevices.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <Button size="sm" onClick={handleAdd} disabled={saving}>
+          {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1.5" />}
+          Add Mapping
+        </Button>
+        {mappings.length > 0 && (
+          <div className="border border-border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader><TableRow><TableHead className="text-xs">Code</TableHead><TableHead className="text-xs">Name</TableHead><TableHead className="text-xs">Linked</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {mappings.map(m => (
+                  <TableRow key={m.id}>
+                    <TableCell className="text-xs font-mono">{m.device_employee_code}</TableCell>
+                    <TableCell className="text-xs">{m.device_employee_name || "—"}</TableCell>
+                    <TableCell>{m.erp_employee_id ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <span className="text-xs text-muted-foreground">Not linked</span>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Hikvision Sync Dashboard ───────────────────────────────────
 function HikvisionSyncDashboard() {
   const [syncLogs, setSyncLogs] = useState<Array<{ id: string; action: string; status: string; records_synced: number | null; error_message: string | null; created_at: string }>>([]);
