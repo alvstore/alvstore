@@ -752,22 +752,91 @@ serve(async (req: Request) => {
       try {
         const { accessToken, areaDomain } = await getHppToken();
 
+        // Try 1: ISAPI passthrough (works without Cloud Attendance subscription)
         try {
+          console.log("[sync-employees] Trying ISAPI passthrough...");
+          const result = await isapiSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
+          await logSync(supabase, device_id, "sync_employees_isapi_completed", "success", "employee", result.records_synced);
+          return jsonResp(result);
+        } catch (isapiErr) {
+          console.log(`[sync-employees] ISAPI failed: ${(isapiErr as Error).message}, trying Cloud API...`);
+          await logSync(supabase, device_id, "sync_employees_isapi_failed", "info", "employee", 0, (isapiErr as Error).message);
+        }
+
+        // Try 2: Cloud person/synchronize (requires paid subscription)
+        try {
+          console.log("[sync-employees] Trying Cloud person/synchronize...");
           const result = await cloudSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
           await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", result.records_synced);
           return jsonResp(result);
         } catch (cloudErr) {
           console.log(`[sync-employees] Cloud API failed: ${(cloudErr as Error).message}, falling back to attendance logs...`);
           await logSync(supabase, device_id, "sync_employees_cloud_failed", "info", "employee", 0, (cloudErr as Error).message);
-
-          const result = await syncEmployeesFromLogs(device_id, supabase);
-          await logSync(supabase, device_id, "sync_employees_from_logs", "success", "employee", result.records_synced);
-          return jsonResp(result);
         }
+
+        // Try 3: Extract from attendance logs
+        const result = await syncEmployeesFromLogs(device_id, supabase);
+        await logSync(supabase, device_id, "sync_employees_from_logs", "success", "employee", result.records_synced);
+        return jsonResp(result);
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
         console.error(`[sync-employees] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "sync_employees_failed", "error", "employee", 0, errMsg);
+        return jsonResp({ success: false, error: errMsg });
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // ACTION: push-employee-to-device (ISAPI)
+    // ═══════════════════════════════════════════════
+    if (action === "push-employee-to-device") {
+      try {
+        const { employee_id, employee_name, employee_code } = body;
+        if (!employee_name || !employee_code) return jsonResp({ success: false, error: "employee_name and employee_code required" }, 400);
+
+        const { accessToken, areaDomain } = await getHppToken();
+
+        const isapiBody = {
+          UserInfo: {
+            employeeNo: employee_code,
+            name: employee_name,
+            userType: "normal",
+            Valid: {
+              enable: true,
+              beginTime: "2020-01-01T00:00:00",
+              endTime: "2037-12-31T23:59:59",
+            },
+          },
+        };
+
+        await cloudApiIsapi(
+          areaDomain, accessToken, device_serial,
+          "/ISAPI/AccessControl/UserInfo/Record?format=json",
+          isapiBody
+        );
+
+        // Create mapping
+        await supabase.from("hikvision_employee_mapping").upsert({
+          device_employee_code: employee_code,
+          device_employee_name: employee_name,
+          device_id: device_id,
+          erp_employee_id: employee_id || null,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: "device_employee_code,device_id" });
+
+        // Update employee record
+        if (employee_id) {
+          await supabase.from("employees")
+            .update({ device_employee_code: employee_code })
+            .eq("id", employee_id);
+        }
+
+        await logSync(supabase, device_id, "push_employee_to_device", "success", "employee", 1);
+        return jsonResp({ success: true, message: `Employee ${employee_name} pushed to device` });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : "Failed";
+        console.error(`[push-employee-to-device] FAILED: ${errMsg}`);
+        await logSync(supabase, device_id, "push_employee_failed", "error", "employee", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
     }
