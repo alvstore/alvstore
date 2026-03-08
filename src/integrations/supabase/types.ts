@@ -1334,6 +1334,9 @@ export type Database = {
           technician_payment_status: string | null
           total_amount: number | null
           updated_at: string
+          warranty_days: number | null
+          warranty_start_date: string | null
+          warranty_terms: string | null
         }
         Insert: {
           actual_cost?: number | null
@@ -1389,6 +1392,9 @@ export type Database = {
           technician_payment_status?: string | null
           total_amount?: number | null
           updated_at?: string
+          warranty_days?: number | null
+          warranty_start_date?: string | null
+          warranty_terms?: string | null
         }
         Update: {
           actual_cost?: number | null
@@ -1444,6 +1450,9 @@ export type Database = {
           technician_payment_status?: string | null
           total_amount?: number | null
           updated_at?: string
+          warranty_days?: number | null
+          warranty_start_date?: string | null
+          warranty_terms?: string | null
         }
         Relationships: [
           {
