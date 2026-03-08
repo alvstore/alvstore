@@ -164,13 +164,14 @@ async function cloudApiIsapi(
     body: JSON.stringify(isapiBody),
   };
 
-  // v2 transparent needs x-devserial AND x-DomainIdentifier (site ID)
+  // v2 transparent needs x-devserial, x-DomainIdentifier, and x-PropIdentifier/X-ActionIdentifier
   if (siteId) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
       "x-devserial": deviceSerial,
       "x-DomainIdentifier": siteId,
+      "X-ActionIdentifier": isapiPath,
     };
     
     try {
