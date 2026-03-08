@@ -148,6 +148,177 @@ async function findDeviceInCloud(areaDomain: string, accessToken: string, device
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ISAPI Transparent Channel via Cloud Gateway
+// ═══════════════════════════════════════════════════════════════
+async function cloudApiIsapi(
+  areaDomain: string, accessToken: string, deviceSerial: string,
+  isapiPath: string, isapiBody: unknown, siteId?: string
+): Promise<any> {
+  console.log(`[cloudApiIsapi] ${isapiPath} -> device ${deviceSerial} (site: ${siteId || "unknown"})`);
+  
+  // Build the transparent channel body
+  const transparentBody = {
+    url: isapiPath,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(isapiBody),
+  };
+
+  // v2 transparent needs x-devserial, x-DomainIdentifier, and x-PropIdentifier/X-ActionIdentifier
+  if (siteId) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "x-devserial": deviceSerial,
+      "x-DomainIdentifier": siteId,
+      "X-ActionIdentifier": isapiPath,
+    };
+    
+    try {
+      console.log(`[cloudApiIsapi] Trying v2/transparent with x-devserial + x-DomainIdentifier...`);
+      const resp = await fetch(`${areaDomain}/api/hpcgw/v2/device/transparent`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(transparentBody),
+        signal: AbortSignal.timeout(30000),
+      });
+      const result = await resp.json();
+      console.log(`[cloudApiIsapi] v2/transparent response: status=${resp.status}, preview: ${JSON.stringify(result).substring(0, 800)}`);
+      
+      if (resp.status !== 404 && (!result.errorCode || result.errorCode === "0")) {
+        let isapiResp = result.data?.body || result.data?.response || result.data || result;
+        if (typeof isapiResp === "string") {
+          try { isapiResp = JSON.parse(isapiResp); } catch { /* keep */ }
+        }
+        return isapiResp;
+      }
+      console.warn(`[cloudApiIsapi] v2 failed: ${result.errorCode} - ${result.message || ""}`);
+    } catch (e) {
+      console.warn(`[cloudApiIsapi] v2 error: ${e instanceof Error ? e.message : "unknown"}`);
+    }
+  }
+
+  // Fallback: v1 transparent with just x-devserial
+  const headersV1: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "x-devserial": deviceSerial,
+  };
+  
+  console.log(`[cloudApiIsapi] Trying v1/transparent...`);
+  const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/transparent`, {
+    method: "POST",
+    headers: headersV1,
+    body: JSON.stringify(transparentBody),
+    signal: AbortSignal.timeout(30000),
+  });
+  const result = await resp.json();
+  console.log(`[cloudApiIsapi] v1/transparent response: status=${resp.status}, preview: ${JSON.stringify(result).substring(0, 800)}`);
+  
+  if (result.errorCode && result.errorCode !== "0") {
+    throw new Error(`ISAPI transparent failed: ${result.errorCode} - ${result.message || ""}`);
+  }
+  
+  let isapiResp = result.data?.body || result.data?.response || result.data || result;
+  if (typeof isapiResp === "string") {
+    try { isapiResp = JSON.parse(isapiResp); } catch { /* keep */ }
+  }
+  return isapiResp;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ISAPI: Sync employees from device (UserInfo/Search)
+// ═══════════════════════════════════════════════════════════════
+async function isapiSyncEmployees(
+  areaDomain: string, accessToken: string, deviceSerial: string,
+  deviceId: string, supabase: any
+): Promise<{ success: boolean; records_synced: number; method: string }> {
+  console.log(`[isapiSyncEmployees] Starting for device ${deviceSerial}`);
+
+  // Get device's site_id for transparent channel
+  const { data: deviceRec } = await supabase
+    .from("hikvision_devices").select("site_id").eq("id", deviceId).single();
+  const siteId = deviceRec?.site_id || "";
+  console.log(`[isapiSyncEmployees] Device site_id: ${siteId}`);
+
+  let totalSynced = 0;
+  let searchPos = 0;
+  const pageSize = 30;
+  let hasMore = true;
+
+  while (hasMore) {
+    const searchBody = {
+      UserInfoSearchCond: {
+        searchID: "isapi-sync-" + Date.now(),
+        searchResultPosition: searchPos,
+        maxResults: pageSize,
+      },
+    };
+
+    const result = await cloudApiIsapi(
+      areaDomain, accessToken, deviceSerial,
+      "/ISAPI/AccessControl/UserInfo/Search?format=json",
+      searchBody,
+      siteId
+    );
+
+    // Parse response - may be nested in different ways
+    const searchResult = result?.UserInfoSearch || result;
+    const totalMatches = parseInt(searchResult?.totalMatches || searchResult?.numOfMatches || "0", 10);
+    const users: any[] = searchResult?.UserInfo || [];
+
+    console.log(`[isapiSyncEmployees] Got ${users.length} users (total: ${totalMatches}, pos: ${searchPos})`);
+
+    if (users.length === 0) {
+      // If first page returns 0, device may not support this endpoint
+      if (searchPos === 0 && totalMatches === 0) {
+        throw new Error("Device returned 0 users via ISAPI UserInfo/Search - device may not support this endpoint or has no registered users");
+      }
+      break;
+    }
+
+    for (const user of users) {
+      const employeeCode = user.employeeNo || user.employeeID || "";
+      const employeeName = user.name || user.userName || "";
+      if (!employeeCode) continue;
+
+      // Upsert into mapping
+      await supabase.from("hikvision_employee_mapping").upsert({
+        device_employee_code: employeeCode,
+        device_employee_name: employeeName,
+        device_id: deviceId,
+        card_number: user.numOfCard ? String(user.numOfCard) : null,
+        synced_at: new Date().toISOString(),
+      }, { onConflict: "device_employee_code,device_id" });
+
+      // Link or create ERP employee
+      const { data: existingEmp } = await supabase
+        .from("employees").select("id").eq("device_employee_code", employeeCode).maybeSingle();
+
+      if (!existingEmp && employeeName) {
+        const { data: newEmp } = await supabase.from("employees").insert({
+          name: employeeName, device_employee_code: employeeCode, role: "staff", status: "active",
+        }).select("id").single();
+        if (newEmp) {
+          await supabase.from("hikvision_employee_mapping")
+            .update({ erp_employee_id: newEmp.id }).eq("device_employee_code", employeeCode).eq("device_id", deviceId);
+        }
+      } else if (existingEmp) {
+        await supabase.from("hikvision_employee_mapping")
+          .update({ erp_employee_id: existingEmp.id }).eq("device_employee_code", employeeCode).eq("device_id", deviceId);
+      }
+      totalSynced++;
+    }
+
+    searchPos += users.length;
+    hasMore = searchPos < totalMatches;
+  }
+
+  console.log(`[isapiSyncEmployees] Completed. Total: ${totalSynced}`);
+  return { success: true, records_synced: totalSynced, method: "isapi_passthrough" };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Cloud API: Sync employees via person/synchronize
 // ═══════════════════════════════════════════════════════════════
 async function cloudSyncEmployees(
@@ -636,22 +807,91 @@ serve(async (req: Request) => {
       try {
         const { accessToken, areaDomain } = await getHppToken();
 
+        // Try 1: ISAPI passthrough (works without Cloud Attendance subscription)
         try {
+          console.log("[sync-employees] Trying ISAPI passthrough...");
+          const result = await isapiSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
+          await logSync(supabase, device_id, "sync_employees_isapi_completed", "success", "employee", result.records_synced);
+          return jsonResp(result);
+        } catch (isapiErr) {
+          console.log(`[sync-employees] ISAPI failed: ${(isapiErr as Error).message}, trying Cloud API...`);
+          await logSync(supabase, device_id, "sync_employees_isapi_failed", "info", "employee", 0, (isapiErr as Error).message);
+        }
+
+        // Try 2: Cloud person/synchronize (requires paid subscription)
+        try {
+          console.log("[sync-employees] Trying Cloud person/synchronize...");
           const result = await cloudSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
           await logSync(supabase, device_id, "sync_employees_completed", "success", "employee", result.records_synced);
           return jsonResp(result);
         } catch (cloudErr) {
           console.log(`[sync-employees] Cloud API failed: ${(cloudErr as Error).message}, falling back to attendance logs...`);
           await logSync(supabase, device_id, "sync_employees_cloud_failed", "info", "employee", 0, (cloudErr as Error).message);
-
-          const result = await syncEmployeesFromLogs(device_id, supabase);
-          await logSync(supabase, device_id, "sync_employees_from_logs", "success", "employee", result.records_synced);
-          return jsonResp(result);
         }
+
+        // Try 3: Extract from attendance logs
+        const result = await syncEmployeesFromLogs(device_id, supabase);
+        await logSync(supabase, device_id, "sync_employees_from_logs", "success", "employee", result.records_synced);
+        return jsonResp(result);
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Failed";
         console.error(`[sync-employees] FAILED: ${errMsg}`);
         await logSync(supabase, device_id, "sync_employees_failed", "error", "employee", 0, errMsg);
+        return jsonResp({ success: false, error: errMsg });
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // ACTION: push-employee-to-device (ISAPI)
+    // ═══════════════════════════════════════════════
+    if (action === "push-employee-to-device") {
+      try {
+        const { employee_id, employee_name, employee_code } = body;
+        if (!employee_name || !employee_code) return jsonResp({ success: false, error: "employee_name and employee_code required" }, 400);
+
+        const { accessToken, areaDomain } = await getHppToken();
+
+        const isapiBody = {
+          UserInfo: {
+            employeeNo: employee_code,
+            name: employee_name,
+            userType: "normal",
+            Valid: {
+              enable: true,
+              beginTime: "2020-01-01T00:00:00",
+              endTime: "2037-12-31T23:59:59",
+            },
+          },
+        };
+
+        await cloudApiIsapi(
+          areaDomain, accessToken, device_serial,
+          "/ISAPI/AccessControl/UserInfo/Record?format=json",
+          isapiBody
+        );
+
+        // Create mapping
+        await supabase.from("hikvision_employee_mapping").upsert({
+          device_employee_code: employee_code,
+          device_employee_name: employee_name,
+          device_id: device_id,
+          erp_employee_id: employee_id || null,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: "device_employee_code,device_id" });
+
+        // Update employee record
+        if (employee_id) {
+          await supabase.from("employees")
+            .update({ device_employee_code: employee_code })
+            .eq("id", employee_id);
+        }
+
+        await logSync(supabase, device_id, "push_employee_to_device", "success", "employee", 1);
+        return jsonResp({ success: true, message: `Employee ${employee_name} pushed to device` });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : "Failed";
+        console.error(`[push-employee-to-device] FAILED: ${errMsg}`);
+        await logSync(supabase, device_id, "push_employee_failed", "error", "employee", 0, errMsg);
         return jsonResp({ success: false, error: errMsg });
       }
     }
@@ -856,6 +1096,54 @@ serve(async (req: Request) => {
         }
         console.log(`[auto-map] Mapped ${mapped} of ${unmapped?.length || 0}`);
         return jsonResp({ success: true, mapped });
+      } catch (e) {
+        return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
+      }
+    }
+
+    // ═══════════════════════════════════════════════
+    // ACTION: manual-add-employee — Manually register device employee code
+    // ═══════════════════════════════════════════════
+    if (action === "manual-add-employee") {
+      try {
+        const { employee_code, employee_name, erp_employee_id } = body;
+        if (!employee_code) return jsonResp({ success: false, error: "employee_code is required" }, 400);
+
+        const name = employee_name || `Employee ${employee_code}`;
+
+        // Upsert into mapping
+        const { error: mapErr } = await supabase.from("hikvision_employee_mapping").upsert({
+          device_employee_code: employee_code,
+          device_employee_name: name,
+          device_id: device_id || null,
+          erp_employee_id: erp_employee_id || null,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: "device_employee_code,device_id" });
+
+        if (mapErr) throw new Error(`Mapping upsert failed: ${mapErr.message}`);
+
+        // Link ERP employee if provided or auto-match
+        if (erp_employee_id) {
+          await supabase.from("employees")
+            .update({ device_employee_code: employee_code })
+            .eq("id", erp_employee_id);
+        } else {
+          // Try auto-match by name
+          const { data: emp } = await supabase
+            .from("employees").select("id").ilike("name", `%${name}%`).maybeSingle();
+          if (emp) {
+            await supabase.from("hikvision_employee_mapping")
+              .update({ erp_employee_id: emp.id })
+              .eq("device_employee_code", employee_code)
+              .eq("device_id", device_id || null);
+            await supabase.from("employees")
+              .update({ device_employee_code: employee_code })
+              .eq("id", emp.id);
+          }
+        }
+
+        await logSync(supabase, device_id, "manual_add_employee", "success", "employee", 1);
+        return jsonResp({ success: true, message: `Employee ${name} (${employee_code}) mapped` });
       } catch (e) {
         return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
       }

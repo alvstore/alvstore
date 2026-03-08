@@ -1,66 +1,124 @@
 
+# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
-# Hikvision Employee Sync -- Audit & Fix Plan
+## Overview
 
-## Root Cause Analysis
+Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
 
-The employee sync is failing because the `/api/hpcgw/v1/person/synchronize` endpoint requires the **Cloud Attendance Service** subscription on the AppKey. Your AppKey error `0x02401000` confirms: *"The partner of AppKey does not exist for convergence-attendance-user"*. This is a paid/premium module.
+## Phase 1: Theme Provider and Multiple Themes
 
-**What works:**
-- Token acquisition (areaDomain: `apiiind.hik-partner.com`)
-- Site discovery (2 sites found)
-- Device listing (4 devices, DS-K1T343EFWX is **online**)
-- MQ subscription and polling (works, but 0 messages because no new access events happened since subscription)
+### New File: `src/hooks/useTheme.tsx`
+Create a React context-based theme provider that:
+- Stores selected theme name in `localStorage` (key: `app-theme`)
+- Applies the theme by setting CSS variables on `document.documentElement`
+- Exposes `theme`, `setTheme`, and `themes` list
 
-**What fails:**
-- `/person/synchronize` -- requires Cloud Attendance subscription your AppKey lacks
-- Fallback to attendance logs -- finds 0 employees because `hikvision_attendance_logs` table is empty (no events ever captured)
+### Themes (6 total):
 
-**Current state:** `hikvision_employee_mapping` = 0 rows, `hikvision_attendance_logs` = 0 rows, `employees` with `device_employee_code` = 0 rows.
+1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
+2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
+3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
+4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
+5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
+6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
 
-## Solution: ISAPI Passthrough
+Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
 
-The DS-K1T343EFWX supports ISAPI commands. Hik-Partner Pro provides `/api/hpcgw/v1/device/isapi` to send ISAPI commands through the cloud to online devices -- no Cloud Attendance subscription needed.
+### Theme Switcher UI
+Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
 
-We will:
-1. Send `POST /ISAPI/AccessControl/UserInfo/Search` via ISAPI passthrough to get all registered users from the biometric device
-2. Map them to `hikvision_employee_mapping` and auto-create `employees` entries
+### Files:
+- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
+- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
+- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
+- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
 
-## Implementation
+### Adaptive Components
+The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
+- `bg-[#080808]` becomes `bg-background`
+- `bg-[#121212]` becomes `bg-card`
+- `text-white` becomes `text-foreground`
+- `text-zinc-500` becomes `text-muted-foreground`
+- `border-white/5` becomes `border-border`
 
-### Edge Function Changes (`supabase/functions/hikvision-sync/index.ts`)
+This ensures all themes work automatically.
 
-1. **Add `cloudApiIsapi()` helper** -- wraps `/api/hpcgw/v1/device/isapi` to send ISAPI commands to a specific device serial through the cloud gateway
+### Files to update for semantic colors:
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/layout/AppHeader.tsx`
+- `src/pages/Dashboard.tsx`
 
-2. **Add `sync-employees-isapi` action** -- new primary employee sync method:
-   - Calls `POST /ISAPI/AccessControl/UserInfo/Search?format=json` via ISAPI passthrough
-   - Parses `UserInfoSearch.UserInfo[]` response (employeeNo, name, userType)
-   - Upserts into `hikvision_employee_mapping`
-   - Auto-creates `employees` records for new persons
+## Phase 2: KPI Card Redesign (Reference Match)
 
-3. **Update `sync-employees` action** -- change fallback chain:
-   - Try 1: ISAPI passthrough (new)
-   - Try 2: Cloud `/person/synchronize` (existing, will fail but kept as fallback)
-   - Try 3: Attendance logs extraction (existing)
+Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
 
-4. **Add `push-employee-to-device` action** -- sync ERP employees TO the device:
-   - Calls `POST /ISAPI/AccessControl/UserInfo/Record?format=json` via ISAPI passthrough
-   - Sends employee name and code to the biometric device
-   - Creates mapping record
+**Layout per card:**
+- Top row: Label text (left) + arrow-up-right icon button (right corner)
+- Center: Large bold metric number (32-40px)
+- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
 
-5. **Update `full-sync`** to use the new ISAPI-first approach
+**Accent color system**: Each card gets a unique subtle background tint:
+- Card 1 (Revenue): Soft green background tint
+- Card 2 (Sales): White/neutral
+- Card 3 (Repairs): White/neutral
+- Card 4 (Pending): White/neutral
 
-### No UI Changes Needed
+The first card (most important KPI) gets a colored border-left accent strip.
 
-The existing Settings Hikvision stepper already has "Sync Employees" button per device -- it calls `sync-employees` action which we're fixing.
+**Contextual KPIs to display:**
+- Daily Cash Flow (from `finance_transactions`)
+- Store Sales with 18% GST indicator
+- Gym Revenue with 5% GST indicator
+- Active Repairs count
 
-### No Database Changes Needed
+## Phase 3: Employee Login Enforcement
 
-All tables (`hikvision_employee_mapping`, `employees`, `hikvision_devices`) already have the right schema.
+### Problem
+Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
 
-## Files
+### Fix in `src/pages/Employees.tsx`:
+1. Add a prominent "Create with Login" toggle/checkbox in the employee form
+2. When toggled ON (default for internal employees), make email and password fields REQUIRED
+3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
+4. For existing employees without `user_id`, show a "Link Login Account" button that:
+   - Opens a mini-form asking for email + password
+   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
+   - Updates the employee record with the returned `user_id`
+
+### Visual indicator in employee list:
+- Show a small shield/lock icon next to employees who have a linked auth account
+- Show a warning icon next to employees without one
+
+## Phase 4: Chart Theme Adaptation
+
+Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
+- Tooltip background: `hsl(var(--card))`
+- Tooltip border: `hsl(var(--border))`
+- Bar gradient: Use the theme's accent/success color
+- Axis text: `hsl(var(--muted-foreground))`
+
+This ensures charts look correct in both light and dark themes.
+
+## Files Summary
 
 ```text
-EDIT:  supabase/functions/hikvision-sync/index.ts  -- Add ISAPI passthrough + fix sync chain
+NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
+EDIT: src/main.tsx                       -- Wrap in ThemeProvider
+EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
+EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
+EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
+EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
+EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
 ```
 
+## Database Changes
+None required.
+
+## Implementation Order
+1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
+2. `src/index.css` -- Ensure variables are the correct defaults
+3. `src/main.tsx` -- Wire up provider
+4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
+5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
+6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
+7. `src/pages/Employees.tsx` -- Login enforcement
