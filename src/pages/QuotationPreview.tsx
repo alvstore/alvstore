@@ -19,6 +19,7 @@ export default function QuotationPreview() {
   const [quotation, setQuotation] = useState<any>(null);
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
 
   useEffect(() => {
     if (!id) return;
