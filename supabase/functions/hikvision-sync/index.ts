@@ -234,6 +234,12 @@ async function isapiSyncEmployees(
 ): Promise<{ success: boolean; records_synced: number; method: string }> {
   console.log(`[isapiSyncEmployees] Starting for device ${deviceSerial}`);
 
+  // Get device's site_id for transparent channel
+  const { data: deviceRec } = await supabase
+    .from("hikvision_devices").select("site_id").eq("id", deviceId).single();
+  const siteId = deviceRec?.site_id || "";
+  console.log(`[isapiSyncEmployees] Device site_id: ${siteId}`);
+
   let totalSynced = 0;
   let searchPos = 0;
   const pageSize = 30;
@@ -251,7 +257,8 @@ async function isapiSyncEmployees(
     const result = await cloudApiIsapi(
       areaDomain, accessToken, deviceSerial,
       "/ISAPI/AccessControl/UserInfo/Search?format=json",
-      searchBody
+      searchBody,
+      siteId
     );
 
     // Parse response - may be nested in different ways
