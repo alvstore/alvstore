@@ -1101,6 +1101,54 @@ serve(async (req: Request) => {
       }
     }
 
+    // ═══════════════════════════════════════════════
+    // ACTION: manual-add-employee — Manually register device employee code
+    // ═══════════════════════════════════════════════
+    if (action === "manual-add-employee") {
+      try {
+        const { employee_code, employee_name, erp_employee_id } = body;
+        if (!employee_code) return jsonResp({ success: false, error: "employee_code is required" }, 400);
+
+        const name = employee_name || `Employee ${employee_code}`;
+
+        // Upsert into mapping
+        const { error: mapErr } = await supabase.from("hikvision_employee_mapping").upsert({
+          device_employee_code: employee_code,
+          device_employee_name: name,
+          device_id: device_id || null,
+          erp_employee_id: erp_employee_id || null,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: "device_employee_code,device_id" });
+
+        if (mapErr) throw new Error(`Mapping upsert failed: ${mapErr.message}`);
+
+        // Link ERP employee if provided or auto-match
+        if (erp_employee_id) {
+          await supabase.from("employees")
+            .update({ device_employee_code: employee_code })
+            .eq("id", erp_employee_id);
+        } else {
+          // Try auto-match by name
+          const { data: emp } = await supabase
+            .from("employees").select("id").ilike("name", `%${name}%`).maybeSingle();
+          if (emp) {
+            await supabase.from("hikvision_employee_mapping")
+              .update({ erp_employee_id: emp.id })
+              .eq("device_employee_code", employee_code)
+              .eq("device_id", device_id || null);
+            await supabase.from("employees")
+              .update({ device_employee_code: employee_code })
+              .eq("id", emp.id);
+          }
+        }
+
+        await logSync(supabase, device_id, "manual_add_employee", "success", "employee", 1);
+        return jsonResp({ success: true, message: `Employee ${name} (${employee_code}) mapped` });
+      } catch (e) {
+        return jsonResp({ success: false, error: e instanceof Error ? e.message : "Failed" });
+      }
+    }
+
     return jsonResp({ error: "Invalid action" }, 400);
   } catch (e) {
     console.error(`[FATAL] ${e instanceof Error ? e.message : "Internal error"}`);
