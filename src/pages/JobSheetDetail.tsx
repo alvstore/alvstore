@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -19,7 +20,7 @@ import {
   History, Shield, Upload, CheckCircle, Circle, Clock,
   FileText, Wrench, Package, Eye, Truck, IndianRupee, ArrowRightLeft, Printer,
   Receipt, CreditCard, Plus, Download, Phone, Hash, Power, PowerOff,
-  UserCheck, CalendarDays,
+  UserCheck, CalendarDays, ShieldCheck, Link,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotification } from "@/lib/notifications";
@@ -94,6 +95,11 @@ export default function JobSheetDetail() {
   const [partsSheetOpen, setPartsSheetOpen] = useState(false);
   const [partForm, setPartForm] = useState({ name: "", cost: "", gst_percentage: "18", quantity: "1" });
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
+  const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+  // Warranty state
+  const [warrantyDays, setWarrantyDays] = useState("");
+  const [warrantyTerms, setWarrantyTerms] = useState("");
+  const [savingWarranty, setSavingWarranty] = useState(false);
 
   const isAdminStaff = hasRole("admin") || hasRole("staff");
 
@@ -111,6 +117,8 @@ export default function JobSheetDetail() {
     setAuditLog(logRes.data || []);
     setRepairParts((partsRes.data as any[]) || []);
     setActualCost(jobRes.data.actual_cost?.toString() || "");
+    setWarrantyDays((jobRes.data as any).warranty_days?.toString() || "");
+    setWarrantyTerms((jobRes.data as any).warranty_terms || "");
 
     if (jobRes.data.post_repair_checklist && (jobRes.data.post_repair_checklist as any[]).length > 0) {
       setPostChecklist(jobRes.data.post_repair_checklist as any);
@@ -122,11 +130,9 @@ export default function JobSheetDetail() {
       setCreatorName(profile?.full_name || null);
     }
 
-    const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "technician");
-    if (roles && roles.length > 0) {
-      const { data: profiles } = await supabase.from("profiles").select("user_id, full_name").in("user_id", roles.map(r => r.user_id));
-      setTechnicians(profiles || []);
-    }
+    // Fetch technicians from employees table
+    const { data: empTechs } = await supabase.from("employees").select("id, name").eq("role", "technician").eq("status", "active");
+    setTechnicians(empTechs || []);
     setLoading(false);
   };
 
@@ -147,9 +153,13 @@ export default function JobSheetDetail() {
       await supabase.from("job_sheet_audit_log").insert({
         job_sheet_id: id!, action: "technician_assigned", details: `Technician assigned`, user_id: user?.id, user_role: hasRole("admin") ? "admin" : "staff",
       });
-      const techName = technicians.find(t => t.user_id === techId)?.full_name || "Technician";
-      await createNotification(techId, "New Job Assigned", `Job ${job?.job_number} has been assigned to you`, "repair", `/repairs/${id}`);
-      toast.success("Technician assigned"); fetchAll();
+      const techName = technicians.find(t => t.id === techId)?.name || "Technician";
+      // Try to notify if technician has a linked user_id
+      const { data: empData } = await supabase.from("employees").select("user_id").eq("id", techId).single();
+      if (empData?.user_id) {
+        await createNotification(empData.user_id, "New Job Assigned", `Job ${job?.job_number} has been assigned to you`, "repair", `/repairs/${id}`);
+      }
+      toast.success(`Technician ${techName} assigned`); fetchAll();
     }
   };
 
@@ -291,6 +301,44 @@ export default function JobSheetDetail() {
     toast.success("Part added"); setPartForm({ name: "", cost: "", gst_percentage: "18", quantity: "1" }); setPartsSheetOpen(false); fetchAll();
   };
 
+  const sendPaymentLink = async () => {
+    if (!job) return;
+    setSendingPaymentLink(true);
+    try {
+      const totalAmount = (Number(job.total_amount) || 0) + repairParts.reduce((s, p) => s + Number(p.total), 0);
+      const { data, error } = await supabase.functions.invoke("create-payment-link", {
+        body: {
+          amount: totalAmount,
+          customer_name: job.customers?.name,
+          customer_email: job.customers?.email,
+          customer_phone: job.customers?.phone,
+          description: `Payment for ${job.job_number}`,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        navigator.clipboard.writeText(data.payment_link_url);
+        toast.success("Payment link created & copied!");
+      } else {
+        toast.error(data?.error || "Failed to create payment link");
+      }
+    } catch (err: any) { toast.error(err.message); } finally { setSendingPaymentLink(false); }
+  };
+
+  const saveWarranty = async () => {
+    if (!id) return;
+    setSavingWarranty(true);
+    const days = parseInt(warrantyDays) || 0;
+    const { error } = await supabase.from("job_sheets").update({
+      warranty_days: days,
+      warranty_terms: warrantyTerms || null,
+      warranty_start_date: days > 0 ? new Date().toISOString().split("T")[0] : null,
+    } as any).eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Warranty saved"); fetchAll(); }
+    setSavingWarranty(false);
+  };
+
   const handlePrint = () => window.print();
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -298,7 +346,7 @@ export default function JobSheetDetail() {
 
   const checklist = (job.pre_repair_checklist as any[]) || [];
   const checklistCategories = [...new Set(checklist.map((c: any) => c.category))];
-  const techName = technicians.find(t => t.user_id === job.assigned_technician_id)?.full_name;
+  const techName = technicians.find(t => t.id === job.assigned_technician_id)?.name;
   const currentStatusIndex = TIMELINE_STEPS.findIndex(s => s.key === job.status);
   const isRejected = job.status === "rejected";
 
@@ -313,6 +361,16 @@ export default function JobSheetDetail() {
   const powerOnItem = checklist.find((c: any) => c.item === "Device turns ON");
   const devicePowerOn = powerOnItem?.value === "yes";
   const devicePowerOff = powerOnItem?.value === "no";
+
+  // Warranty info
+  const wDays = (job as any).warranty_days || 0;
+  const wStart = (job as any).warranty_start_date;
+  const warrantyActive = wDays > 0 && wStart;
+  const warrantyExpiry = warrantyActive ? new Date(new Date(wStart).getTime() + wDays * 86400000) : null;
+  const warrantyExpired = warrantyExpiry ? warrantyExpiry < new Date() : false;
+
+  const showWarrantyCard = ["repair_completed", "quality_check", "invoice_generated", "delivered"].includes(job.status);
+  const showTechAssignment = isAdminStaff && ["created", "pending_approval", "approved", "assigned"].includes(job.status);
 
   return (
     <div className="space-y-6">
@@ -331,6 +389,8 @@ export default function JobSheetDetail() {
             </Badge>
             {devicePowerOn && <Badge className="bg-success/10 text-success"><Power className="h-3 w-3 mr-1" />Power ON</Badge>}
             {devicePowerOff && <Badge className="bg-destructive/10 text-destructive"><PowerOff className="h-3 w-3 mr-1" />Power OFF</Badge>}
+            {warrantyActive && !warrantyExpired && <Badge className="bg-info/10 text-info"><ShieldCheck className="h-3 w-3 mr-1" />Warranty till {warrantyExpiry!.toLocaleDateString("en-IN")}</Badge>}
+            {warrantyActive && warrantyExpired && <Badge className="bg-muted text-muted-foreground"><ShieldCheck className="h-3 w-3 mr-1" />Warranty expired</Badge>}
           </div>
           <div className="flex items-center gap-4 mt-1 flex-wrap text-sm text-muted-foreground">
             <span className="font-medium text-foreground">{job.customers?.name}</span>
@@ -540,6 +600,11 @@ export default function JobSheetDetail() {
                   </Button>
                 )}
                 {isAdminStaff && (
+                  <Button className="w-full justify-start" variant="outline" size="sm" onClick={sendPaymentLink} disabled={sendingPaymentLink}>
+                    <Link className="h-3.5 w-3.5 mr-2" /> {sendingPaymentLink ? "Sending..." : "Send Payment Link"}
+                  </Button>
+                )}
+                {isAdminStaff && (
                   <Button className="w-full justify-start" variant="outline" size="sm" onClick={() => setPartsSheetOpen(true)}>
                     <Plus className="h-3.5 w-3.5 mr-2" /> Add Part
                   </Button>
@@ -559,14 +624,14 @@ export default function JobSheetDetail() {
             </Card>
 
             {/* Technician Assignment */}
-            {isAdminStaff && job.status === "approved" && (
+            {showTechAssignment && (
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-sm">Assign Technician</CardTitle></CardHeader>
                 <CardContent>
-                  <Select onValueChange={assignTechnician}>
+                  <Select value={job.assigned_technician_id || undefined} onValueChange={assignTechnician}>
                     <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
                     <SelectContent>
-                      {technicians.map(t => <SelectItem key={t.user_id} value={t.user_id}>{t.full_name || t.user_id}</SelectItem>)}
+                      {technicians.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </CardContent>
@@ -636,6 +701,33 @@ export default function JobSheetDetail() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Warranty Card */}
+            {showWarrantyCard && isAdminStaff && (
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Warranty</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-xs">
+                  {warrantyActive && (
+                    <div className={`p-2.5 rounded-lg ${warrantyExpired ? "bg-destructive/10" : "bg-success/10"}`}>
+                      <p className="font-medium">{wDays} days warranty</p>
+                      <p className="text-muted-foreground">Start: {new Date(wStart).toLocaleDateString("en-IN")} · Expires: {warrantyExpiry!.toLocaleDateString("en-IN")}</p>
+                      {(job as any).warranty_terms && <p className="mt-1 text-muted-foreground">{(job as any).warranty_terms}</p>}
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Warranty Days</Label>
+                    <Input type="number" className="h-7 text-xs" value={warrantyDays} onChange={e => setWarrantyDays(e.target.value)} placeholder="e.g. 30, 90, 180" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Warranty Terms</Label>
+                    <Textarea className="text-xs min-h-[60px]" value={warrantyTerms} onChange={e => setWarrantyTerms(e.target.value)} placeholder="e.g. Display replacement warranty, no water damage coverage" />
+                  </div>
+                  <Button size="sm" variant="outline" className="w-full text-xs" onClick={saveWarranty} disabled={savingWarranty}>
+                    {savingWarranty ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <ShieldCheck className="h-3 w-3 mr-1" />} Save Warranty
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Timeline */}
             <Card>

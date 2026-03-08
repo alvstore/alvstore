@@ -1,114 +1,124 @@
 
+# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
-# Comprehensive Audit & Fix Plan
+## Overview
 
-## Issues Identified
+Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
 
-1. **Dashboard quick action URLs are wrong**: `/quotations/new` → should be `/sales/new`, `/job-sheets/create` → should be `/repairs/new`. Missing quick buttons for Payment and Expense.
-2. **Technician assignment broken**: Fetches from `user_roles` (auth users with technician role) but most technicians are in `employees` table without linked auth accounts. Need to fetch from `employees` where `role = 'technician'` instead.
-3. **No warranty tracking**: After repair completion, no way to record warranty days or warranty terms.
-4. **Razorpay payment link missing on Quotation and JobSheet**: Only InvoicePreview has it.
-5. **Hikvision needs full redesign**: Current flow doesn't persist credentials properly, no device selection/save UI, no per-device sync actions.
-6. **User wants a public front website/landing page**.
+## Phase 1: Theme Provider and Multiple Themes
 
----
+### New File: `src/hooks/useTheme.tsx`
+Create a React context-based theme provider that:
+- Stores selected theme name in `localStorage` (key: `app-theme`)
+- Applies the theme by setting CSS variables on `document.documentElement`
+- Exposes `theme`, `setTheme`, and `themes` list
 
-## 1. Fix Dashboard Quick Action URLs + Add Payment/Expense Buttons
+### Themes (6 total):
 
-**File: `src/pages/Dashboard.tsx` (lines 144-152)**
+1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
+2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
+3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
+4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
+5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
+6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
 
-- Change `/quotations/new` → `/sales/new`
-- Change `/job-sheets/create` → `/repairs/new`
-- Add "Quick Payment" button → opens `/finance` 
-- Add "Quick Expense" button → opens `/finance`
+Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
 
----
+### Theme Switcher UI
+Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
 
-## 2. Fix Technician Assignment (Fetch from Employees)
+### Files:
+- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
+- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
+- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
+- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
 
-**File: `src/pages/JobSheetDetail.tsx` (lines 125-129)**
+### Adaptive Components
+The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
+- `bg-[#080808]` becomes `bg-background`
+- `bg-[#121212]` becomes `bg-card`
+- `text-white` becomes `text-foreground`
+- `text-zinc-500` becomes `text-muted-foreground`
+- `border-white/5` becomes `border-border`
 
-Current: Fetches from `user_roles` where `role = 'technician'`, then gets `profiles`.
+This ensures all themes work automatically.
 
-**Fix**: Fetch from `employees` where `role = 'technician'` and `status = 'active'`. Use `employees.id` + `employees.name` instead of `user_id` / `full_name`. Update `assignTechnician` to work with employee IDs. Also show technician assignment card for statuses beyond just `approved` (also `created`, `pending_approval`, `assigned`).
+### Files to update for semantic colors:
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/layout/AppHeader.tsx`
+- `src/pages/Dashboard.tsx`
 
----
+## Phase 2: KPI Card Redesign (Reference Match)
 
-## 3. Add Warranty Tracking to Job Sheets
+Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
 
-**Database Migration**:
-```sql
-ALTER TABLE public.job_sheets ADD COLUMN IF NOT EXISTS warranty_days integer DEFAULT 0;
-ALTER TABLE public.job_sheets ADD COLUMN IF NOT EXISTS warranty_terms text;
-ALTER TABLE public.job_sheets ADD COLUMN IF NOT EXISTS warranty_start_date date;
-```
+**Layout per card:**
+- Top row: Label text (left) + arrow-up-right icon button (right corner)
+- Center: Large bold metric number (32-40px)
+- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
 
-**File: `src/pages/JobSheetDetail.tsx`**:
-- Add a "Warranty" card in the right sidebar (below Cost Tracking), visible after `repair_completed` / `quality_check` / `invoice_generated` / `delivered`
-- Fields: Warranty Days (number input), Warranty Terms (text), auto-set `warranty_start_date` to today when saved
-- Show warranty expiry date badge in header when warranty is active
+**Accent color system**: Each card gets a unique subtle background tint:
+- Card 1 (Revenue): Soft green background tint
+- Card 2 (Sales): White/neutral
+- Card 3 (Repairs): White/neutral
+- Card 4 (Pending): White/neutral
 
----
+The first card (most important KPI) gets a colored border-left accent strip.
 
-## 4. Razorpay Payment Link on Quotation Preview + Job Sheet Detail
+**Contextual KPIs to display:**
+- Daily Cash Flow (from `finance_transactions`)
+- Store Sales with 18% GST indicator
+- Gym Revenue with 5% GST indicator
+- Active Repairs count
 
-**File: `src/pages/QuotationPreview.tsx`**:
-- Add "Send Payment Link" button (similar to InvoicePreview) that calls `create-payment-link` with quotation total and customer details
+## Phase 3: Employee Login Enforcement
 
-**File: `src/pages/JobSheetDetail.tsx`**:
-- Add "Send Payment Link" button in Actions card that calls `create-payment-link` with job sheet total and customer details
-- Reuse the same edge function, passing `description: "Payment for JOB-XXXX"`
+### Problem
+Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
 
----
+### Fix in `src/pages/Employees.tsx`:
+1. Add a prominent "Create with Login" toggle/checkbox in the employee form
+2. When toggled ON (default for internal employees), make email and password fields REQUIRED
+3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
+4. For existing employees without `user_id`, show a "Link Login Account" button that:
+   - Opens a mini-form asking for email + password
+   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
+   - Updates the employee record with the returned `user_id`
 
-## 5. Hikvision Full Redesign
+### Visual indicator in employee list:
+- Show a small shield/lock icon next to employees who have a linked auth account
+- Show a warning icon next to employees without one
 
-**File: `src/pages/Settings.tsx` (HikvisionTab)**:
+## Phase 4: Chart Theme Adaptation
 
-Complete redesign with step-by-step flow:
+Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
+- Tooltip background: `hsl(var(--card))`
+- Tooltip border: `hsl(var(--border))`
+- Bar gradient: Use the theme's accent/success color
+- Axis text: `hsl(var(--muted-foreground))`
 
-1. **Step 1 - Credentials**: App Key + Secret Key inputs with Save & Test (already exists, keep)
-2. **Step 2 - Site Selection**: After valid credentials, show discovered sites in a selectable list. Add "Set as Default" button per site that saves to `business_settings.integrations.hik_default_site_id`
-3. **Step 3 - Device Discovery**: After site selected, call `list-cloud-devices` for that site. Show devices in a table with Name, Serial, Model, Status. Add "Save Device" button that upserts into `hikvision_devices`
-4. **Step 4 - Sync Actions**: Per-device sync buttons: "Sync Employees", "Sync Attendance", "Full Sync". Show results inline.
-
-Replace the current flat layout with a stepper/accordion UI. Each step unlocks after the previous succeeds.
-
----
-
-## 6. Public Landing Page
-
-**New File: `src/pages/LandingPage.tsx`**:
-- Modern SaaS landing page with:
-  - Hero section (company name, tagline, CTA to login)
-  - Features grid (Repair Management, Invoicing, POS, Inventory, CRM)
-  - How it works section
-  - Footer with links
-- Clean white/green theme matching Donezo style
-
-**File: `src/App.tsx`**:
-- Change `/` route: if not authenticated → show LandingPage, if authenticated → show Dashboard
-- Or add `/welcome` route for landing page
-
----
+This ensures charts look correct in both light and dark themes.
 
 ## Files Summary
 
 ```text
-MIGRATION:   warranty columns on job_sheets
-EDIT:        src/pages/Dashboard.tsx              -- Fix URLs, add payment/expense buttons
-EDIT:        src/pages/JobSheetDetail.tsx          -- Fix technician fetch, add warranty, add Razorpay
-EDIT:        src/pages/QuotationPreview.tsx        -- Add Razorpay payment link
-EDIT:        src/pages/Settings.tsx                -- Hikvision full redesign with stepper
-NEW:         src/pages/LandingPage.tsx             -- Public front website
-EDIT:        src/App.tsx                           -- Landing page route
+NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
+EDIT: src/main.tsx                       -- Wrap in ThemeProvider
+EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
+EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
+EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
+EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
+EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
 ```
 
-## Implementation Order
-1. Database migration (warranty columns)
-2. Dashboard URL fixes + quick buttons
-3. JobSheetDetail: technician fetch fix + warranty + Razorpay
-4. QuotationPreview: Razorpay link
-5. Settings: Hikvision stepper redesign
-6. LandingPage + App.tsx route
+## Database Changes
+None required.
 
+## Implementation Order
+1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
+2. `src/index.css` -- Ensure variables are the correct defaults
+3. `src/main.tsx` -- Wire up provider
+4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
+5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
+6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
+7. `src/pages/Employees.tsx` -- Login enforcement

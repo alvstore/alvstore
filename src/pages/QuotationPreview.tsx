@@ -9,7 +9,7 @@ import { BusinessHeader } from "@/components/documents/BusinessHeader";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
-import { ArrowLeft, Send, Download, Printer, Pencil, ArrowRightLeft, Copy, Eye } from "lucide-react";
+import { ArrowLeft, Send, Download, Printer, Pencil, ArrowRightLeft, Copy, Eye, Link, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function QuotationPreview() {
@@ -19,6 +19,7 @@ export default function QuotationPreview() {
   const [quotation, setQuotation] = useState<any>(null);
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -50,6 +51,30 @@ export default function QuotationPreview() {
     if (!quotation?.public_token) return;
     navigator.clipboard.writeText(`${window.location.origin}/sales/public/${quotation.public_token}`);
     toast.success("Link copied");
+  };
+
+  const sendPaymentLink = async () => {
+    if (!quotation) return;
+    setSendingPaymentLink(true);
+    try {
+      const customer = quotation.customers;
+      const { data, error } = await supabase.functions.invoke("create-payment-link", {
+        body: {
+          amount: quotation.total || 0,
+          customer_name: customer?.name,
+          customer_email: customer?.email,
+          customer_phone: customer?.phone,
+          description: `Payment for ${quotation.quotation_number}`,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        navigator.clipboard.writeText(data.payment_link_url);
+        toast.success("Payment link created & copied!");
+      } else {
+        toast.error(data?.error || "Failed to create payment link");
+      }
+    } catch (err: any) { toast.error(err.message); } finally { setSendingPaymentLink(false); }
   };
 
   const convertToInvoice = async () => {
@@ -176,6 +201,11 @@ export default function QuotationPreview() {
               <CardContent className="p-5 space-y-3">
                 <Button className="w-full bg-primary hover:bg-primary/90" onClick={copyPublicLink}>
                   <Send className="h-4 w-4 mr-2" /> Send Quotation
+                </Button>
+
+                <Button variant="outline" className="w-full" onClick={sendPaymentLink} disabled={sendingPaymentLink}>
+                  {sendingPaymentLink ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link className="h-4 w-4 mr-2" />}
+                  Send Payment Link
                 </Button>
 
                 <Button variant="outline" className="w-full" onClick={() => window.print()}>
