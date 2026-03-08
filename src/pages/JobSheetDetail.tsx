@@ -435,7 +435,7 @@ export default function JobSheetDetail() {
       {/* Two-column layout */}
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Left column - Main content (70%) */}
-        <div className="flex-1 space-y-6 min-w-0">
+        <div className="flex-1 space-y-6 min-w-0 print-area">
 
           {/* Customer & Device Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
