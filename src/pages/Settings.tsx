@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   User, Shield, Building2, Receipt, Mail, MessageSquare, Phone,
-  Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File,
+  Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock,
   Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -777,17 +777,36 @@ function RazorpayTab() {
 // ─── Hikvision Tab ──────────────────────────────────────────────
 function HikvisionTab() {
   const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
-  const [testing, setTesting] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<"idle" | "connected" | "error">("idle");
-  const [discoveredSites, setDiscoveredSites] = useState<Array<{ siteId: string; siteName: string; deviceCount: number }>>([]);
-  const [totalDevices, setTotalDevices] = useState(0);
+  const [step, setStep] = useState(1);
   const [appKey, setAppKey] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [showAppKey, setShowAppKey] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [credentialStatus, setCredentialStatus] = useState<"idle" | "valid" | "invalid">("idle");
-  const [credentialInfo, setCredentialInfo] = useState<{ areaDomain?: string; expireTime?: number } | null>(null);
   const [savingCredentials, setSavingCredentials] = useState(false);
+  const [credentialInfo, setCredentialInfo] = useState<{ areaDomain?: string } | null>(null);
+
+  // Step 2: Sites
+  const [sites, setSites] = useState<Array<{ id: string; siteName: string; deviceCount?: number }>>([]);
+  const [loadingSites, setLoadingSites] = useState(false);
+  const [selectedSiteId, setSelectedSiteId] = useState(integrations["hik_default_site_id"] || "");
+
+  // Step 3: Devices
+  const [cloudDevices, setCloudDevices] = useState<any[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [importingDevices, setImportingDevices] = useState(false);
+  const [savedDevices, setSavedDevices] = useState<any[]>([]);
+
+  // Step 4: Sync
+  const [syncingAction, setSyncingAction] = useState<string | null>(null);
+  const [syncResults, setSyncResults] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    // Load saved devices from DB
+    supabase.from("hikvision_devices").select("*").order("created_at").then(({ data }) => setSavedDevices(data || []));
+    // Auto-advance if credentials already set
+    if (integrations["hik_default_site_id"]) setSelectedSiteId(integrations["hik_default_site_id"]);
+  }, [integrations]);
 
   const saveAndTestCredentials = async () => {
     if (!appKey || !secretKey) { toast.error("Both App Key and Secret Key are required"); return; }
@@ -800,8 +819,9 @@ function HikvisionTab() {
       if (error) throw error;
       if (data?.success) {
         setCredentialStatus("valid");
-        setCredentialInfo({ areaDomain: data.areaDomain, expireTime: data.expireTime });
-        toast.success("Credentials validated!");
+        setCredentialInfo({ areaDomain: data.areaDomain });
+        toast.success("Credentials validated! Proceed to select your site.");
+        setStep(2);
       } else {
         setCredentialStatus("invalid");
         toast.error(data?.error || "Invalid credentials");
@@ -813,121 +833,324 @@ function HikvisionTab() {
     setSavingCredentials(false);
   };
 
-  const testConnection = async () => {
-    setTesting(true);
-    setConnectionStatus("idle");
+  const discoverSites = async () => {
+    setLoadingSites(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "site-search" } });
+      if (error) throw error;
+      if (data?.success) {
+        setSites(data.sites || []);
+        toast.success(`Found ${data.sites?.length || 0} sites`);
+      } else toast.error(data?.error || "Failed to discover sites");
+    } catch (e: any) { toast.error(e.message); }
+    setLoadingSites(false);
+  };
+
+  const selectSite = async (siteId: string) => {
+    setSelectedSiteId(siteId);
+    updateField("hik_default_site_id", siteId);
+    await saveIntegrations();
+    toast.success("Default site saved");
+    setStep(3);
+  };
+
+  const discoverDevices = async () => {
+    setLoadingDevices(true);
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "list-devices" } });
       if (error) throw error;
       if (data?.success) {
-        setConnectionStatus("connected");
-        setDiscoveredSites(data.sites || []);
-        setTotalDevices(data.devices?.length || 0);
-        toast.success(`Connected — ${data.sites?.length || 0} sites, ${data.devices?.length || 0} devices`);
-      } else {
-        setConnectionStatus("error");
-        toast.error(data?.error || "Connection failed");
-      }
-    } catch (e: any) {
-      setConnectionStatus("error");
-      toast.error(e.message || "Connection test failed");
-    }
-    setTesting(false);
+        setCloudDevices(data.devices || []);
+        toast.success(`Found ${data.devices?.length || 0} devices`);
+      } else toast.error(data?.error || "Failed");
+    } catch (e: any) { toast.error(e.message); }
+    setLoadingDevices(false);
   };
 
+  const importAllDevices = async () => {
+    setImportingDevices(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+        body: { action: "list-cloud-devices", import_devices: true },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Imported ${data.imported || 0} devices`);
+        const { data: devs } = await supabase.from("hikvision_devices").select("*").order("created_at");
+        setSavedDevices(devs || []);
+        setStep(4);
+      } else toast.error(data?.error || "Failed");
+    } catch (e: any) { toast.error(e.message); }
+    setImportingDevices(false);
+  };
+
+  const runDeviceSync = async (deviceId: string, deviceSerial: string, action: string) => {
+    setSyncingAction(`${deviceId}-${action}`);
+    try {
+      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+        body: { action, device_id: deviceId, device_serial: deviceSerial },
+      });
+      if (error) throw error;
+      setSyncResults(prev => ({ ...prev, [`${deviceId}-${action}`]: data }));
+      if (data?.success) toast.success(`${action.replace(/-/g, " ")} completed — ${data.records_synced || 0} records`);
+      else toast.error(data?.error || "Failed");
+    } catch (e: any) { toast.error(e.message); }
+    setSyncingAction(null);
+  };
+
+  const STEPS = [
+    { num: 1, label: "Credentials" },
+    { num: 2, label: "Select Site" },
+    { num: 3, label: "Devices" },
+    { num: 4, label: "Sync" },
+  ];
+
   return (
-    <div className="grid gap-6 max-w-2xl">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Cloud className="h-5 w-5" /> Hik-Partner Pro Cloud API</CardTitle>
-          <CardDescription>Enter your App Key and Secret Key from the Hik-Partner Pro developer portal.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>App Key</Label>
-              <div className="relative">
-                <Input type={showAppKey ? "text" : "password"} value={appKey} onChange={e => setAppKey(e.target.value)} placeholder="Enter App Key" />
-                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowAppKey(!showAppKey)}>
-                  {showAppKey ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Secret Key</Label>
-              <div className="relative">
-                <Input type={showSecretKey ? "text" : "password"} value={secretKey} onChange={e => setSecretKey(e.target.value)} placeholder="Enter Secret Key" />
-                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowSecretKey(!showSecretKey)}>
-                  {showSecretKey ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
+    <div className="grid gap-6 max-w-3xl">
+      {/* Stepper Header */}
+      <div className="flex items-center gap-2">
+        {STEPS.map((s, idx) => (
+          <div key={s.num} className="flex items-center gap-2">
+            <button
+              onClick={() => setStep(s.num)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
+                step === s.num ? "bg-primary text-primary-foreground" :
+                step > s.num ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+              )}
+            >
+              <span className="h-5 w-5 rounded-full bg-background/20 flex items-center justify-center text-[10px] font-bold">{step > s.num ? "✓" : s.num}</span>
+              {s.label}
+            </button>
+            {idx < STEPS.length - 1 && <div className="w-6 h-px bg-border" />}
           </div>
-          {credentialStatus !== "idle" && (
-            <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${credentialStatus === "valid" ? "bg-green-500/10 text-green-700 border border-green-500/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
-              <span className={`h-2.5 w-2.5 rounded-full ${credentialStatus === "valid" ? "bg-green-500" : "bg-destructive"}`} />
-              {credentialStatus === "valid" ? "Credentials valid." : "Invalid credentials."}
-            </div>
-          )}
-          <Button onClick={saveAndTestCredentials} disabled={savingCredentials || !appKey || !secretKey}>
-            {savingCredentials ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}Save & Test
-          </Button>
-        </CardContent>
-      </Card>
+        ))}
+      </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Connection & Discovery</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
-            <span className={`h-3 w-3 rounded-full ${connectionStatus === "connected" ? "bg-green-500" : connectionStatus === "error" ? "bg-red-500" : "bg-muted-foreground/30"}`} />
-            <span className="text-sm">{connectionStatus === "connected" ? `Connected — ${discoveredSites.length} sites, ${totalDevices} devices` : connectionStatus === "error" ? "Connection failed" : "Not tested"}</span>
-          </div>
-          <Button onClick={testConnection} disabled={testing} variant="outline">
-            {testing ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}Test Connection
-          </Button>
-        </CardContent>
-      </Card>
-
-      {discoveredSites.length > 0 && (
+      {/* Step 1: Credentials */}
+      {step === 1 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Discovered Sites</CardTitle></CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader><TableRow><TableHead>Site Name</TableHead><TableHead>Site ID</TableHead><TableHead>Devices</TableHead><TableHead>Default</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {discoveredSites.map(s => (
-                  <TableRow key={s.siteId} className="cursor-pointer hover:bg-muted/50" onClick={() => { updateField("hik_default_site_id", s.siteId); toast.info("Default site set"); }}>
-                    <TableCell className="font-medium">{s.siteName}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{s.siteId}</TableCell>
-                    <TableCell>{s.deviceCount}</TableCell>
-                    <TableCell>{integrations["hik_default_site_id"] === s.siteId && <Badge className="bg-primary/10 text-primary">Default</Badge>}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Cloud className="h-5 w-5" /> Hik-Partner Pro Cloud API</CardTitle>
+            <CardDescription>Enter your App Key and Secret Key from the Hik-Partner Pro developer portal. These are stored as backend secrets.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>App Key</Label>
+                <div className="relative">
+                  <Input type={showAppKey ? "text" : "password"} value={appKey} onChange={e => setAppKey(e.target.value)} placeholder="Enter App Key" />
+                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowAppKey(!showAppKey)}>
+                    {showAppKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Secret Key</Label>
+                <div className="relative">
+                  <Input type={showSecretKey ? "text" : "password"} value={secretKey} onChange={e => setSecretKey(e.target.value)} placeholder="Enter Secret Key" />
+                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowSecretKey(!showSecretKey)}>
+                    {showSecretKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+            </div>
+            {credentialStatus !== "idle" && (
+              <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${credentialStatus === "valid" ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
+                <span className={`h-2.5 w-2.5 rounded-full ${credentialStatus === "valid" ? "bg-success" : "bg-destructive"}`} />
+                {credentialStatus === "valid" ? `Credentials valid. Area Domain: ${credentialInfo?.areaDomain || "detected"}` : "Invalid credentials. Check your App Key and Secret Key."}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={saveAndTestCredentials} disabled={savingCredentials || !appKey || !secretKey}>
+                {savingCredentials ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}Validate & Continue
+              </Button>
+              {credentialStatus === "valid" && (
+                <Button variant="outline" onClick={() => setStep(2)}>Skip to Sites →</Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Note: API keys are already stored as backend secrets (HIK_PARTNER_APP_KEY, HIK_PARTNER_SECRET_KEY). This validates them before proceeding.</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Sync Status Dashboard */}
-      <HikvisionSyncDashboard />
+      {/* Step 2: Site Selection */}
+      {step === 2 && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Discover & Select Site</CardTitle>
+              <CardDescription>Discover all sites linked to your Hik-Partner Pro account, then select your default site.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={discoverSites} disabled={loadingSites}>
+                {loadingSites ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Cloud className="h-4 w-4 mr-2" />}Discover Sites
+              </Button>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Sync Settings</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1.5"><Label>Default Site ID</Label><Input value={integrations["hik_default_site_id"] || ""} onChange={e => updateField("hik_default_site_id", e.target.value)} /></div>
-          <div className="space-y-1.5">
-            <Label>Sync Mode</Label>
-            <Select value={integrations["hik_sync_mode"] || "manual"} onValueChange={v => updateField("hik_sync_mode", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="manual">Manual</SelectItem><SelectItem value="auto">Automatic</SelectItem></SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5"><Label>Auto-Sync Interval (min)</Label><Input type="number" value={integrations["hik_sync_interval"] || "30"} onChange={e => updateField("hik_sync_interval", e.target.value)} /></div>
-        </CardContent>
-      </Card>
+              {sites.length > 0 && (
+                <Table>
+                  <TableHeader><TableRow><TableHead>Site Name</TableHead><TableHead>Site ID</TableHead><TableHead>Action</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {sites.map(s => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">{s.siteName}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{s.id}</TableCell>
+                        <TableCell>
+                          {selectedSiteId === s.id ? (
+                            <Badge className="bg-success/10 text-success"><CheckCircle2 className="h-3 w-3 mr-1" />Default</Badge>
+                          ) : (
+                            <Button size="sm" variant="outline" onClick={() => selectSite(s.id)}>Set Default</Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
 
-      <Button onClick={saveIntegrations} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Hikvision Settings</Button>
+              {selectedSiteId && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-success/10 text-success border border-success/20 text-sm">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Default site set: <span className="font-mono text-xs">{selectedSiteId}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          {selectedSiteId && (
+            <Button onClick={() => setStep(3)}>Continue to Devices →</Button>
+          )}
+        </div>
+      )}
+
+      {/* Step 3: Device Discovery */}
+      {step === 3 && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Device Discovery</CardTitle>
+              <CardDescription>Discover biometric devices from your cloud account and import them.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button onClick={discoverDevices} disabled={loadingDevices} variant="outline">
+                  {loadingDevices ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Cloud className="h-4 w-4 mr-2" />}Discover Devices
+                </Button>
+                {cloudDevices.length > 0 && (
+                  <Button onClick={importAllDevices} disabled={importingDevices}>
+                    {importingDevices ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}Import All Devices
+                  </Button>
+                )}
+              </div>
+
+              {cloudDevices.length > 0 && (
+                <Table>
+                  <TableHeader><TableRow><TableHead>Device Name</TableHead><TableHead>Serial</TableHead><TableHead>Model</TableHead><TableHead>Site</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {cloudDevices.map((d: any, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">{d.deviceName || d.deviceSerial}</TableCell>
+                        <TableCell className="font-mono text-xs">{d.deviceSerial}</TableCell>
+                        <TableCell>{d.deviceModel || "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{d._siteName || "—"}</TableCell>
+                        <TableCell>
+                          <Badge className={String(d.deviceOnlineStatus) === "1" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}>
+                            {String(d.deviceOnlineStatus) === "1" ? "Online" : "Offline"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Saved Devices */}
+          {savedDevices.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Saved Devices ({savedDevices.length})</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Serial</TableHead><TableHead>Model</TableHead><TableHead>Status</TableHead><TableHead>Last Sync</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {savedDevices.map(d => (
+                      <TableRow key={d.id}>
+                        <TableCell className="font-medium">{d.name}</TableCell>
+                        <TableCell className="font-mono text-xs">{d.device_serial}</TableCell>
+                        <TableCell>{d.device_model || "—"}</TableCell>
+                        <TableCell><Badge className={d.status === "active" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}>{d.status}</Badge></TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{d.last_sync_at ? new Date(d.last_sync_at).toLocaleString() : "Never"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          <Button onClick={() => setStep(4)} disabled={savedDevices.length === 0}>Continue to Sync →</Button>
+        </div>
+      )}
+
+      {/* Step 4: Sync Actions */}
+      {step === 4 && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Sync Actions</CardTitle>
+              <CardDescription>Run sync operations per device. Select a device and choose the sync action.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {savedDevices.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No saved devices. Go back to Step 3 to import devices first.</p>
+              ) : (
+                savedDevices.map(d => (
+                  <div key={d.id} className="border border-border rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-sm">{d.name}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{d.device_serial} · {d.device_model || "Unknown model"}</p>
+                      </div>
+                      <Badge className={d.status === "active" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}>{d.status}</Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { action: "sync-employees", label: "Sync Employees", icon: User },
+                        { action: "sync-attendance", label: "Sync Attendance", icon: Clock },
+                        { action: "sync-departments", label: "Sync Departments", icon: Building2 },
+                        { action: "full-sync", label: "Full Sync", icon: RefreshCw },
+                      ].map(btn => {
+                        const isRunning = syncingAction === `${d.id}-${btn.action}`;
+                        const result = syncResults[`${d.id}-${btn.action}`];
+                        return (
+                          <div key={btn.action} className="flex flex-col items-start">
+                            <Button
+                              size="sm" variant="outline"
+                              onClick={() => runDeviceSync(d.id, d.device_serial || d.ip_address, btn.action)}
+                              disabled={!!syncingAction}
+                            >
+                              {isRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <btn.icon className="h-3.5 w-3.5 mr-1.5" />}
+                              {btn.label}
+                            </Button>
+                            {result && (
+                              <span className={`text-[10px] mt-1 ${result.success ? "text-success" : "text-destructive"}`}>
+                                {result.success ? `✓ ${result.records_synced || 0} records` : `✗ ${result.error?.substring(0, 40)}`}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Sync Status Dashboard */}
+          <HikvisionSyncDashboard />
+        </div>
+      )}
     </div>
   );
 }

@@ -52,6 +52,7 @@ import Technicians from "./pages/Technicians";
 import DeliveryChallans from "./pages/DeliveryChallans";
 import DeliveryChallanAdd from "./pages/DeliveryChallanAdd";
 import DeliveryChallanPreview from "./pages/DeliveryChallanPreview";
+import LandingPage from "./pages/LandingPage";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +66,7 @@ const App = () => (
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/welcome" element={<LandingPage />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
