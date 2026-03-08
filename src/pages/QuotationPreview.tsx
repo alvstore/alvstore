@@ -9,7 +9,7 @@ import { BusinessHeader } from "@/components/documents/BusinessHeader";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
-import { ArrowLeft, Send, Download, Printer, Pencil, ArrowRightLeft, Copy, Eye } from "lucide-react";
+import { ArrowLeft, Send, Download, Printer, Pencil, ArrowRightLeft, Copy, Eye, Link, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function QuotationPreview() {
