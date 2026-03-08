@@ -53,6 +53,30 @@ export default function QuotationPreview() {
     toast.success("Link copied");
   };
 
+  const sendPaymentLink = async () => {
+    if (!quotation) return;
+    setSendingPaymentLink(true);
+    try {
+      const customer = quotation.customers;
+      const { data, error } = await supabase.functions.invoke("create-payment-link", {
+        body: {
+          amount: quotation.total || 0,
+          customer_name: customer?.name,
+          customer_email: customer?.email,
+          customer_phone: customer?.phone,
+          description: `Payment for ${quotation.quotation_number}`,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        navigator.clipboard.writeText(data.payment_link_url);
+        toast.success("Payment link created & copied!");
+      } else {
+        toast.error(data?.error || "Failed to create payment link");
+      }
+    } catch (err: any) { toast.error(err.message); } finally { setSendingPaymentLink(false); }
+  };
+
   const convertToInvoice = async () => {
     if (!quotation?.customer_id) { toast.error("No customer on quotation"); return; }
     const { data: qItems } = await supabase.from("quotation_items").select("*").eq("quotation_id", quotation.id);
