@@ -1147,6 +1147,9 @@ function HikvisionTab() {
             </CardContent>
           </Card>
 
+          {/* Manual Employee Mapping */}
+          <ManualEmployeeMapping savedDevices={savedDevices} />
+
           {/* Sync Status Dashboard */}
           <HikvisionSyncDashboard />
         </div>
