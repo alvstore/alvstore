@@ -152,24 +152,11 @@ async function findDeviceInCloud(areaDomain: string, accessToken: string, device
 // ═══════════════════════════════════════════════════════════════
 async function cloudApiIsapi(
   areaDomain: string, accessToken: string, deviceSerial: string,
-  isapiPath: string, isapiBody: unknown
+  isapiPath: string, isapiBody: unknown, siteId?: string
 ): Promise<any> {
-  console.log(`[cloudApiIsapi] ${isapiPath} -> device ${deviceSerial}`);
+  console.log(`[cloudApiIsapi] ${isapiPath} -> device ${deviceSerial} (site: ${siteId || "unknown"})`);
   
-  // HPP transparent channel requires x-devserial header
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${accessToken}`,
-    "x-devserial": deviceSerial,
-  };
-
-  // Try transparent endpoints (v2 first, then v1)
-  const endpoints = [
-    "/api/hpcgw/v2/device/transparent",
-    "/api/hpcgw/v1/device/transparent",
-  ];
-
-  // Build the transparent channel body - wraps the ISAPI command
+  // Build the transparent channel body
   const transparentBody = {
     url: isapiPath,
     method: "POST",
@@ -177,41 +164,65 @@ async function cloudApiIsapi(
     body: JSON.stringify(isapiBody),
   };
 
-  let lastError = "";
-  for (const ep of endpoints) {
+  // v2 transparent needs x-devserial AND x-DomainIdentifier (site ID)
+  if (siteId) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "x-devserial": deviceSerial,
+      "x-DomainIdentifier": siteId,
+    };
+    
     try {
-      console.log(`[cloudApiIsapi] Trying ${ep} with x-devserial header...`);
-      const resp = await fetch(`${areaDomain}${ep}`, {
+      console.log(`[cloudApiIsapi] Trying v2/transparent with x-devserial + x-DomainIdentifier...`);
+      const resp = await fetch(`${areaDomain}/api/hpcgw/v2/device/transparent`, {
         method: "POST",
         headers,
         body: JSON.stringify(transparentBody),
         signal: AbortSignal.timeout(30000),
       });
       const result = await resp.json();
-      console.log(`[cloudApiIsapi] ${ep} response: status=${resp.status}, preview: ${JSON.stringify(result).substring(0, 800)}`);
+      console.log(`[cloudApiIsapi] v2/transparent response: status=${resp.status}, preview: ${JSON.stringify(result).substring(0, 800)}`);
       
-      if (resp.status === 404) {
-        lastError = `${ep} returned 404`;
-        continue;
+      if (resp.status !== 404 && (!result.errorCode || result.errorCode === "0")) {
+        let isapiResp = result.data?.body || result.data?.response || result.data || result;
+        if (typeof isapiResp === "string") {
+          try { isapiResp = JSON.parse(isapiResp); } catch { /* keep */ }
+        }
+        return isapiResp;
       }
-      if (result.errorCode && result.errorCode !== "0") {
-        lastError = `${ep}: ${result.errorCode} - ${result.errorMessage || result.message || ""}`;
-        continue;
-      }
-      
-      // Parse the ISAPI response - may be in data.body, data.response, or data directly
-      let isapiResp = result.data?.body || result.data?.response || result.data?.outputJson || result.data || result;
-      if (typeof isapiResp === "string") {
-        try { isapiResp = JSON.parse(isapiResp); } catch { /* keep as string */ }
-      }
-      return isapiResp;
+      console.warn(`[cloudApiIsapi] v2 failed: ${result.errorCode} - ${result.message || ""}`);
     } catch (e) {
-      lastError = `${ep}: ${e instanceof Error ? e.message : "unknown"}`;
-      console.warn(`[cloudApiIsapi] ${lastError}`);
+      console.warn(`[cloudApiIsapi] v2 error: ${e instanceof Error ? e.message : "unknown"}`);
     }
   }
+
+  // Fallback: v1 transparent with just x-devserial
+  const headersV1: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "x-devserial": deviceSerial,
+  };
   
-  throw new Error(`All ISAPI transparent endpoints failed. Last: ${lastError}`);
+  console.log(`[cloudApiIsapi] Trying v1/transparent...`);
+  const resp = await fetch(`${areaDomain}/api/hpcgw/v1/device/transparent`, {
+    method: "POST",
+    headers: headersV1,
+    body: JSON.stringify(transparentBody),
+    signal: AbortSignal.timeout(30000),
+  });
+  const result = await resp.json();
+  console.log(`[cloudApiIsapi] v1/transparent response: status=${resp.status}, preview: ${JSON.stringify(result).substring(0, 800)}`);
+  
+  if (result.errorCode && result.errorCode !== "0") {
+    throw new Error(`ISAPI transparent failed: ${result.errorCode} - ${result.message || ""}`);
+  }
+  
+  let isapiResp = result.data?.body || result.data?.response || result.data || result;
+  if (typeof isapiResp === "string") {
+    try { isapiResp = JSON.parse(isapiResp); } catch { /* keep */ }
+  }
+  return isapiResp;
 }
 
 // ═══════════════════════════════════════════════════════════════
