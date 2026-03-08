@@ -143,9 +143,11 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" variant="outline" onClick={() => navigate("/pos")}><ShoppingCart className="h-3.5 w-3.5 mr-1.5" />New Sale</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/quotations/new")}><FileText className="h-3.5 w-3.5 mr-1.5" />Quotation</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate("/sales/new")}><FileText className="h-3.5 w-3.5 mr-1.5" />Quotation</Button>
           <Button size="sm" variant="outline" onClick={() => navigate("/invoices/new")}><Receipt className="h-3.5 w-3.5 mr-1.5" />Invoice</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/job-sheets/create")}><Wrench className="h-3.5 w-3.5 mr-1.5" />Repair</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate("/repairs/new")}><Wrench className="h-3.5 w-3.5 mr-1.5" />Repair</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate("/finance")}><Wallet className="h-3.5 w-3.5 mr-1.5" />Payment</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate("/finance")}><CreditCard className="h-3.5 w-3.5 mr-1.5" />Expense</Button>
           <button onClick={refresh} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted border border-border text-sm font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors">
             <RefreshCw className="h-3.5 w-3.5" />
           </button>

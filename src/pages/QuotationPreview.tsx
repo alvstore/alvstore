@@ -203,6 +203,11 @@ export default function QuotationPreview() {
                   <Send className="h-4 w-4 mr-2" /> Send Quotation
                 </Button>
 
+                <Button variant="outline" className="w-full" onClick={sendPaymentLink} disabled={sendingPaymentLink}>
+                  {sendingPaymentLink ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link className="h-4 w-4 mr-2" />}
+                  Send Payment Link
+                </Button>
+
                 <Button variant="outline" className="w-full" onClick={() => window.print()}>
                   <Download className="h-4 w-4 mr-2" /> Download
                 </Button>
