@@ -1,124 +1,86 @@
 
-# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
-## Overview
+# Redesign Plan: Dashboard KPIs, Follow-Ups, and Landing Page
 
-Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
+## 1. Dashboard -- Promote Secondary KPIs to Full Cards
 
-## Phase 1: Theme Provider and Multiple Themes
+**File: `src/pages/Dashboard.tsx`**
 
-### New File: `src/hooks/useTheme.tsx`
-Create a React context-based theme provider that:
-- Stores selected theme name in `localStorage` (key: `app-theme`)
-- Applies the theme by setting CSS variables on `document.documentElement`
-- Exposes `theme`, `setTheme`, and `themes` list
+The "Cash Balance", "Pending Payments", "Invoices (Month)", and "Low Stock Items" are currently in a cramped secondary row (lines 166-183) with minimal styling. Redesign:
 
-### Themes (6 total):
+- Remove the secondary stats row entirely
+- Merge those 4 metrics into the primary KPI grid, making it a 2-row, 4-column grid (8 total KPI cards)
+- All 8 cards use the full `KpiCard` component with proper icon backgrounds, trend lines, and arrow buttons
+- Order: Today's Sales, Monthly Revenue, Cash Balance, Pending Payments (row 1) | Customers, Active Repairs, Invoices (Month), Low Stock Items (row 2)
+- Low Stock card links to `/inventory`, Pending Payments links to `/payments`
 
-1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
-2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
-3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
-4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
-5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
-6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
+---
 
-Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
+## 2. Follow-Ups -- Full Redesign with Recording UI
 
-### Theme Switcher UI
-Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
+**File: `src/pages/FollowUps.tsx`**
 
-### Files:
-- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
-- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
-- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
-- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
+**Database Migration**: Create a `follow_up_notes` table to persist follow-up records:
+```sql
+CREATE TABLE public.follow_up_notes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type text NOT NULL,        -- 'quotation' | 'job_sheet'
+  entity_id uuid NOT NULL,
+  note text NOT NULL,
+  outcome text,                     -- 'interested' | 'not_interested' | 'callback' | 'converted' | 'no_answer'
+  next_follow_up_date date,
+  created_by uuid REFERENCES auth.users(id),
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.follow_up_notes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users can manage follow_up_notes"
+  ON public.follow_up_notes FOR ALL TO authenticated USING (true) WITH CHECK (true);
+```
 
-### Adaptive Components
-The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
-- `bg-[#080808]` becomes `bg-background`
-- `bg-[#121212]` becomes `bg-card`
-- `text-white` becomes `text-foreground`
-- `text-zinc-500` becomes `text-muted-foreground`
-- `border-white/5` becomes `border-border`
+**UI Redesign:**
+- **KPI Row** (4 cards): Total Follow-Ups Due, Overdue (>7 days), Completed Today, Conversion Rate
+- **Two-column layout**: Left = follow-up list (tabbed quotations/repairs), Right = detail panel
+- **Follow-Up Recording Sheet**: When user clicks a row or "Record Follow-Up" button, open a Sheet/drawer with:
+  - Customer name + entity info (read-only header)
+  - Outcome selector (radio): Interested, Not Interested, Callback Later, Converted, No Answer
+  - Notes textarea
+  - Next Follow-Up Date picker
+  - Save button -- inserts into `follow_up_notes`, creates a calendar event if next date is set
+- **History Timeline**: Below the recording form, show previous follow-up notes for this entity as a vertical timeline
+- **Visual indicators**: Color-coded urgency badges (green <3d, yellow 3-7d, red >7d)
 
-This ensures all themes work automatically.
+---
 
-### Files to update for semantic colors:
-- `src/components/layout/AppSidebar.tsx`
-- `src/components/layout/AppHeader.tsx`
-- `src/pages/Dashboard.tsx`
+## 3. Landing Page -- Premium Apple/AV Dealer Theme
 
-## Phase 2: KPI Card Redesign (Reference Match)
+**File: `src/pages/LandingPage.tsx`** -- Complete rewrite
 
-Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
+Since the user is an Apple products, home theater, and professional audio dealer, the landing page should reflect that identity with a premium, Apple-inspired aesthetic. Using CSS-only 3D transforms and gradients (no Three.js needed for this scope).
 
-**Layout per card:**
-- Top row: Label text (left) + arrow-up-right icon button (right corner)
-- Center: Large bold metric number (32-40px)
-- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
+**Design:**
+- **Hero**: Full-viewport dark gradient background with large floating 3D CSS-transformed product cards (iPhone, HomePod, soundbar silhouettes using CSS shapes/gradients). Headline: store name + "Premium Audio & Apple Experience". CTA buttons to login/signup.
+- **Product Categories Section**: 3 large cards with perspective transforms on hover -- "Apple Products", "Home Theater", "Professional Audio" -- each with a gradient icon and description
+- **Features Grid**: Service capabilities (Authorized Repairs, Expert Installation, Trade-In, Financing) with glass-morphism cards
+- **Brands Marquee**: Scrolling strip of brand names (Apple, Sonos, Bose, JBL, Harman Kardon, etc.) using CSS animation
+- **Stats Strip**: "500+ Repairs", "1000+ Products", "98% Satisfaction" counters
+- **CTA + Footer**: Dark premium footer with contact info and social links
 
-**Accent color system**: Each card gets a unique subtle background tint:
-- Card 1 (Revenue): Soft green background tint
-- Card 2 (Sales): White/neutral
-- Card 3 (Repairs): White/neutral
-- Card 4 (Pending): White/neutral
+**Color palette**: Deep blacks (#0a0a0a), white text, accent gradients (blue-purple for Apple, amber for audio warmth). CSS `transform: perspective() rotateY()` for 3D hover effects on cards.
 
-The first card (most important KPI) gets a colored border-left accent strip.
-
-**Contextual KPIs to display:**
-- Daily Cash Flow (from `finance_transactions`)
-- Store Sales with 18% GST indicator
-- Gym Revenue with 5% GST indicator
-- Active Repairs count
-
-## Phase 3: Employee Login Enforcement
-
-### Problem
-Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
-
-### Fix in `src/pages/Employees.tsx`:
-1. Add a prominent "Create with Login" toggle/checkbox in the employee form
-2. When toggled ON (default for internal employees), make email and password fields REQUIRED
-3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
-4. For existing employees without `user_id`, show a "Link Login Account" button that:
-   - Opens a mini-form asking for email + password
-   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
-   - Updates the employee record with the returned `user_id`
-
-### Visual indicator in employee list:
-- Show a small shield/lock icon next to employees who have a linked auth account
-- Show a warning icon next to employees without one
-
-## Phase 4: Chart Theme Adaptation
-
-Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
-- Tooltip background: `hsl(var(--card))`
-- Tooltip border: `hsl(var(--border))`
-- Bar gradient: Use the theme's accent/success color
-- Axis text: `hsl(var(--muted-foreground))`
-
-This ensures charts look correct in both light and dark themes.
+---
 
 ## Files Summary
 
 ```text
-NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
-EDIT: src/main.tsx                       -- Wrap in ThemeProvider
-EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
-EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
-EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
-EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
-EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
+MIGRATION:   follow_up_notes table
+EDIT:        src/pages/Dashboard.tsx        -- Merge secondary KPIs into primary grid
+REWRITE:     src/pages/FollowUps.tsx        -- Full redesign with recording UI + KPIs
+REWRITE:     src/pages/LandingPage.tsx      -- Premium Apple/AV dealer theme
 ```
 
-## Database Changes
-None required.
-
 ## Implementation Order
-1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
-2. `src/index.css` -- Ensure variables are the correct defaults
-3. `src/main.tsx` -- Wire up provider
-4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
-5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
-6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
-7. `src/pages/Employees.tsx` -- Login enforcement
+1. Database migration (follow_up_notes)
+2. Dashboard KPI merge
+3. Follow-Ups redesign
+4. Landing page rewrite
+
