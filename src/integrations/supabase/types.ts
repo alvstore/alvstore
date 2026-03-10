@@ -825,6 +825,39 @@ export type Database = {
           },
         ]
       }
+      follow_up_notes: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          entity_id: string
+          entity_type: string
+          id: string
+          next_follow_up_date: string | null
+          note: string
+          outcome: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          next_follow_up_date?: string | null
+          note: string
+          outcome?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          next_follow_up_date?: string | null
+          note?: string
+          outcome?: string | null
+        }
+        Relationships: []
+      }
       hikvision_attendance_logs: {
         Row: {
           created_at: string
