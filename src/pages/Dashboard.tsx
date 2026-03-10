@@ -83,12 +83,12 @@ function fmt(n: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
 
-function KpiCard({ label, value, trend, icon: Icon, accentClass, isLoading }: {
+function KpiCard({ label, value, trend, icon: Icon, accentClass, isLoading, onClick }: {
   label: string; value: string; trend?: string; icon: React.ComponentType<{ className?: string }>;
-  accentClass: string; isLoading: boolean;
+  accentClass: string; isLoading: boolean; onClick?: () => void;
 }) {
   return (
-    <Card>
+    <Card className="group hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 transition-all duration-300 cursor-pointer" onClick={onClick}>
       <CardContent className="p-5">
         {isLoading ? (
           <div className="space-y-3"><Skeleton className="h-10 w-10 rounded-xl" /><Skeleton className="h-4 w-20" /><Skeleton className="h-7 w-28" /></div>
@@ -96,7 +96,7 @@ function KpiCard({ label, value, trend, icon: Icon, accentClass, isLoading }: {
           <div className="space-y-3">
             <div className="flex items-start justify-between">
               <div className={`h-11 w-11 rounded-xl ${accentClass} flex items-center justify-center`}><Icon className="h-5 w-5" /></div>
-              <button className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+              <button className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground group-hover:text-foreground transition-colors">
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -154,32 +154,18 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Primary KPI Cards */}
+      {/* 8 KPI Cards — 2 rows of 4 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Today's Sales" value={kpis ? fmt(kpis.salesToday) : "—"} trend="POS today" icon={ShoppingCart} accentClass="bg-success/10 text-success" isLoading={kpiLoading} />
-        <KpiCard label="Monthly Revenue" value={kpis ? fmt(kpis.revenue) : "—"} trend="This month" icon={TrendingUp} accentClass="bg-primary/10 text-primary" isLoading={kpiLoading} />
-        <KpiCard label="Customers" value={kpis ? String(kpis.totalCustomers) : "—"} icon={Users} accentClass="bg-info/10 text-info" isLoading={kpiLoading} />
-        <KpiCard label="Active Repairs" value={kpis ? String(kpis.activeRepairs) : "—"} trend={kpis ? `${kpis.completedToday} done today` : undefined} icon={Wrench} accentClass="bg-warning/10 text-warning" isLoading={kpiLoading} />
+        <KpiCard label="Today's Sales" value={kpis ? fmt(kpis.salesToday) : "—"} trend="POS today" icon={ShoppingCart} accentClass="bg-success/10 text-success" isLoading={kpiLoading} onClick={() => navigate("/pos")} />
+        <KpiCard label="Monthly Revenue" value={kpis ? fmt(kpis.revenue) : "—"} trend="This month" icon={TrendingUp} accentClass="bg-primary/10 text-primary" isLoading={kpiLoading} onClick={() => navigate("/finance")} />
+        <KpiCard label="Cash Balance" value={kpis ? fmt(kpis.totalBalance) : "—"} icon={Wallet} accentClass="bg-info/10 text-info" isLoading={kpiLoading} onClick={() => navigate("/finance")} />
+        <KpiCard label="Pending Payments" value={kpis ? fmt(kpis.pendingPayments) : "—"} trend="Due" icon={Clock} accentClass="bg-warning/10 text-warning" isLoading={kpiLoading} onClick={() => navigate("/payments")} />
       </div>
-
-      {/* Secondary stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: "Cash Balance", value: kpis ? fmt(kpis.totalBalance) : "—", icon: Wallet, cls: "text-primary" },
-          { label: "Pending Payments", value: kpis ? fmt(kpis.pendingPayments) : "—", icon: Clock, cls: "text-warning" },
-          { label: "Invoices (Month)", value: kpis ? fmt(kpis.invoicesMonth) : "—", icon: CreditCard, cls: "text-info" },
-          { label: "Low Stock Items", value: kpis ? String(kpis.lowStock) : "—", icon: Package, cls: "text-destructive" },
-        ].map((s) => (
-          <Card key={s.label}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`h-9 w-9 rounded-xl bg-muted flex items-center justify-center ${s.cls}`}><s.icon className="h-4 w-4" /></div>
-              <div>
-                <p className="text-[11px] text-muted-foreground font-medium">{s.label}</p>
-                <p className="text-lg font-bold text-foreground">{kpiLoading ? "—" : s.value}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard label="Customers" value={kpis ? String(kpis.totalCustomers) : "—"} icon={Users} accentClass="bg-primary/10 text-primary" isLoading={kpiLoading} onClick={() => navigate("/customers")} />
+        <KpiCard label="Active Repairs" value={kpis ? String(kpis.activeRepairs) : "—"} trend={kpis ? `${kpis.completedToday} done today` : undefined} icon={Wrench} accentClass="bg-accent/10 text-accent-foreground" isLoading={kpiLoading} onClick={() => navigate("/repairs")} />
+        <KpiCard label="Invoices (Month)" value={kpis ? fmt(kpis.invoicesMonth) : "—"} trend="This month" icon={Receipt} accentClass="bg-success/10 text-success" isLoading={kpiLoading} onClick={() => navigate("/invoices")} />
+        <KpiCard label="Low Stock Items" value={kpis ? String(kpis.lowStock) : "—"} icon={Package} accentClass="bg-destructive/10 text-destructive" isLoading={kpiLoading} onClick={() => navigate("/inventory")} />
       </div>
 
       {/* Charts row */}
