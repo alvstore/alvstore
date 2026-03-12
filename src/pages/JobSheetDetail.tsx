@@ -228,6 +228,18 @@ export default function JobSheetDetail() {
     if (amount <= 0) { toast.error("Enter valid amount"); return; }
     const { error: jobErr } = await supabase.from("job_sheets").update({ technician_payment: amount, technician_payment_status: "paid", technician_payment_date: new Date().toISOString() } as any).eq("id", id);
     if (jobErr) { toast.error(jobErr.message); return; }
+    // Sync to technician_payments ledger table
+    if (job.assigned_technician_id) {
+      await supabase.from("technician_payments").insert({
+        technician_id: job.assigned_technician_id,
+        job_sheet_id: id,
+        amount,
+        status: "unpaid",
+        payment_mode: techPayForm.method,
+        notes: techPayForm.notes || `Payment for ${job.job_number}`,
+        created_by: user?.id,
+      } as any);
+    }
     await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "technician_payment_recorded", details: `Technician paid ₹${amount} via ${techPayForm.method}. ${techPayForm.notes || ""}`.trim(), user_id: user?.id });
     toast.success("Technician payment recorded"); setTechPaySheetOpen(false); fetchAll();
   };
