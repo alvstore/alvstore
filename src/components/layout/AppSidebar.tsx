@@ -14,7 +14,7 @@ interface NavItem { title: string; url: string; icon: React.ComponentType<{ clas
 interface NavCategory { label: string; items: NavItem[]; }
 
 const adminStaffNav: NavCategory[] = [
-  { label: "Overview", items: [{ title: "Dashboard", url: "/", icon: LayoutDashboard }] },
+  { label: "Overview", items: [{ title: "Dashboard", url: "/dashboard", icon: LayoutDashboard }] },
   {
     label: "CRM",
     items: [
