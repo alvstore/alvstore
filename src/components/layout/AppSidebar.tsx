@@ -45,6 +45,15 @@ const adminStaffNav: NavCategory[] = [
     items: [{ title: "Transactions", url: "/finance", icon: CreditCard }],
   },
   {
+    label: "Procurement",
+    items: [
+      { title: "Suppliers", url: "/suppliers", icon: Building2 },
+      { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingBag },
+      { title: "Purchase Bills", url: "/purchase-bills", icon: Receipt },
+      { title: "Purchase Returns", url: "/purchase-returns", icon: RotateCcw },
+    ],
+  },
+  {
     label: "Repair",
     items: [
       { title: "Job Sheets", url: "/repairs", icon: Wrench },
