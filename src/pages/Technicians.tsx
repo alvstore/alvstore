@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -13,12 +14,16 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Plus, Search, Wrench, Pencil, ShieldCheck, AlertTriangle, Link2, Users, CheckCircle2, Clock } from "lucide-react";
+import { Plus, Search, Wrench, Pencil, ShieldCheck, AlertTriangle, Users, CheckCircle2, Clock, IndianRupee, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { AvatarUpload } from "@/components/AvatarUpload";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Technician {
   id: string; user_id: string | null; name: string; phone: string | null;
@@ -33,7 +38,7 @@ const emptyForm = {
 };
 
 export default function Technicians() {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const isAdmin = hasRole("admin");
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +49,14 @@ export default function Technicians() {
   const [form, setForm] = useState(emptyForm);
   const [activeJobs, setActiveJobs] = useState<Record<string, number>>({});
 
+  // Ledger state
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [ledgerTech, setLedgerTech] = useState<Technician | null>(null);
+  const [ledgerPayments, setLedgerPayments] = useState<any[]>([]);
+  const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ amount: "", notes: "", payment_mode: "cash", job_sheet_id: "" });
+  const [techJobSheets, setTechJobSheets] = useState<any[]>([]);
+
   const fetchTechnicians = async () => {
     setLoading(true);
     let query = supabase.from("employees").select("*").eq("role", "technician").order("created_at", { ascending: false });
@@ -52,7 +65,6 @@ export default function Technicians() {
     if (error) toast.error(error.message);
     else setTechnicians((data || []) as Technician[]);
 
-    // Fetch active job counts per technician
     const { data: jobs } = await supabase.from("job_sheets").select("assigned_technician_id")
       .not("status", "in", '("delivered","invoice_generated")');
     const counts: Record<string, number> = {};
@@ -107,6 +119,63 @@ export default function Technicians() {
     setSaving(false);
   };
 
+  // Ledger functions
+  const openLedger = async (t: Technician) => {
+    setLedgerTech(t);
+    const techId = t.user_id || t.id;
+    const { data } = await supabase.from("technician_payments").select("*").eq("technician_id", techId).order("created_at", { ascending: false });
+    setLedgerPayments(data || []);
+
+    // Get unpaid job sheets for this technician
+    const { data: js } = await supabase.from("job_sheets").select("id, job_number, technician_payment, technician_payment_status")
+      .eq("assigned_technician_id", techId)
+      .eq("technician_payment_status", "pending");
+    setTechJobSheets(js || []);
+    setLedgerOpen(true);
+  };
+
+  const markAsPaid = async (payment: any) => {
+    // Create finance expense transaction
+    const { data: accounts } = await supabase.from("finance_accounts").select("id").limit(1);
+    let finTxnId: string | null = null;
+    if (accounts && accounts.length > 0) {
+      const { data: txn } = await supabase.from("finance_transactions").insert({
+        type: "expense", amount: payment.amount, account_id: accounts[0].id,
+        description: `Tech payment: ${ledgerTech?.name}`, reference: `TP-${payment.id.slice(0, 8)}`,
+        created_by: user?.id,
+      } as any).select().single();
+      finTxnId = txn?.id || null;
+    }
+
+    await supabase.from("technician_payments").update({
+      status: "paid", payment_date: new Date().toISOString().split("T")[0],
+      finance_transaction_id: finTxnId,
+    } as any).eq("id", payment.id);
+
+    toast.success("Payment marked as paid & synced to Finance");
+    openLedger(ledgerTech!);
+  };
+
+  const addPaymentRecord = async () => {
+    if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) { toast.error("Enter a valid amount"); return; }
+    const techId = ledgerTech?.user_id || ledgerTech?.id;
+    await supabase.from("technician_payments").insert({
+      technician_id: techId, amount: parseFloat(paymentForm.amount),
+      notes: paymentForm.notes || null, payment_mode: paymentForm.payment_mode,
+      job_sheet_id: paymentForm.job_sheet_id || null, created_by: user?.id,
+    } as any);
+
+    // Update job sheet tech payment status if linked
+    if (paymentForm.job_sheet_id) {
+      await supabase.from("job_sheets").update({ technician_payment_status: "recorded" } as any).eq("id", paymentForm.job_sheet_id);
+    }
+
+    toast.success("Payment record added");
+    setPaymentSheetOpen(false);
+    setPaymentForm({ amount: "", notes: "", payment_mode: "cash", job_sheet_id: "" });
+    openLedger(ledgerTech!);
+  };
+
   const stats = {
     total: technicians.length,
     active: technicians.filter(t => t.status === "active").length,
@@ -114,12 +183,18 @@ export default function Technicians() {
     totalActiveJobs: Object.values(activeJobs).reduce((s, v) => s + v, 0),
   };
 
+  const ledgerTotals = {
+    total: ledgerPayments.reduce((s, p) => s + (p.amount || 0), 0),
+    paid: ledgerPayments.filter(p => p.status === "paid").reduce((s, p) => s + (p.amount || 0), 0),
+    unpaid: ledgerPayments.filter(p => p.status === "unpaid").reduce((s, p) => s + (p.amount || 0), 0),
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Technicians</h1>
-          <p className="text-muted-foreground">Manage repair technicians</p>
+          <p className="text-muted-foreground">Manage repair technicians & payment ledger</p>
         </div>
         {isAdmin && <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Technician</Button>}
       </div>
@@ -157,7 +232,7 @@ export default function Technicians() {
               <TableHead>Active Jobs</TableHead>
               <TableHead>Login</TableHead>
               <TableHead>Status</TableHead>
-              {isAdmin && <TableHead className="w-20">Actions</TableHead>}
+              <TableHead className="w-28">Actions</TableHead>
             </TableRow></TableHeader>
             <TableBody>
               {technicians.length === 0 ? (
@@ -188,11 +263,12 @@ export default function Technicians() {
                     )}
                   </TableCell>
                   <TableCell><Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge></TableCell>
-                  {isAdmin && (
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
-                    </TableCell>
-                  )}
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openLedger(t)} title="Ledger"><BookOpen className="h-4 w-4" /></Button>
+                      {isAdmin && <Button variant="ghost" size="icon" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>}
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -200,6 +276,7 @@ export default function Technicians() {
         </div>
       )}
 
+      {/* Add/Edit Technician Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="overflow-y-auto sm:max-w-lg">
           <SheetHeader>
@@ -240,6 +317,104 @@ export default function Technicians() {
               </>
             )}
             <Button className="w-full" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : editId ? "Update" : "Create Technician"}</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Payment Ledger Dialog */}
+      <Dialog open={ledgerOpen} onOpenChange={setLedgerOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" /> Payment Ledger — {ledgerTech?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <Card><CardContent className="p-3 text-center">
+                <p className="text-xs text-muted-foreground">Total Earnings</p>
+                <p className="text-xl font-bold">₹{ledgerTotals.total.toLocaleString()}</p>
+              </CardContent></Card>
+              <Card><CardContent className="p-3 text-center">
+                <p className="text-xs text-muted-foreground">Paid</p>
+                <p className="text-xl font-bold text-success">₹{ledgerTotals.paid.toLocaleString()}</p>
+              </CardContent></Card>
+              <Card><CardContent className="p-3 text-center">
+                <p className="text-xs text-muted-foreground">Unpaid</p>
+                <p className="text-xl font-bold text-destructive">₹{ledgerTotals.unpaid.toLocaleString()}</p>
+              </CardContent></Card>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <h3 className="font-semibold text-sm">Payment Records</h3>
+              <Button size="sm" onClick={() => setPaymentSheetOpen(true)}><Plus className="h-3 w-3 mr-1" />Add Record</Button>
+            </div>
+
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Date</TableHead><TableHead>Amount</TableHead><TableHead>Mode</TableHead>
+                <TableHead>Notes</TableHead><TableHead>Status</TableHead><TableHead className="w-24">Action</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {ledgerPayments.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No payment records</TableCell></TableRow>
+                ) : ledgerPayments.map(p => (
+                  <TableRow key={p.id}>
+                    <TableCell className="text-sm">{new Date(p.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="font-mono font-medium">₹{(p.amount || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-sm capitalize">{p.payment_mode || "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[150px] truncate">{p.notes || "—"}</TableCell>
+                    <TableCell><Badge variant={p.status === "paid" ? "default" : "destructive"}>{p.status}</Badge></TableCell>
+                    <TableCell>
+                      {p.status === "unpaid" && (
+                        <Button variant="outline" size="sm" onClick={() => markAsPaid(p)}>Pay</Button>
+                      )}
+                      {p.status === "paid" && p.finance_transaction_id && (
+                        <span className="text-[10px] text-success">✓ Synced</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Payment Record Sheet */}
+      <Sheet open={paymentSheetOpen} onOpenChange={setPaymentSheetOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Add Payment Record</SheetTitle>
+            <SheetDescription>Record a technician payment for {ledgerTech?.name}</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-6">
+            {techJobSheets.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Link to Job Sheet (optional)</Label>
+                <Select value={paymentForm.job_sheet_id} onValueChange={v => {
+                  const js = techJobSheets.find(j => j.id === v);
+                  setPaymentForm(p => ({ ...p, job_sheet_id: v, amount: js?.technician_payment ? String(js.technician_payment) : p.amount }));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Select job sheet" /></SelectTrigger>
+                  <SelectContent>{techJobSheets.map(j => <SelectItem key={j.id} value={j.id}>{j.job_number} — ₹{j.technician_payment || 0}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5"><Label>Amount *</Label><Input type="number" value={paymentForm.amount} onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))} /></div>
+            <div className="space-y-1.5">
+              <Label>Payment Mode</Label>
+              <Select value={paymentForm.payment_mode} onValueChange={v => setPaymentForm(p => ({ ...p, payment_mode: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label>Notes</Label><Textarea value={paymentForm.notes} onChange={e => setPaymentForm(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+            <Button className="w-full" onClick={addPaymentRecord}>Add Payment Record</Button>
           </div>
         </SheetContent>
       </Sheet>
