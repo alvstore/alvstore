@@ -186,7 +186,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                     <NavLink
                       key={item.url}
                       to={item.url}
-                      end={item.url === "/"}
+                      end={item.url === "/dashboard"}
                       className={cn(
                         "group flex items-center rounded-xl text-[13px] font-medium transition-all duration-150",
                         collapsed
