@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
   Target, ClipboardList, Receipt, UserCog,
   Wallet, Shield, MessageCircle, CalendarDays, Zap, Truck,
+  Building2, ShoppingBag, RotateCcw,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,7 +15,7 @@ interface NavItem { title: string; url: string; icon: React.ComponentType<{ clas
 interface NavCategory { label: string; items: NavItem[]; }
 
 const adminStaffNav: NavCategory[] = [
-  { label: "Overview", items: [{ title: "Dashboard", url: "/", icon: LayoutDashboard }] },
+  { label: "Overview", items: [{ title: "Dashboard", url: "/dashboard", icon: LayoutDashboard }] },
   {
     label: "CRM",
     items: [
@@ -42,6 +43,15 @@ const adminStaffNav: NavCategory[] = [
   {
     label: "Finance",
     items: [{ title: "Transactions", url: "/finance", icon: CreditCard }],
+  },
+  {
+    label: "Procurement",
+    items: [
+      { title: "Suppliers", url: "/suppliers", icon: Building2 },
+      { title: "Purchase Orders", url: "/purchase-orders", icon: ShoppingBag },
+      { title: "Purchase Bills", url: "/purchase-bills", icon: Receipt },
+      { title: "Purchase Returns", url: "/purchase-returns", icon: RotateCcw },
+    ],
   },
   {
     label: "Repair",
@@ -176,7 +186,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                     <NavLink
                       key={item.url}
                       to={item.url}
-                      end={item.url === "/"}
+                      end={item.url === "/dashboard"}
                       className={cn(
                         "group flex items-center rounded-xl text-[13px] font-medium transition-all duration-150",
                         collapsed

@@ -31,7 +31,6 @@ import Reports from "./pages/Reports";
 import CustomerPortal from "./pages/CustomerPortal";
 import NotFound from "./pages/NotFound";
 
-// New Phase 10 pages
 import Leads from "./pages/Leads";
 import Invoices from "./pages/Invoices";
 import InvoicePreview from "./pages/InvoicePreview";
@@ -54,6 +53,12 @@ import DeliveryChallanAdd from "./pages/DeliveryChallanAdd";
 import DeliveryChallanPreview from "./pages/DeliveryChallanPreview";
 import LandingPage from "./pages/LandingPage";
 
+// Procurement
+import Suppliers from "./pages/Suppliers";
+import PurchaseOrders from "./pages/PurchaseOrders";
+import PurchaseBills from "./pages/PurchaseBills";
+import PurchaseReturns from "./pages/PurchaseReturns";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -65,8 +70,8 @@ const App = () => (
         <AuthProvider>
           <Routes>
             {/* Public routes */}
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/welcome" element={<LandingPage />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -81,7 +86,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             >
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/crm" element={<CRM />} />
               <Route path="/leads" element={<Leads />} />
               <Route path="/sales" element={<Sales />} />
@@ -124,6 +129,11 @@ const App = () => (
               <Route path="/templates" element={<Navigate to="/settings" replace />} />
               <Route path="/staff" element={<Navigate to="/employees" replace />} />
               <Route path="/portal" element={<CustomerPortal />} />
+              {/* Procurement */}
+              <Route path="/suppliers" element={<Suppliers />} />
+              <Route path="/purchase-orders" element={<PurchaseOrders />} />
+              <Route path="/purchase-bills" element={<PurchaseBills />} />
+              <Route path="/purchase-returns" element={<PurchaseReturns />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
