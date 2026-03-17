@@ -59,6 +59,9 @@ import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseBills from "./pages/PurchaseBills";
 import PurchaseReturns from "./pages/PurchaseReturns";
 
+// Finance
+import PaymentRegister from "./pages/PaymentRegister";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -134,6 +137,7 @@ const App = () => (
               <Route path="/purchase-orders" element={<PurchaseOrders />} />
               <Route path="/purchase-bills" element={<PurchaseBills />} />
               <Route path="/purchase-returns" element={<PurchaseReturns />} />
+              <Route path="/payment-register" element={<PaymentRegister />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

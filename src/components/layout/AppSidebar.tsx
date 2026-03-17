@@ -42,7 +42,10 @@ const adminStaffNav: NavCategory[] = [
   },
   {
     label: "Finance",
-    items: [{ title: "Transactions", url: "/finance", icon: CreditCard }],
+    items: [
+      { title: "Transactions", url: "/finance", icon: CreditCard },
+      { title: "Payment Register", url: "/payment-register", icon: Shield },
+    ],
   },
   {
     label: "Procurement",

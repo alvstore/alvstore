@@ -1590,6 +1590,105 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_register: {
+        Row: {
+          bank_charges: number
+          bank_name: string | null
+          card_type: string | null
+          cheque_clearance_date: string | null
+          cheque_deposit_date: string | null
+          cheque_number: string | null
+          created_at: string | null
+          created_by: string | null
+          customer_id: string | null
+          customer_name: string
+          difference_amount: number | null
+          difference_type: string | null
+          document_url: string | null
+          id: string
+          invoice_amount: number
+          invoice_id: string | null
+          invoice_number: string | null
+          net_received_amount: number | null
+          notes: string | null
+          payment_mode: string
+          received_amount: number
+          register_number: string
+          status: string
+          transaction_date: string
+          transaction_reference: string | null
+        }
+        Insert: {
+          bank_charges?: number
+          bank_name?: string | null
+          card_type?: string | null
+          cheque_clearance_date?: string | null
+          cheque_deposit_date?: string | null
+          cheque_number?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          customer_id?: string | null
+          customer_name: string
+          difference_amount?: number | null
+          difference_type?: string | null
+          document_url?: string | null
+          id?: string
+          invoice_amount?: number
+          invoice_id?: string | null
+          invoice_number?: string | null
+          net_received_amount?: number | null
+          notes?: string | null
+          payment_mode?: string
+          received_amount?: number
+          register_number?: string
+          status?: string
+          transaction_date?: string
+          transaction_reference?: string | null
+        }
+        Update: {
+          bank_charges?: number
+          bank_name?: string | null
+          card_type?: string | null
+          cheque_clearance_date?: string | null
+          cheque_deposit_date?: string | null
+          cheque_number?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          customer_id?: string | null
+          customer_name?: string
+          difference_amount?: number | null
+          difference_type?: string | null
+          document_url?: string | null
+          id?: string
+          invoice_amount?: number
+          invoice_id?: string | null
+          invoice_number?: string | null
+          net_received_amount?: number | null
+          notes?: string | null
+          payment_mode?: string
+          received_amount?: number
+          register_number?: string
+          status?: string
+          transaction_date?: string
+          transaction_reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_register_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_register_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number

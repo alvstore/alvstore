@@ -1,99 +1,124 @@
 
-
-# Payment Register & Reconciliation Module
+# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
 ## Overview
 
-Create a new `payment_register` table and a full-featured page at `/payment-register` for tracking card/cheque/UPI payments, bank charges, and reconciliation status. This is an audit layer -- it does NOT create finance ledger entries.
+Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
 
-## Database Migration
+## Phase 1: Theme Provider and Multiple Themes
 
-**New table: `payment_register`**
+### New File: `src/hooks/useTheme.tsx`
+Create a React context-based theme provider that:
+- Stores selected theme name in `localStorage` (key: `app-theme`)
+- Applies the theme by setting CSS variables on `document.documentElement`
+- Exposes `theme`, `setTheme`, and `themes` list
 
-```sql
-CREATE TABLE public.payment_register (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  transaction_date date NOT NULL DEFAULT CURRENT_DATE,
-  customer_name text NOT NULL,
-  customer_id uuid,
-  invoice_number text,
-  invoice_id uuid,
-  invoice_amount numeric NOT NULL DEFAULT 0,
-  payment_mode text NOT NULL DEFAULT 'card', -- card/upi/cheque/bank_transfer
-  bank_name text,
-  card_type text, -- credit/debit
-  transaction_reference text,
-  cheque_number text,
-  cheque_deposit_date date,
-  cheque_clearance_date date,
-  received_amount numeric NOT NULL DEFAULT 0,
-  bank_charges numeric NOT NULL DEFAULT 0,
-  net_received_amount numeric GENERATED ALWAYS AS (received_amount - bank_charges) STORED,
-  difference_amount numeric GENERATED ALWAYS AS (invoice_amount - (received_amount - bank_charges)) STORED,
-  difference_type text GENERATED ALWAYS AS (
-    CASE
-      WHEN invoice_amount - (received_amount - bank_charges) > 0.01 THEN 'short'
-      WHEN invoice_amount - (received_amount - bank_charges) < -0.01 THEN 'excess'
-      ELSE 'none'
-    END
-  ) STORED,
-  status text NOT NULL DEFAULT 'pending', -- pending/deposited/cleared/reconciled/failed
-  notes text,
-  document_url text,
-  created_by uuid,
-  created_at timestamptz DEFAULT now()
-);
+### Themes (6 total):
 
--- Auto-number trigger (REG-XXXXX pattern)
--- RLS: admin + staff full access
-```
+1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
+2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
+3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
+4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
+5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
+6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
 
-Key design decisions:
-- `net_received_amount`, `difference_amount`, `difference_type` are **generated columns** -- zero client-side drift
-- `customer_id` and `invoice_id` are optional FKs for linking; `customer_name` and `invoice_number` allow manual entry
-- Document uploads go to existing `uploads` bucket
+Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
 
-## New Page: `src/pages/PaymentRegister.tsx`
+### Theme Switcher UI
+Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
 
-### KPI Cards (5)
-- Total Entries (count)
-- Pending Clearance (status = pending/deposited)
-- Total Bank Charges (sum)
-- Mismatch Amount (sum of abs(difference) where type != none)
-- Reconciled Entries (status = reconciled)
+### Files:
+- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
+- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
+- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
+- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
 
-### Main Table
-Columns: Date, Customer, Invoice, Mode, Bank, Reference, Invoice Amt, Received, Charges, Net Received, Difference (color-coded), Status badge.
+### Adaptive Components
+The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
+- `bg-[#080808]` becomes `bg-background`
+- `bg-[#121212]` becomes `bg-card`
+- `text-white` becomes `text-foreground`
+- `text-zinc-500` becomes `text-muted-foreground`
+- `border-white/5` becomes `border-border`
 
-Features:
-- Search by customer/invoice/reference
-- Filter by date range, bank, status, payment mode
-- Color-coded difference: green (none), red (short), orange (excess)
-- Status badges with workflow colors
+This ensures all themes work automatically.
 
-### Entry Form (Sheet/Drawer)
-Sections:
-1. **Basic**: Date, Customer (autocomplete from customers table or manual), Invoice (autocomplete from invoices or manual)
-2. **Payment**: Mode selector, received amount, bank charges (auto-calculates net + difference live)
-3. **Bank/Card**: Bank name, card type (shown for card mode)
-4. **Cheque**: Number, deposit date, clearance date (shown for cheque mode)
-5. **Reconciliation**: Status selector, notes
-6. **Document**: Upload slip/photo/PDF with preview
+### Files to update for semantic colors:
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/layout/AppHeader.tsx`
+- `src/pages/Dashboard.tsx`
 
-### Export
-- CSV/Excel export of filtered data
+## Phase 2: KPI Card Redesign (Reference Match)
 
-## Routing & Sidebar
+Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
 
-- **Route**: `/payment-register` in `src/App.tsx`
-- **Sidebar**: Add "Payment Register" under the Finance category with a `FileText` or `Shield` icon
+**Layout per card:**
+- Top row: Label text (left) + arrow-up-right icon button (right corner)
+- Center: Large bold metric number (32-40px)
+- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
+
+**Accent color system**: Each card gets a unique subtle background tint:
+- Card 1 (Revenue): Soft green background tint
+- Card 2 (Sales): White/neutral
+- Card 3 (Repairs): White/neutral
+- Card 4 (Pending): White/neutral
+
+The first card (most important KPI) gets a colored border-left accent strip.
+
+**Contextual KPIs to display:**
+- Daily Cash Flow (from `finance_transactions`)
+- Store Sales with 18% GST indicator
+- Gym Revenue with 5% GST indicator
+- Active Repairs count
+
+## Phase 3: Employee Login Enforcement
+
+### Problem
+Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
+
+### Fix in `src/pages/Employees.tsx`:
+1. Add a prominent "Create with Login" toggle/checkbox in the employee form
+2. When toggled ON (default for internal employees), make email and password fields REQUIRED
+3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
+4. For existing employees without `user_id`, show a "Link Login Account" button that:
+   - Opens a mini-form asking for email + password
+   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
+   - Updates the employee record with the returned `user_id`
+
+### Visual indicator in employee list:
+- Show a small shield/lock icon next to employees who have a linked auth account
+- Show a warning icon next to employees without one
+
+## Phase 4: Chart Theme Adaptation
+
+Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
+- Tooltip background: `hsl(var(--card))`
+- Tooltip border: `hsl(var(--border))`
+- Bar gradient: Use the theme's accent/success color
+- Axis text: `hsl(var(--muted-foreground))`
+
+This ensures charts look correct in both light and dark themes.
 
 ## Files Summary
 
 ```text
-MIGRATION:  payment_register table + auto-number trigger + RLS
-CREATE:     src/pages/PaymentRegister.tsx
-EDIT:       src/App.tsx (add route)
-EDIT:       src/components/layout/AppSidebar.tsx (add nav item under Finance)
+NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
+EDIT: src/main.tsx                       -- Wrap in ThemeProvider
+EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
+EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
+EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
+EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
+EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
 ```
 
+## Database Changes
+None required.
+
+## Implementation Order
+1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
+2. `src/index.css` -- Ensure variables are the correct defaults
+3. `src/main.tsx` -- Wire up provider
+4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
+5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
+6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
+7. `src/pages/Employees.tsx` -- Login enforcement
