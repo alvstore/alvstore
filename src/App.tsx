@@ -137,6 +137,7 @@ const App = () => (
               <Route path="/purchase-orders" element={<PurchaseOrders />} />
               <Route path="/purchase-bills" element={<PurchaseBills />} />
               <Route path="/purchase-returns" element={<PurchaseReturns />} />
+              <Route path="/payment-register" element={<PaymentRegister />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
