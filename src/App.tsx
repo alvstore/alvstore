@@ -84,6 +84,9 @@ const App = () => (
             <Route path="/sales/public/:token" element={<PublicQuotation />} />
             <Route path="/job/public/:token" element={<PublicJobSheet />} />
             <Route path="/invoice/public/:token" element={<PublicInvoice />} />
+            <Route path="/delivery-report/:token" element={<PublicDeliveryReport />} />
+            <Route path="/home-theater" element={<HomeTheaterHome />} />
+            <Route path="/contact" element={<HomeTheaterContact />} />
             {/* Protected routes with layout */}
             <Route
               element={

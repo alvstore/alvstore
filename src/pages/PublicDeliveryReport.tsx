@@ -225,7 +225,7 @@ export default function PublicDeliveryReport() {
               ) : (
                 <div className="space-y-2">
                   <Label>Signature</Label>
-                  <SignaturePad onSave={(data) => setSignatureData(data)} />
+                  <SignaturePad onSignature={(data) => setSignatureData(data)} />
                 </div>
               )}
               <Button onClick={handleSignDelivery} disabled={signing || !signatureData || !signatureName.trim()} className="w-full">
