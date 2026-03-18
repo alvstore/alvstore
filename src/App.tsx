@@ -52,6 +52,9 @@ import DeliveryChallans from "./pages/DeliveryChallans";
 import DeliveryChallanAdd from "./pages/DeliveryChallanAdd";
 import DeliveryChallanPreview from "./pages/DeliveryChallanPreview";
 import LandingPage from "./pages/LandingPage";
+import PublicDeliveryReport from "./pages/PublicDeliveryReport";
+import HomeTheaterHome from "./pages/public/HomeTheaterHome";
+import HomeTheaterContact from "./pages/public/HomeTheaterContact";
 
 // Procurement
 import Suppliers from "./pages/Suppliers";
@@ -81,6 +84,9 @@ const App = () => (
             <Route path="/sales/public/:token" element={<PublicQuotation />} />
             <Route path="/job/public/:token" element={<PublicJobSheet />} />
             <Route path="/invoice/public/:token" element={<PublicInvoice />} />
+            <Route path="/delivery-report/:token" element={<PublicDeliveryReport />} />
+            <Route path="/home-theater" element={<HomeTheaterHome />} />
+            <Route path="/contact" element={<HomeTheaterContact />} />
             {/* Protected routes with layout */}
             <Route
               element={

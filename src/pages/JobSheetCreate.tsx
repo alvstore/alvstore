@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2, Check,
-  User, Smartphone, IndianRupee, ClipboardCheck, FileText, Trash2,
+  User, Smartphone, IndianRupee, ClipboardCheck, FileText, Trash2, Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,7 +51,7 @@ interface ServiceLineItem {
   discount_value: number;
 }
 
-// Device-specific checklists
+// Device-specific checklists (fallback when no issue category selected)
 const DEVICE_CHECKLISTS: Record<string, ChecklistItem[]> = {
   Mobile: [
     { category: "Power", item: "Device turns ON", value: "" },
@@ -207,6 +207,11 @@ export default function JobSheetCreate() {
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [editLoading, setEditLoading] = useState(false);
 
+  // Issue category state
+  const [issueCategories, setIssueCategories] = useState<{ id: string; name: string; description: string | null }[]>([]);
+  const [selectedIssueCategory, setSelectedIssueCategory] = useState<string>("");
+  const [dynamicChecklistLoaded, setDynamicChecklistLoaded] = useState(false);
+
   // Service line items
   const [serviceItems, setServiceItems] = useState<ServiceLineItem[]>([
     { id: genId(), name: "", hsn_code: "", gst_percentage: 18, price: 0, quantity: 1, discount_type: "none", discount_value: 0 },
@@ -242,13 +247,40 @@ export default function JobSheetCreate() {
       supabase.from("device_types").select("id, name").order("name"),
       supabase.from("customers").select("id, name, phone, email, gst_number, address").order("name"),
       supabase.from("service_charge_categories").select("*").order("name"),
-    ]).then(([bRes, tRes, cRes, scRes]) => {
+      supabase.from("issue_categories").select("id, name, description").eq("status", "active").order("name"),
+    ]).then(([bRes, tRes, cRes, scRes, icRes]) => {
       setBrands(bRes.data || []);
       setDeviceTypes(tRes.data || []);
       setCustomers(cRes.data || []);
       setServiceCategories((scRes.data as ServiceCategory[]) || []);
+      setIssueCategories((icRes.data as any[]) || []);
     });
   }, []);
+
+  // Load dynamic checklist when issue category changes
+  useEffect(() => {
+    if (!selectedIssueCategory || isEditMode) return;
+    
+    supabase.from("checklist_templates")
+      .select("*")
+      .eq("issue_category_id", selectedIssueCategory)
+      .eq("stage", "pre")
+      .order("sort_order")
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const dynamicChecklist: ChecklistItem[] = data.map((t: any) => ({
+            category: t.type === "boolean" ? "Checks" : "Details",
+            item: t.title,
+            value: "" as const,
+          }));
+          // Merge with device-specific checklist
+          const deviceType = form.device_type === "__other__" ? form.custom_type : form.device_type;
+          const deviceChecklist = deviceType ? getChecklistForDevice(deviceType) : [];
+          setChecklist([...deviceChecklist, ...dynamicChecklist]);
+          setDynamicChecklistLoaded(true);
+        }
+      });
+  }, [selectedIssueCategory]);
 
   // Load existing job sheet in edit mode
   useEffect(() => {
@@ -280,10 +312,10 @@ export default function JobSheetCreate() {
           google_account_password: data.google_account_password || "",
           device_lock_code: data.device_lock_code || "",
         });
+        setSelectedIssueCategory((data as any).issue_category_id || "");
         setIssueTags((data.issue_tags as string[]) || []);
         setGstMode((data.gst_mode as any) || "exclusive");
 
-        // Load service items from JSONB or fallback to legacy single charge
         const items = (data as any).service_items as ServiceLineItem[] | null;
         if (items && Array.isArray(items) && items.length > 0) {
           setServiceItems(items.map(i => ({ ...i, id: i.id || genId() })));
@@ -310,18 +342,19 @@ export default function JobSheetCreate() {
 
   // When device type changes, reload checklist and auto-fill service charge
   useEffect(() => {
-    if (isEditMode) return; // Don't auto-fill on edit
+    if (isEditMode) return;
     const type = form.device_type === "__other__" ? form.custom_type : form.device_type;
     if (!type) return;
-    const newChecklist = getChecklistForDevice(type);
-    setChecklist(newChecklist);
+    if (!dynamicChecklistLoaded) {
+      const newChecklist = getChecklistForDevice(type);
+      setChecklist(newChecklist);
+    }
     setDeviceIsOff(false);
-    const cats = [...new Set(newChecklist.map(c => c.category))];
+    const cats = [...new Set(checklist.map(c => c.category))];
     const openMap: Record<string, boolean> = {};
     cats.forEach(c => { openMap[c] = true; });
     setOpenCategories(openMap);
 
-    // Auto-fill first service line from categories
     const matchCat = serviceCategories.find(sc =>
       sc.name.toLowerCase() === type.toLowerCase() ||
       type.toLowerCase().includes(sc.name.toLowerCase())
@@ -335,7 +368,6 @@ export default function JobSheetCreate() {
     }
   }, [form.device_type, form.custom_type, serviceCategories]);
 
-  // When customer is selected, update preview
   useEffect(() => {
     if (form.customer_id) {
       const cust = customers.find(c => c.id === form.customer_id);
@@ -379,7 +411,6 @@ export default function JobSheetCreate() {
     setImageFiles(prev => [...prev.filter(i => i.type !== type), { type, file: files[0] }]);
   };
 
-  // Service items helpers
   const addServiceLine = () => {
     setServiceItems(prev => [...prev, { id: genId(), name: "", hsn_code: "", gst_percentage: 18, price: 0, quantity: 1, discount_type: "none", discount_value: 0 }]);
   };
@@ -390,7 +421,6 @@ export default function JobSheetCreate() {
     setServiceItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i));
   };
 
-  // Totals calculation
   const serviceTotals = serviceItems.reduce((acc, item) => {
     const calc = calcLineItem(item);
     acc.subtotal += calc.base;
@@ -400,7 +430,6 @@ export default function JobSheetCreate() {
     return acc;
   }, { subtotal: 0, discount: 0, gst: 0, total: 0 });
 
-  // For inclusive GST, recalculate
   const grandTotal = gstMode === "inclusive"
     ? serviceTotals.subtotal - serviceTotals.discount
     : serviceTotals.total;
@@ -451,7 +480,6 @@ export default function JobSheetCreate() {
         await supabase.from("device_types").insert({ name: finalType });
       }
 
-      // Compute totals from service items
       const totalServiceCharge = serviceItems.reduce((s, i) => s + i.price * i.quantity, 0);
       const totalDiscount = serviceTotals.discount;
 
@@ -466,6 +494,7 @@ export default function JobSheetCreate() {
         storage_capacity: form.storage_capacity || null,
         problem_description: form.problem_description,
         issue_tags: issueTags,
+        issue_category_id: selectedIssueCategory || null,
         pre_repair_checklist: checklist.map(({ category, item, value }) => ({ category, item, value })),
         staff_notes: form.staff_notes,
         estimated_cost: form.estimated_cost ? parseFloat(form.estimated_cost) : null,
@@ -476,7 +505,6 @@ export default function JobSheetCreate() {
         google_account: form.google_account || null,
         google_account_password: form.google_account_password || null,
         device_lock_code: form.device_lock_code || null,
-        // Billing fields
         service_charge: totalServiceCharge,
         service_items: serviceItems,
         gst_mode: gstMode,
@@ -489,29 +517,20 @@ export default function JobSheetCreate() {
       };
 
       if (isEditMode) {
-        // UPDATE existing job sheet
         const { error } = await supabase.from("job_sheets").update(jobData).eq("id", editId);
         if (error) throw error;
-
         await supabase.from("job_sheet_audit_log").insert({
-          job_sheet_id: editId!,
-          action: "job_sheet_edited",
-          details: "Job sheet edited and updated",
-          user_id: user?.id,
-          user_role: "staff",
+          job_sheet_id: editId!, action: "job_sheet_edited", details: "Job sheet edited and updated", user_id: user?.id, user_role: "staff",
         });
-
         toast.success("Job Sheet updated");
         navigate(`/repairs/${editId}`);
       } else {
-        // INSERT new job sheet
         jobData.status = "pending_approval";
         jobData.created_by = user?.id;
 
         const { data: job, error } = await supabase.from("job_sheets").insert(jobData).select().single();
         if (error) throw error;
 
-        // Upload images
         for (const img of imageFiles) {
           const ext = img.file.name.split(".").pop();
           const path = `job-sheets/${job.id}/${img.type}.${ext}`;
@@ -519,20 +538,13 @@ export default function JobSheetCreate() {
           if (!uploadErr) {
             const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(path);
             await supabase.from("job_sheet_images").insert({
-              job_sheet_id: job.id,
-              image_url: urlData.publicUrl,
-              image_type: img.type,
-              uploaded_by: user?.id,
+              job_sheet_id: job.id, image_url: urlData.publicUrl, image_type: img.type, uploaded_by: user?.id, stage: "before",
             });
           }
         }
 
         await supabase.from("job_sheet_audit_log").insert({
-          job_sheet_id: job.id,
-          action: "created",
-          details: "Job sheet created with pre-repair checklist completed",
-          user_id: user?.id,
-          user_role: "staff",
+          job_sheet_id: job.id, action: "created", details: "Job sheet created with pre-repair checklist completed", user_id: user?.id, user_role: "staff",
         });
 
         toast.success(`Job Sheet ${job.job_number} created`);
@@ -699,6 +711,25 @@ export default function JobSheetCreate() {
                   </div>
                 ))}
               </div>
+
+              {/* Issue Category Selector */}
+              <Separator />
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-2"><Tag className="h-4 w-4" /> Issue Category</Label>
+                <Select value={selectedIssueCategory} onValueChange={v => { setSelectedIssueCategory(v); setDynamicChecklistLoaded(false); }}>
+                  <SelectTrigger><SelectValue placeholder="Select issue category (optional)" /></SelectTrigger>
+                  <SelectContent>
+                    {issueCategories.map(ic => (
+                      <SelectItem key={ic.id} value={ic.id}>
+                        {ic.name}
+                        {ic.description && <span className="text-muted-foreground ml-2 text-xs">— {ic.description}</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Selecting a category loads additional checklist items for that issue type.</p>
+              </div>
+
               <Separator />
               <div className="space-y-1.5">
                 <Label>Problem Description *</Label>
@@ -793,7 +824,7 @@ export default function JobSheetCreate() {
         </>
       )}
 
-      {/* Step 3: Service Charges — Enhanced Line Items */}
+      {/* Step 3: Service Charges */}
       {currentStep === 3 && (
         <Card>
           <CardHeader>
@@ -803,7 +834,6 @@ export default function JobSheetCreate() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* GST Mode */}
             <div className="space-y-2">
               <Label>GST Mode</Label>
               <RadioGroup value={gstMode} onValueChange={v => setGstMode(v as any)} className="flex gap-4">
@@ -813,7 +843,6 @@ export default function JobSheetCreate() {
               </RadioGroup>
             </div>
 
-            {/* Service Line Items Table */}
             <div className="border rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -834,51 +863,33 @@ export default function JobSheetCreate() {
                     const lineTotal = gstMode === "none" ? calc.taxable : (gstMode === "inclusive" ? calc.taxable : calc.total);
                     return (
                       <tr key={item.id} className="border-t border-border/50">
-                        <td className="px-2 py-2">
-                          <Input value={item.name} onChange={e => updateServiceLine(item.id, "name", e.target.value)} placeholder="Service name" className="h-8 text-xs" />
-                        </td>
-                        <td className="px-1 py-2">
-                          <Input value={item.hsn_code} onChange={e => updateServiceLine(item.id, "hsn_code", e.target.value)} placeholder="HSN" className="h-8 text-xs" />
-                        </td>
+                        <td className="px-2 py-2"><Input value={item.name} onChange={e => updateServiceLine(item.id, "name", e.target.value)} placeholder="Service name" className="h-8 text-xs" /></td>
+                        <td className="px-1 py-2"><Input value={item.hsn_code} onChange={e => updateServiceLine(item.id, "hsn_code", e.target.value)} placeholder="HSN" className="h-8 text-xs" /></td>
                         {gstMode !== "none" && (
                           <td className="px-1 py-2">
                             <Select value={String(item.gst_percentage)} onValueChange={v => updateServiceLine(item.id, "gst_percentage", Number(v))}>
                               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {["0", "5", "12", "18", "28"].map(p => <SelectItem key={p} value={p}>{p}%</SelectItem>)}
-                              </SelectContent>
+                              <SelectContent>{["0", "5", "12", "18", "28"].map(p => <SelectItem key={p} value={p}>{p}%</SelectItem>)}</SelectContent>
                             </Select>
                           </td>
                         )}
-                        <td className="px-1 py-2">
-                          <Input type="number" value={item.price || ""} onChange={e => updateServiceLine(item.id, "price", Number(e.target.value))} className="h-8 text-xs text-right" />
-                        </td>
-                        <td className="px-1 py-2">
-                          <Input type="number" value={item.quantity || ""} onChange={e => updateServiceLine(item.id, "quantity", Number(e.target.value))} className="h-8 text-xs text-center w-14 mx-auto" />
-                        </td>
+                        <td className="px-1 py-2"><Input type="number" value={item.price || ""} onChange={e => updateServiceLine(item.id, "price", Number(e.target.value))} className="h-8 text-xs text-right" /></td>
+                        <td className="px-1 py-2"><Input type="number" value={item.quantity || ""} onChange={e => updateServiceLine(item.id, "quantity", Number(e.target.value))} className="h-8 text-xs text-center w-14 mx-auto" /></td>
                         <td className="px-1 py-2">
                           <div className="flex gap-1 items-center">
                             <Select value={item.discount_type} onValueChange={v => updateServiceLine(item.id, "discount_type", v)}>
                               <SelectTrigger className="h-8 text-xs w-[55px]"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">—</SelectItem>
-                                <SelectItem value="percentage">%</SelectItem>
-                                <SelectItem value="fixed">₹</SelectItem>
-                              </SelectContent>
+                              <SelectContent><SelectItem value="none">—</SelectItem><SelectItem value="percentage">%</SelectItem><SelectItem value="fixed">₹</SelectItem></SelectContent>
                             </Select>
                             {item.discount_type !== "none" && (
                               <Input type="number" value={item.discount_value || ""} onChange={e => updateServiceLine(item.id, "discount_value", Number(e.target.value))} className="h-8 text-xs w-14" />
                             )}
                           </div>
                         </td>
-                        <td className="px-2 py-2 text-right font-medium text-xs">
-                          ₹{lineTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                        </td>
+                        <td className="px-2 py-2 text-right font-medium text-xs">₹{lineTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td>
                         <td className="px-1 py-2">
                           {serviceItems.length > 1 && (
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => removeServiceLine(item.id)}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => removeServiceLine(item.id)}><Trash2 className="h-3 w-3" /></Button>
                           )}
                         </td>
                       </tr>
@@ -888,31 +899,14 @@ export default function JobSheetCreate() {
               </table>
             </div>
 
-            {/* Totals Summary */}
             <Card className="bg-muted/30 border-primary/20">
               <CardHeader className="pb-2"><CardTitle className="text-sm">Billing Summary</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>₹{serviceTotals.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
-                </div>
-                {serviceTotals.discount > 0 && (
-                  <div className="flex justify-between text-sm text-destructive">
-                    <span>Discount</span>
-                    <span>-₹{serviceTotals.discount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-                {gstMode !== "none" && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">GST ({gstMode})</span>
-                    <span>₹{effectiveGst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>₹{serviceTotals.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
+                {serviceTotals.discount > 0 && <div className="flex justify-between text-sm text-destructive"><span>Discount</span><span>-₹{serviceTotals.discount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>}
+                {gstMode !== "none" && <div className="flex justify-between text-sm"><span className="text-muted-foreground">GST ({gstMode})</span><span>₹{effectiveGst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>}
                 <Separator />
-                <div className="flex justify-between font-bold text-base">
-                  <span>Grand Total</span>
-                  <span className="text-primary">₹{grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
-                </div>
+                <div className="flex justify-between font-bold text-base"><span>Grand Total</span><span className="text-primary">₹{grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>
               </CardContent>
             </Card>
           </CardContent>
@@ -1044,6 +1038,9 @@ export default function JobSheetCreate() {
               <p><span className="text-muted-foreground">Serial:</span> {form.serial_number || "—"}</p>
               <p><span className="text-muted-foreground">IMEI:</span> {form.imei_number || "—"}</p>
               <p><span className="text-muted-foreground">Problem:</span> {form.problem_description.slice(0, 50)}{form.problem_description.length > 50 ? "..." : ""}</p>
+              {selectedIssueCategory && (
+                <p><span className="text-muted-foreground">Issue Category:</span> {issueCategories.find(c => c.id === selectedIssueCategory)?.name || "—"}</p>
+              )}
             </CardContent>
           </Card>
 
@@ -1079,7 +1076,7 @@ export default function JobSheetCreate() {
         </>
       )}
 
-      {/* Navigation Buttons — NO auto invoice generation */}
+      {/* Navigation Buttons */}
       <div className="flex gap-3 justify-between pb-6">
         <div>
           {currentStep > 1 && (

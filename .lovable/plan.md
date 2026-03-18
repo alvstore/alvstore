@@ -1,175 +1,124 @@
 
+# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
-# Advanced Repair Workflow + Home Theater SEO Website
+## Overview
 
-This is a massive scope request. I'll break it into two distinct phases and prioritize what can be built effectively.
+Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
 
----
+## Phase 1: Theme Provider and Multiple Themes
 
-## Phase 1: Advanced Repair Workflow System
+### New File: `src/hooks/useTheme.tsx`
+Create a React context-based theme provider that:
+- Stores selected theme name in `localStorage` (key: `app-theme`)
+- Applies the theme by setting CSS variables on `document.documentElement`
+- Exposes `theme`, `setTheme`, and `themes` list
 
-### 1A. Dynamic Issue Category & Checklist Engine
+### Themes (6 total):
 
-**Database Migration:**
-```sql
--- Issue categories (Hardware, Software, Screen, Battery, etc.)
-CREATE TABLE public.issue_categories (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  description text,
-  status text DEFAULT 'active',
-  created_at timestamptz DEFAULT now()
-);
+1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
+2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
+3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
+4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
+5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
+6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
 
--- Checklist templates linked to categories + stage
-CREATE TABLE public.checklist_templates (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  issue_category_id uuid REFERENCES public.issue_categories(id),
-  stage text NOT NULL DEFAULT 'pre', -- pre / post
-  title text NOT NULL,
-  type text DEFAULT 'boolean', -- boolean / text / dropdown
-  is_required boolean DEFAULT false,
-  sort_order integer DEFAULT 0,
-  options jsonb, -- for dropdown type
-  created_at timestamptz DEFAULT now()
-);
--- RLS: admin/staff full access
--- Seed default categories: Hardware, Software, Screen, Battery, Water Damage, Data Backup, Other
-```
+Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
 
-**Impact on JobSheetCreate.tsx:**
-- Add issue category selector in Device step
-- When category selected, fetch `checklist_templates` for `stage='pre'` and dynamically populate the checklist instead of the hardcoded `DEVICE_CHECKLISTS`
-- Keep existing hardcoded checklists as fallback when no category selected
+### Theme Switcher UI
+Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
 
-### 1B. Enhanced Status Flow
+### Files:
+- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
+- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
+- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
+- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
 
-**Database Migration:**
-- Add `qc_pending` and `qc_approved` to the `job_sheet_status` enum (currently: created, pending_approval, approved, rejected, assigned, in_progress, waiting_parts, repair_completed, quality_check, invoice_generated, delivered)
-- The existing `quality_check` status maps to QC Pending; add `qc_approved` and `qc_failed`
+### Adaptive Components
+The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
+- `bg-[#080808]` becomes `bg-background`
+- `bg-[#121212]` becomes `bg-card`
+- `text-white` becomes `text-foreground`
+- `text-zinc-500` becomes `text-muted-foreground`
+- `border-white/5` becomes `border-border`
 
-```sql
-ALTER TYPE public.job_sheet_status ADD VALUE IF NOT EXISTS 'qc_failed';
-ALTER TYPE public.job_sheet_status ADD VALUE IF NOT EXISTS 'ready_for_delivery';
-```
+This ensures all themes work automatically.
 
-**Impact on JobSheetDetail.tsx:**
-- Update `JOB_STATUSES` and `TIMELINE_STEPS` arrays
-- Add QC approval/rejection actions (only shown at `quality_check` status)
-- Block invoice generation unless status is `qc_approved` or later
-- Load post-repair checklist from `checklist_templates` (stage='post') for the job's issue category
+### Files to update for semantic colors:
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/layout/AppHeader.tsx`
+- `src/pages/Dashboard.tsx`
 
-### 1C. Image Stage Tagging
+## Phase 2: KPI Card Redesign (Reference Match)
 
-**Database Migration:**
-```sql
--- Add stage column to job_sheet_images
-ALTER TABLE public.job_sheet_images ADD COLUMN IF NOT EXISTS stage text DEFAULT 'before';
--- Values: before, during, after
-```
+Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
 
-**Impact on JobSheetDetail.tsx:**
-- Group photos by stage in the Photos tab
-- When uploading, allow selecting stage (before/during/after)
-- Default stage based on job status (before if pre-repair, during if in_progress, after if repair_completed+)
+**Layout per card:**
+- Top row: Label text (left) + arrow-up-right icon button (right corner)
+- Center: Large bold metric number (32-40px)
+- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
 
-### 1D. Delivery Report (Public)
+**Accent color system**: Each card gets a unique subtle background tint:
+- Card 1 (Revenue): Soft green background tint
+- Card 2 (Sales): White/neutral
+- Card 3 (Repairs): White/neutral
+- Card 4 (Pending): White/neutral
 
-**New page: `src/pages/PublicDeliveryReport.tsx`**
-- Public link using existing `public_token`
-- Shows: job details, before/after photos, pre/post checklists, work summary, warranty details
-- Customer actions: approve delivery, digital signature (reuse `SignaturePad`), download/print
+The first card (most important KPI) gets a colored border-left accent strip.
 
-**Database Migration:**
-```sql
--- Add delivery fields to job_sheets
-ALTER TABLE public.job_sheets 
-  ADD COLUMN IF NOT EXISTS delivery_signature_data text,
-  ADD COLUMN IF NOT EXISTS delivery_signature_name text,
-  ADD COLUMN IF NOT EXISTS delivery_approved_at timestamptz,
-  ADD COLUMN IF NOT EXISTS issue_category_id uuid;
-```
+**Contextual KPIs to display:**
+- Daily Cash Flow (from `finance_transactions`)
+- Store Sales with 18% GST indicator
+- Gym Revenue with 5% GST indicator
+- Active Repairs count
 
-### 1E. UI Tab Restructure (JobSheetDetail)
+## Phase 3: Employee Login Enforcement
 
-Restructure the detail page into tabs:
-- **Overview** - Status, customer, device, quick actions
-- **Checklist** - Pre/Post checklists side by side
-- **Repair Notes** - Diagnosis, staff notes, repair notes
-- **Parts Used** - Parts list with inventory links
-- **Photos** - Grouped by stage (before/during/after)
-- **Audit Log** - Timeline + audit entries
+### Problem
+Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
 
----
+### Fix in `src/pages/Employees.tsx`:
+1. Add a prominent "Create with Login" toggle/checkbox in the employee form
+2. When toggled ON (default for internal employees), make email and password fields REQUIRED
+3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
+4. For existing employees without `user_id`, show a "Link Login Account" button that:
+   - Opens a mini-form asking for email + password
+   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
+   - Updates the employee record with the returned `user_id`
 
-## Phase 2: Home Theater SEO Website
+### Visual indicator in employee list:
+- Show a small shield/lock icon next to employees who have a linked auth account
+- Show a warning icon next to employees without one
 
-### 2A. New Public Website Pages
+## Phase 4: Chart Theme Adaptation
 
-Replace the current `LandingPage.tsx` (which mixes repair + home theater) with a dedicated home theater focused site.
+Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
+- Tooltip background: `hsl(var(--card))`
+- Tooltip border: `hsl(var(--border))`
+- Bar gradient: Use the theme's accent/success color
+- Axis text: `hsl(var(--muted-foreground))`
 
-**New pages:**
-- `src/pages/public/HomeTheaterHome.tsx` - Hero, services overview, CTAs
-- `src/pages/public/HomeTheaterAbout.tsx` - Company story, team
-- `src/pages/public/HomeTheaterSolutions.tsx` - Service pages (Dolby Atmos, custom cinema, etc.)
-- `src/pages/public/HomeTheaterGallery.tsx` - Project gallery
-- `src/pages/public/HomeTheaterContact.tsx` - Contact form + lead capture
-
-### 2B. Lead Capture Form
-
-Contact/consultation form fields: Name, Phone, City, Requirement, Budget, Room Size.
-On submit → insert into existing `leads` table with `source = 'website'`.
-
-### 2C. SEO Implementation
-
-- Semantic HTML (h1/h2/h3 hierarchy)
-- Meta tags via `react-helmet-async`
-- Schema.org JSON-LD for local business
-- Keywords: "Home theater installation Udaipur", "Luxury home cinema", "Dolby Atmos setup"
-- Lazy loading images, optimized assets
-
-### 2D. Routing
-
-```
-/                    → HomeTheaterHome (public)
-/about               → HomeTheaterAbout
-/solutions           → HomeTheaterSolutions
-/gallery             → HomeTheaterGallery
-/contact             → HomeTheaterContact
-/dashboard           → Dashboard (protected, existing)
-/login, /signup      → existing auth pages
-```
-
----
-
-## Implementation Order
-
-1. Database migration (issue_categories, checklist_templates, job_sheet_images stage, delivery fields, status enum)
-2. Seed default issue categories and checklist templates
-3. Update JobSheetCreate with dynamic checklist loading
-4. Update JobSheetDetail with tabbed UI, QC workflow, staged photos
-5. Create PublicDeliveryReport page
-6. Create Home Theater public website pages
-7. Lead capture form integration
-8. Routing updates
+This ensures charts look correct in both light and dark themes.
 
 ## Files Summary
 
 ```text
-MIGRATION:  issue_categories, checklist_templates, alter job_sheet_images,
-            alter job_sheets, alter job_sheet_status enum, seed data
-
-EDIT:       src/pages/JobSheetCreate.tsx (dynamic checklist)
-EDIT:       src/pages/JobSheetDetail.tsx (tabs, QC, staged photos)
-EDIT:       src/App.tsx (routes)
-EDIT:       src/components/layout/AppSidebar.tsx (if needed)
-EDIT:       src/pages/LandingPage.tsx (redirect or replace)
-
-CREATE:     src/pages/PublicDeliveryReport.tsx
-CREATE:     src/pages/public/HomeTheaterHome.tsx
-CREATE:     src/pages/public/HomeTheaterAbout.tsx
-CREATE:     src/pages/public/HomeTheaterSolutions.tsx
-CREATE:     src/pages/public/HomeTheaterGallery.tsx
-CREATE:     src/pages/public/HomeTheaterContact.tsx
+NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
+EDIT: src/main.tsx                       -- Wrap in ThemeProvider
+EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
+EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
+EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
+EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
+EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
 ```
 
+## Database Changes
+None required.
+
+## Implementation Order
+1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
+2. `src/index.css` -- Ensure variables are the correct defaults
+3. `src/main.tsx` -- Wire up provider
+4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
+5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
+6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
+7. `src/pages/Employees.tsx` -- Login enforcement
