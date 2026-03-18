@@ -262,6 +262,50 @@ export type Database = {
           },
         ]
       }
+      checklist_templates: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_required: boolean | null
+          issue_category_id: string | null
+          options: Json | null
+          sort_order: number | null
+          stage: string
+          title: string
+          type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_required?: boolean | null
+          issue_category_id?: string | null
+          options?: Json | null
+          sort_order?: number | null
+          stage?: string
+          title: string
+          type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_required?: boolean | null
+          issue_category_id?: string | null
+          options?: Json | null
+          sort_order?: number | null
+          stage?: string
+          title?: string
+          type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_templates_issue_category_id_fkey"
+            columns: ["issue_category_id"]
+            isOneToOne: false
+            referencedRelation: "issue_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null
@@ -1233,6 +1277,30 @@ export type Database = {
           },
         ]
       }
+      issue_categories: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       job_sheet_audit_log: {
         Row: {
           action: string
@@ -1282,6 +1350,7 @@ export type Database = {
           image_type: string
           image_url: string
           job_sheet_id: string
+          stage: string | null
           uploaded_by: string | null
         }
         Insert: {
@@ -1291,6 +1360,7 @@ export type Database = {
           image_type?: string
           image_url: string
           job_sheet_id: string
+          stage?: string | null
           uploaded_by?: string | null
         }
         Update: {
@@ -1300,6 +1370,7 @@ export type Database = {
           image_type?: string
           image_url?: string
           job_sheet_id?: string
+          stage?: string | null
           uploaded_by?: string | null
         }
         Relationships: [
@@ -1324,6 +1395,9 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_id: string
+          delivery_approved_at: string | null
+          delivery_signature_data: string | null
+          delivery_signature_name: string | null
           device_brand: string
           device_color: string | null
           device_lock_code: string | null
@@ -1346,6 +1420,7 @@ export type Database = {
           id: string
           imei_number: string | null
           invoice_id: string | null
+          issue_category_id: string | null
           issue_tags: Json | null
           job_number: string
           parts_total: number | null
@@ -1382,6 +1457,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id: string
+          delivery_approved_at?: string | null
+          delivery_signature_data?: string | null
+          delivery_signature_name?: string | null
           device_brand: string
           device_color?: string | null
           device_lock_code?: string | null
@@ -1404,6 +1482,7 @@ export type Database = {
           id?: string
           imei_number?: string | null
           invoice_id?: string | null
+          issue_category_id?: string | null
           issue_tags?: Json | null
           job_number?: string
           parts_total?: number | null
@@ -1440,6 +1519,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string
+          delivery_approved_at?: string | null
+          delivery_signature_data?: string | null
+          delivery_signature_name?: string | null
           device_brand?: string
           device_color?: string | null
           device_lock_code?: string | null
@@ -1462,6 +1544,7 @@ export type Database = {
           id?: string
           imei_number?: string | null
           invoice_id?: string | null
+          issue_category_id?: string | null
           issue_tags?: Json | null
           job_number?: string
           parts_total?: number | null
@@ -1500,6 +1583,13 @@ export type Database = {
             columns: ["invoice_id"]
             isOneToOne: false
             referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_sheets_issue_category_id_fkey"
+            columns: ["issue_category_id"]
+            isOneToOne: false
+            referencedRelation: "issue_categories"
             referencedColumns: ["id"]
           },
         ]
@@ -2966,6 +3056,8 @@ export type Database = {
         | "quality_check"
         | "invoice_generated"
         | "delivered"
+        | "qc_failed"
+        | "ready_for_delivery"
       payment_method_type: "cash" | "card" | "upi" | "online"
       payment_status: "pending" | "completed" | "failed" | "refunded"
       payment_type: "invoice" | "pos" | "online"
@@ -3121,6 +3213,8 @@ export const Constants = {
         "quality_check",
         "invoice_generated",
         "delivered",
+        "qc_failed",
+        "ready_for_delivery",
       ],
       payment_method_type: ["cash", "card", "upi", "online"],
       payment_status: ["pending", "completed", "failed", "refunded"],
