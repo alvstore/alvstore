@@ -52,6 +52,9 @@ import DeliveryChallans from "./pages/DeliveryChallans";
 import DeliveryChallanAdd from "./pages/DeliveryChallanAdd";
 import DeliveryChallanPreview from "./pages/DeliveryChallanPreview";
 import LandingPage from "./pages/LandingPage";
+import PublicDeliveryReport from "./pages/PublicDeliveryReport";
+import HomeTheaterHome from "./pages/public/HomeTheaterHome";
+import HomeTheaterContact from "./pages/public/HomeTheaterContact";
 
 // Procurement
 import Suppliers from "./pages/Suppliers";
