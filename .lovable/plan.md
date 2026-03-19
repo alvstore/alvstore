@@ -1,124 +1,128 @@
 
-# Multi-Theme System, KPI Overhaul, and Employee Login Audit
 
-## Overview
+# Premium 3D Home Theater Website + WhatsApp Automation System
 
-Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
+This is a two-part request. Given the massive scope, I'll focus on what's buildable effectively within this stack.
 
-## Phase 1: Theme Provider and Multiple Themes
+---
 
-### New File: `src/hooks/useTheme.tsx`
-Create a React context-based theme provider that:
-- Stores selected theme name in `localStorage` (key: `app-theme`)
-- Applies the theme by setting CSS variables on `document.documentElement`
-- Exposes `theme`, `setTheme`, and `themes` list
+## Part 1: Premium 3D Home Theater Website
 
-### Themes (6 total):
+### What exists
+`src/pages/public/HomeTheaterHome.tsx` — a basic static page with services, testimonials, FAQs, and a lead capture form. No 3D, no animations, no interactive configurator.
 
-1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
-2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
-3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
-4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
-5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
-6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
+### Plan
 
-Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
+**Replace `HomeTheaterHome.tsx`** with a premium 3D experience using React Three Fiber (`@react-three/fiber@^8.18`, `@react-three/drei@^9.122.0`, `three@^0.170`).
 
-### Theme Switcher UI
-Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
+#### Sections to build:
 
-### Files:
-- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
-- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
-- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
-- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
+1. **Hero** — 3D theater room scene (simple geometric room with floating speaker meshes + screen). Mouse-move camera tilt via `useFrame`. Scroll-driven zoom. Two CTAs: "Get Free Consultation" / "Book Demo" (scrolls to form).
 
-### Adaptive Components
-The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
-- `bg-[#080808]` becomes `bg-background`
-- `bg-[#121212]` becomes `bg-card`
-- `text-white` becomes `text-foreground`
-- `text-zinc-500` becomes `text-muted-foreground`
-- `border-white/5` becomes `border-border`
+2. **Services** — 3D floating glassmorphic cards with hover tilt (CSS `perspective` + `transform`). No heavy Three.js needed here.
 
-This ensures all themes work automatically.
+3. **Interactive Configurator** — Room size selector (Small/Medium/Large), budget range, setup type (Basic/Premium/Ultra). On selection, shows recommended config with estimated price. Pure React state — no 3D needed.
 
-### Files to update for semantic colors:
-- `src/components/layout/AppSidebar.tsx`
-- `src/components/layout/AppHeader.tsx`
-- `src/pages/Dashboard.tsx`
+4. **Projects/Portfolio** — Parallax grid with CSS 3D tilt on hover.
 
-## Phase 2: KPI Card Redesign (Reference Match)
+5. **Testimonials** — Auto-scrolling floating cards.
 
-Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
+6. **Lead Capture Form** — Same fields as current (name, phone, city, requirement, budget, room_size). Inserts into `leads` table with `source: 'website'`.
 
-**Layout per card:**
-- Top row: Label text (left) + arrow-up-right icon button (right corner)
-- Center: Large bold metric number (32-40px)
-- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
+7. **Floating WhatsApp Button** — Fixed position, opens `https://wa.me/91XXXXXXXXXX?text=Hi, I want Home Theater setup`. Phone number from `business_settings`.
 
-**Accent color system**: Each card gets a unique subtle background tint:
-- Card 1 (Revenue): Soft green background tint
-- Card 2 (Sales): White/neutral
-- Card 3 (Repairs): White/neutral
-- Card 4 (Pending): White/neutral
+#### Mobile fallback
+Detect mobile via `use-mobile` hook. On mobile: skip Three.js scene, show a static hero image with gradient overlay instead.
 
-The first card (most important KPI) gets a colored border-left accent strip.
+#### SEO
+Keep existing React Helmet meta tags and JSON-LD schema.
 
-**Contextual KPIs to display:**
-- Daily Cash Flow (from `finance_transactions`)
-- Store Sales with 18% GST indicator
-- Gym Revenue with 5% GST indicator
-- Active Repairs count
-
-## Phase 3: Employee Login Enforcement
-
-### Problem
-Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
-
-### Fix in `src/pages/Employees.tsx`:
-1. Add a prominent "Create with Login" toggle/checkbox in the employee form
-2. When toggled ON (default for internal employees), make email and password fields REQUIRED
-3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
-4. For existing employees without `user_id`, show a "Link Login Account" button that:
-   - Opens a mini-form asking for email + password
-   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
-   - Updates the employee record with the returned `user_id`
-
-### Visual indicator in employee list:
-- Show a small shield/lock icon next to employees who have a linked auth account
-- Show a warning icon next to employees without one
-
-## Phase 4: Chart Theme Adaptation
-
-Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
-- Tooltip background: `hsl(var(--card))`
-- Tooltip border: `hsl(var(--border))`
-- Bar gradient: Use the theme's accent/success color
-- Axis text: `hsl(var(--muted-foreground))`
-
-This ensures charts look correct in both light and dark themes.
-
-## Files Summary
-
-```text
-NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
-EDIT: src/main.tsx                       -- Wrap in ThemeProvider
-EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
-EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
-EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
-EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
-EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
+#### Files:
+```
+EDIT:    src/pages/public/HomeTheaterHome.tsx  (complete rewrite with 3D hero)
+CREATE:  src/components/home-theater/TheaterScene.tsx  (R3F 3D scene)
+CREATE:  src/components/home-theater/Configurator.tsx  (interactive configurator)
+CREATE:  src/components/home-theater/WhatsAppFloat.tsx  (floating WA button)
 ```
 
-## Database Changes
-None required.
+#### Dependencies:
+- `@react-three/fiber@^8.18`
+- `@react-three/drei@^9.122.0`
+- `three@^0.170`
+- `@types/three` (dev)
+
+---
+
+## Part 2: WhatsApp Automation System
+
+### What exists
+- `send-whatsapp` edge function — sends text/template messages via WhatsApp Business API
+- `templates` table — stores email/SMS/invoice templates with variable support
+- `Chat.tsx` — full chat UI with WhatsApp and internal messaging
+- Business settings store WA API keys
+
+### Plan
+
+#### 2A. WhatsApp Automation Templates
+
+**Add `event_type` column to `templates` table** to link templates to ERP events.
+
+```sql
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS event_type text;
+-- Values: lead_created, job_created, job_approved, job_in_progress, 
+--         job_ready, job_delivered, invoice_generated, payment_received,
+--         quotation_sent, payment_reminder
+```
+
+#### 2B. Automation Trigger Edge Function
+
+**Create `supabase/functions/whatsapp-automation/index.ts`**
+
+Called from client code at key workflow moments (job status change, invoice creation, etc.). Flow:
+1. Receives `{ event_type, customer_phone, variables: { name, job_id, amount, status, link } }`
+2. Looks up template by `event_type` in `templates` table
+3. Replaces `{{variable}}` placeholders
+4. Calls existing `send-whatsapp` function logic internally
+5. Falls back to SMS (calls `send-sms` function) if WhatsApp fails
+
+#### 2C. Trigger Points in Existing Code
+
+Add automation calls at these points:
+- **JobSheetDetail.tsx** — on status change (calls automation with `job_*` event types)
+- **InvoiceAdd.tsx** — on invoice creation (`invoice_generated`)
+- **Payments page** — on payment received (`payment_received`)
+- **Leads.tsx** — on lead creation (`lead_created`)
+
+Each trigger: fetch customer phone → call `whatsapp-automation` function.
+
+#### 2D. Automation Settings UI
+
+**Add "WhatsApp Automation" section in Settings** (under existing WhatsApp tab):
+- Toggle automation on/off per event type
+- Link to template for each event
+- Test button to send sample message
+
+#### 2E. Delivery Status Tracking
+
+Already partially exists in `chat_messages.delivery_status`. Enhance the `send-whatsapp` edge function to update `delivery_status` field (sent/delivered/read/failed) — this requires webhook handling which is already scaffolded in the GET handler.
+
+#### Files:
+```
+MIGRATION:  Add event_type column to templates
+CREATE:     supabase/functions/whatsapp-automation/index.ts
+EDIT:       src/pages/JobSheetDetail.tsx (add automation triggers on status change)
+EDIT:       src/pages/Settings.tsx (add automation toggle UI in WhatsApp tab)
+```
+
+---
 
 ## Implementation Order
-1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
-2. `src/index.css` -- Ensure variables are the correct defaults
-3. `src/main.tsx` -- Wire up provider
-4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
-5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
-6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
-7. `src/pages/Employees.tsx` -- Login enforcement
+
+1. Install 3D dependencies
+2. Create TheaterScene, Configurator, WhatsAppFloat components
+3. Rewrite HomeTheaterHome with 3D hero + all sections
+4. Database migration (templates.event_type)
+5. Create whatsapp-automation edge function
+6. Add trigger points in JobSheetDetail
+7. Add automation settings UI
+
