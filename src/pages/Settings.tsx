@@ -710,7 +710,146 @@ function WhatsAppTab() {
       </Card>
 
       <Button onClick={save} disabled={saving || intSaving}>{(saving || intSaving) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save WhatsApp Settings</Button>
+
+      <WhatsAppAutomationSection />
     </div>
+  );
+}
+
+// ─── WhatsApp Automation Settings ────────────────────────────────
+const AUTOMATION_EVENTS = [
+  { id: "lead_created", label: "New Lead Created", desc: "When a new lead is captured" },
+  { id: "job_created", label: "Job Sheet Created", desc: "When a repair job is created" },
+  { id: "job_approved", label: "Job Approved", desc: "When customer approves the job" },
+  { id: "job_in_progress", label: "Repair In Progress", desc: "When repair work starts" },
+  { id: "job_ready", label: "Ready for Pickup", desc: "When repair is completed" },
+  { id: "job_delivered", label: "Job Delivered", desc: "When device is delivered" },
+  { id: "invoice_generated", label: "Invoice Generated", desc: "When invoice is created" },
+  { id: "payment_received", label: "Payment Received", desc: "When payment is confirmed" },
+  { id: "quotation_sent", label: "Quotation Sent", desc: "When quotation is shared" },
+  { id: "payment_reminder", label: "Payment Reminder", desc: "Overdue payment reminder" },
+];
+
+function WhatsAppAutomationSection() {
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
+
+  const fetchTemplates = async () => {
+    setLoading(true);
+    const { data } = await supabase.from("templates").select("*").not("event_type", "is", null);
+    setTemplates(data || []);
+    setLoading(false);
+  };
+
+  const getTemplateForEvent = (eventType: string) => {
+    return templates.find((t: any) => t.event_type === eventType);
+  };
+
+  const createDefaultTemplate = async (eventId: string, eventLabel: string) => {
+    const defaultBodies: Record<string, string> = {
+      lead_created: "Hello {{customer_name}}, thank you for your interest! Our team will contact you shortly.",
+      job_created: "Hello {{customer_name}}, your repair job {{job_id}} has been created. Track: {{link}}",
+      job_approved: "Hello {{customer_name}}, your job {{job_id}} has been approved. We'll begin work shortly.",
+      job_in_progress: "Hello {{customer_name}}, repair on {{job_id}} is now in progress. Track: {{link}}",
+      job_ready: "Hello {{customer_name}}, your device ({{job_id}}) is ready for pickup! Track: {{link}}",
+      job_delivered: "Hello {{customer_name}}, job {{job_id}} delivered successfully. Thank you for choosing us!",
+      invoice_generated: "Hello {{customer_name}}, invoice for ₹{{amount}} has been generated. View: {{link}}",
+      payment_received: "Hello {{customer_name}}, payment of ₹{{amount}} received. Thank you!",
+      quotation_sent: "Hello {{customer_name}}, your quotation is ready. View: {{link}}",
+      payment_reminder: "Hello {{customer_name}}, payment of ₹{{amount}} is pending. Pay now: {{link}}",
+    };
+
+    const { error } = await supabase.from("templates").insert({
+      name: `WA: ${eventLabel}`,
+      type: "sms" as any,
+      body: defaultBodies[eventId] || `Hello {{customer_name}}, update on your job {{job_id}}: {{status}}`,
+      event_type: eventId,
+      created_by: user?.id,
+    });
+    if (error) toast.error(error.message);
+    else { toast.success("Template created"); fetchTemplates(); }
+  };
+
+  const removeAutomation = async (templateId: string) => {
+    const { error } = await supabase.from("templates").update({ event_type: null } as any).eq("id", templateId);
+    if (error) toast.error(error.message);
+    else { toast.success("Automation removed"); fetchTemplates(); }
+  };
+
+  const testAutomation = async (eventId: string) => {
+    try {
+      const result = await supabase.functions.invoke("whatsapp-automation", {
+        body: {
+          event_type: eventId,
+          customer_phone: "919999999999",
+          variables: {
+            customer_name: "Test Customer",
+            job_id: "JOB-2026-00001",
+            status: "test",
+            link: window.location.origin,
+            amount: "1000",
+          },
+        },
+      });
+      if (result.data?.success) toast.success(`Test sent via ${result.data.channel}`);
+      else if (result.data?.skipped) toast.info("No template configured for this event");
+      else toast.error(result.data?.error || "Test failed");
+    } catch (e) {
+      toast.error("Failed to test automation");
+    }
+  };
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <MessageSquare className="h-4 w-4" /> WhatsApp Automation
+        </CardTitle>
+        <CardDescription>Auto-send WhatsApp messages on key events. Falls back to SMS if WhatsApp is unavailable.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="space-y-3">
+            {AUTOMATION_EVENTS.map(evt => {
+              const tpl = getTemplateForEvent(evt.id);
+              return (
+                <div key={evt.id} className="flex items-center justify-between p-3 rounded-xl border border-border bg-card/50">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{evt.label}</p>
+                    <p className="text-xs text-muted-foreground">{evt.desc}</p>
+                    {tpl && <p className="text-xs text-primary mt-1 truncate max-w-[300px]">Template: {tpl.name}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {tpl ? (
+                      <>
+                        <Badge className="bg-success/10 text-success text-xs">Active</Badge>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => testAutomation(evt.id)}>
+                          <TestTube className="h-3 w-3 mr-1" /> Test
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => removeAutomation(tpl.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => createDefaultTemplate(evt.id, evt.label)}>
+                        <Plus className="h-3 w-3 mr-1" /> Enable
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
