@@ -148,10 +148,45 @@ export default function JobSheetDetail() {
 
   useEffect(() => { fetchAll(); }, [id]);
 
+  const triggerAutomation = async (eventType: string) => {
+    if (!job?.customers?.phone) return;
+    try {
+      await supabase.functions.invoke("whatsapp-automation", {
+        body: {
+          event_type: eventType,
+          customer_phone: job.customers.phone,
+          variables: {
+            customer_name: job.customers.name || "",
+            job_id: job.job_number || "",
+            status: eventType.replace("job_", "").replace("_", " "),
+            link: `${window.location.origin}/job/${job.public_token}`,
+            amount: job.total_amount?.toString() || "0",
+          },
+        },
+      });
+    } catch (e) {
+      console.log("Automation trigger skipped:", e);
+    }
+  };
+
+  const STATUS_EVENT_MAP: Record<string, string> = {
+    approved: "job_approved",
+    in_progress: "job_in_progress",
+    repair_completed: "job_ready",
+    ready_for_delivery: "job_ready",
+    delivered: "job_delivered",
+  };
+
   const updateStatus = async (newStatus: string) => {
     const { error } = await supabase.from("job_sheets").update({ status: newStatus as any }).eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success("Status updated"); fetchAll(); }
+    else {
+      toast.success("Status updated");
+      // Trigger WhatsApp automation for key status changes
+      const eventType = STATUS_EVENT_MAP[newStatus];
+      if (eventType) triggerAutomation(eventType);
+      fetchAll();
+    }
   };
 
   const assignTechnician = async (techId: string) => {
