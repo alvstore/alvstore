@@ -2976,6 +2976,7 @@ export type Database = {
           body: string
           created_at: string
           created_by: string | null
+          event_type: string | null
           id: string
           is_default: boolean | null
           name: string
@@ -2988,6 +2989,7 @@ export type Database = {
           body?: string
           created_at?: string
           created_by?: string | null
+          event_type?: string | null
           id?: string
           is_default?: boolean | null
           name: string
@@ -3000,6 +3002,7 @@ export type Database = {
           body?: string
           created_at?: string
           created_by?: string | null
+          event_type?: string | null
           id?: string
           is_default?: boolean | null
           name?: string
