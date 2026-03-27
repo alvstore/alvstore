@@ -36,6 +36,7 @@ const adminStaffNav: NavCategory[] = [
     label: "Commerce",
     items: [
       { title: "Products", url: "/inventory", icon: Package },
+      { title: "Apple Pricing", url: "/apple-pricing", icon: Tag },
       { title: "POS Terminal", url: "/pos", icon: Monitor },
       { title: "Barcodes", url: "/barcodes", icon: FileText },
     ],
