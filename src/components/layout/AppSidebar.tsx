@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
   Target, ClipboardList, Receipt, UserCog,
   Wallet, Shield, MessageCircle, CalendarDays, Zap, Truck,
-  Building2, ShoppingBag, RotateCcw,
+  Building2, ShoppingBag, RotateCcw, Tag,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +36,7 @@ const adminStaffNav: NavCategory[] = [
     label: "Commerce",
     items: [
       { title: "Products", url: "/inventory", icon: Package },
+      { title: "Apple Pricing", url: "/apple-pricing", icon: Tag },
       { title: "POS Terminal", url: "/pos", icon: Monitor },
       { title: "Barcodes", url: "/barcodes", icon: FileText },
     ],

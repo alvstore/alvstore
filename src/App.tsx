@@ -64,6 +64,7 @@ import PurchaseReturns from "./pages/PurchaseReturns";
 
 // Finance
 import PaymentRegister from "./pages/PaymentRegister";
+import ApplePricing from "./pages/ApplePricing";
 
 const queryClient = new QueryClient();
 
@@ -144,6 +145,7 @@ const App = () => (
               <Route path="/purchase-bills" element={<PurchaseBills />} />
               <Route path="/purchase-returns" element={<PurchaseReturns />} />
               <Route path="/payment-register" element={<PaymentRegister />} />
+              <Route path="/apple-pricing" element={<ApplePricing />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
