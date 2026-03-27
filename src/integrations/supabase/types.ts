@@ -14,6 +14,123 @@ export type Database = {
   }
   public: {
     Tables: {
+      apple_offers: {
+        Row: {
+          applicable_category: string
+          applicable_product: string | null
+          bank_name: string | null
+          created_at: string | null
+          discount_amount: number | null
+          discount_description: string | null
+          end_date: string | null
+          id: string
+          offer_type: string
+          start_date: string | null
+          status: string | null
+        }
+        Insert: {
+          applicable_category: string
+          applicable_product?: string | null
+          bank_name?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_description?: string | null
+          end_date?: string | null
+          id?: string
+          offer_type: string
+          start_date?: string | null
+          status?: string | null
+        }
+        Update: {
+          applicable_category?: string
+          applicable_product?: string | null
+          bank_name?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_description?: string | null
+          end_date?: string | null
+          id?: string
+          offer_type?: string
+          start_date?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      apple_pricing_rules: {
+        Row: {
+          category: string
+          created_at: string | null
+          discount_amount: number | null
+          discount_percentage: number | null
+          id: string
+          rule_name: string | null
+          status: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percentage?: number | null
+          id?: string
+          rule_name?: string | null
+          status?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percentage?: number | null
+          id?: string
+          rule_name?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      apple_products: {
+        Row: {
+          alp_ex_vat: number
+          category: string
+          created_at: string | null
+          description: string
+          gst_percentage: number | null
+          id: string
+          is_new: boolean | null
+          mrp: number
+          part_number: string
+          sap_description: string | null
+          status: string | null
+          subcategory: string | null
+        }
+        Insert: {
+          alp_ex_vat?: number
+          category: string
+          created_at?: string | null
+          description: string
+          gst_percentage?: number | null
+          id?: string
+          is_new?: boolean | null
+          mrp?: number
+          part_number: string
+          sap_description?: string | null
+          status?: string | null
+          subcategory?: string | null
+        }
+        Update: {
+          alp_ex_vat?: number
+          category?: string
+          created_at?: string | null
+          description?: string
+          gst_percentage?: number | null
+          id?: string
+          is_new?: boolean | null
+          mrp?: number
+          part_number?: string
+          sap_description?: string | null
+          status?: string | null
+          subcategory?: string | null
+        }
+        Relationships: []
+      }
       attendance_records: {
         Row: {
           check_in: string | null
