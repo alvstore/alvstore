@@ -64,6 +64,7 @@ import PurchaseReturns from "./pages/PurchaseReturns";
 
 // Finance
 import PaymentRegister from "./pages/PaymentRegister";
+import ApplePricing from "./pages/ApplePricing";
 
 const queryClient = new QueryClient();
 
