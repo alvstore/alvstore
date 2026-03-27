@@ -1,124 +1,135 @@
 
-# Multi-Theme System, KPI Overhaul, and Employee Login Audit
+
+# Apple Pricing Engine & Offer Management System
 
 ## Overview
 
-Add a multi-theme switcher with 6+ advanced color themes, redesign KPI cards to match the reference images, and audit/fix the employee creation flow to enforce login credentials for chat access.
+Build a new module at `/apple-pricing` that imports product data from the uploaded Apple price list and offers PDF, stores it in a new database table, and provides a powerful pricing calculator with offers, margins, and search.
 
-## Phase 1: Theme Provider and Multiple Themes
+## Data Analysis
 
-### New File: `src/hooks/useTheme.tsx`
-Create a React context-based theme provider that:
-- Stores selected theme name in `localStorage` (key: `app-theme`)
-- Applies the theme by setting CSS variables on `document.documentElement`
-- Exposes `theme`, `setTheme`, and `themes` list
+The uploaded files contain:
+- **Price List**: ~2500 lines covering all Apple categories (iPhone, Mac, iPad, Watch, AirPods, Accessories, AppleCare) with Part Number, Description, ALP Inc VAT (MRP), ALP Ex VAT
+- **Offers PDF**: Q3'26 affordability offers — Card EMI cashbacks (₹1K-₹7K by product), Loan discounts, Trade-in offers by bank (Axis, ICICI, SBI Card, Bajaj Finance, HDB)
 
-### Themes (6 total):
+## Database Migration
 
-1. **Obsidian** (current dark) -- Background `#080808`, Card `#121212`, accent Purple
-2. **Forest Minimal** (from reference) -- Background `#F9FAFB`, Cards `#FFFFFF`, accent Forest Green `#065F46`, borders `#E5E7EB`
-3. **Ocean Deep** -- Background `#0A1628`, Card `#111D35`, accent Cyan `#06B6D4`
-4. **Sunset Ember** -- Background `#1A0F0A`, Card `#241610`, accent Amber `#F59E0B`
-5. **Arctic** -- Background `#F0F4F8`, Card `#FFFFFF`, accent Indigo `#4F46E5`, borders `#CBD5E1`
-6. **Midnight Rose** -- Background `#0F0515`, Card `#1A0B22`, accent Pink `#EC4899`
+**New table: `apple_products`**
 
-Each theme is a plain JS object mapping CSS variable names to HSL values. When applied, all variables under `:root` are overwritten. This means the entire app (cards, sidebar, header, charts) adapts automatically -- no component changes needed.
+```sql
+CREATE TABLE public.apple_products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  part_number text NOT NULL UNIQUE,
+  description text NOT NULL,
+  sap_description text,
+  category text NOT NULL, -- iPhone, Mac, iPad, Watch, AirPods, Accessories, AppleCare, HomePod, Beats
+  subcategory text,
+  mrp numeric NOT NULL DEFAULT 0,
+  alp_ex_vat numeric NOT NULL DEFAULT 0,
+  gst_percentage numeric DEFAULT 18,
+  is_new boolean DEFAULT false,
+  status text DEFAULT 'active',
+  created_at timestamptz DEFAULT now()
+);
+```
 
-### Theme Switcher UI
-Add a palette icon button in `AppHeader.tsx` (next to notifications). Clicking opens a dropdown with theme swatches (small colored circles + name). Selected theme gets a checkmark.
+**New table: `apple_offers`**
 
-### Files:
-- **Create** `src/hooks/useTheme.tsx` -- ThemeProvider context + 6 theme definitions
-- **Edit** `src/main.tsx` -- Wrap app in `<ThemeProvider>`
-- **Edit** `src/components/layout/AppHeader.tsx` -- Add theme switcher dropdown
-- **Edit** `src/index.css` -- Keep current variables as the "Obsidian" default; add `.glass` and `.glass-sidebar` conditional styles that work in both light and dark
+```sql
+CREATE TABLE public.apple_offers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  offer_type text NOT NULL, -- card_emi, card_fs, loan, trade_in, iphone_for_life
+  bank_name text,
+  applicable_category text NOT NULL,
+  applicable_product text, -- specific product name pattern
+  discount_amount numeric DEFAULT 0,
+  discount_description text,
+  start_date date,
+  end_date date,
+  status text DEFAULT 'active',
+  created_at timestamptz DEFAULT now()
+);
+```
 
-### Adaptive Components
-The sidebar, header, and dashboard currently use hardcoded hex colors (`bg-[#080808]`, `bg-[#121212]`, `text-white`, `text-zinc-500`). These must be replaced with semantic Tailwind classes:
-- `bg-[#080808]` becomes `bg-background`
-- `bg-[#121212]` becomes `bg-card`
-- `text-white` becomes `text-foreground`
-- `text-zinc-500` becomes `text-muted-foreground`
-- `border-white/5` becomes `border-border`
+**New table: `apple_pricing_rules`**
 
-This ensures all themes work automatically.
+```sql
+CREATE TABLE public.apple_pricing_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category text NOT NULL,
+  discount_percentage numeric DEFAULT 0,
+  discount_amount numeric DEFAULT 0,
+  rule_name text,
+  status text DEFAULT 'active',
+  created_at timestamptz DEFAULT now()
+);
+```
 
-### Files to update for semantic colors:
-- `src/components/layout/AppSidebar.tsx`
-- `src/components/layout/AppHeader.tsx`
-- `src/pages/Dashboard.tsx`
+RLS: admin + staff full access on all three tables.
 
-## Phase 2: KPI Card Redesign (Reference Match)
+## Data Seeding
 
-Redesign the `KpiCard` component in `Dashboard.tsx` to exactly match the uploaded reference images:
+Parse the uploaded Excel and PDF via a backend function to insert:
+- ~300+ unique consumer products (filtering out Demo, Enterprise AppleCare, volume licenses) into `apple_products`
+- Q3'26 offers (Card EMI cashbacks, Loan discounts per product category) into `apple_offers`
 
-**Layout per card:**
-- Top row: Label text (left) + arrow-up-right icon button (right corner)
-- Center: Large bold metric number (32-40px)
-- Bottom: Trend indicator with wave icon + "Increased from last month" text in accent color
+This will be done via an edge function `import-apple-pricing` that accepts the parsed data as JSON.
 
-**Accent color system**: Each card gets a unique subtle background tint:
-- Card 1 (Revenue): Soft green background tint
-- Card 2 (Sales): White/neutral
-- Card 3 (Repairs): White/neutral
-- Card 4 (Pending): White/neutral
+## New Page: `src/pages/ApplePricing.tsx`
 
-The first card (most important KPI) gets a colored border-left accent strip.
+### KPI Cards (5)
+- Total Products
+- Active Offers
+- Avg Margin %
+- Best Margin Product
+- Products with Offers
 
-**Contextual KPIs to display:**
-- Daily Cash Flow (from `finance_transactions`)
-- Store Sales with 18% GST indicator
-- Gym Revenue with 5% GST indicator
-- Active Repairs count
+### Tabs
+1. **Product Catalog** — Searchable table of all Apple products with MRP, ALP Ex VAT, category filter, and margin column
+2. **Pricing Rules** — Admin-editable category-wise discount rules (iPhone → X%, MacBook → Y%)
+3. **Offers & Schemes** — Grid of active offers by type (Card EMI / Loan / Trade-in), bank, amount, applicable products
+4. **Price Calculator** — Select product → auto-show MRP, apply base discount (from rules), select applicable offers, live calculate Landing Cost, Selling Price, Margin with color coding (green profit, red loss)
 
-## Phase 3: Employee Login Enforcement
+### Calculator Logic
+```
+Landing Cost = MRP - Base Discount (from pricing rules) - Offer Discount
+Margin = Selling Price - Landing Cost
+```
 
-### Problem
-Currently employees can be created WITHOUT email/password. These employees cannot use the chat system because they lack authentication accounts.
+Color coding:
+- Green badge if margin > 0
+- Red badge if margin < 0
+- Orange if margin = 0
 
-### Fix in `src/pages/Employees.tsx`:
-1. Add a prominent "Create with Login" toggle/checkbox in the employee form
-2. When toggled ON (default for internal employees), make email and password fields REQUIRED
-3. Show a warning banner: "Employees without login credentials cannot access Chat, Tasks, or other system features"
-4. For existing employees without `user_id`, show a "Link Login Account" button that:
-   - Opens a mini-form asking for email + password
-   - Calls `manage-staff` edge function with `action: "create"` to create the auth account
-   - Updates the employee record with the returned `user_id`
+### Features
+- Search by product name, part number, category
+- Filter by category, offer availability, margin range
+- Compare up to 3 products side-by-side
+- CSV export of filtered product list
+- "Best margin" sort option
 
-### Visual indicator in employee list:
-- Show a small shield/lock icon next to employees who have a linked auth account
-- Show a warning icon next to employees without one
+## Routing & Navigation
 
-## Phase 4: Chart Theme Adaptation
-
-Update the Recharts tooltip and gradient colors in `Dashboard.tsx` to use CSS variables instead of hardcoded hex:
-- Tooltip background: `hsl(var(--card))`
-- Tooltip border: `hsl(var(--border))`
-- Bar gradient: Use the theme's accent/success color
-- Axis text: `hsl(var(--muted-foreground))`
-
-This ensures charts look correct in both light and dark themes.
+- Route: `/apple-pricing` in App.tsx
+- Sidebar: Add "Apple Pricing" under Commerce category with a Tag/DollarSign icon
 
 ## Files Summary
 
 ```text
-NEW:  src/hooks/useTheme.tsx            -- Theme provider with 6 themes
-EDIT: src/main.tsx                       -- Wrap in ThemeProvider
-EDIT: src/index.css                      -- Keep as Obsidian default, add light-mode glass variants
-EDIT: src/components/layout/AppHeader.tsx -- Add theme switcher, replace hardcoded colors
-EDIT: src/components/layout/AppSidebar.tsx -- Replace hardcoded colors with semantic classes
-EDIT: src/pages/Dashboard.tsx            -- KPI redesign, semantic colors, chart adaptation
-EDIT: src/pages/Employees.tsx            -- Login enforcement, link-account button
+MIGRATION:  apple_products, apple_offers, apple_pricing_rules + RLS
+CREATE:     src/pages/ApplePricing.tsx
+CREATE:     supabase/functions/import-apple-pricing/index.ts (data import endpoint)
+EDIT:       src/App.tsx (add route)
+EDIT:       src/components/layout/AppSidebar.tsx (add nav item)
 ```
 
-## Database Changes
-None required.
+## Implementation Approach
 
-## Implementation Order
-1. `src/hooks/useTheme.tsx` -- Create theme provider (foundation)
-2. `src/index.css` -- Ensure variables are the correct defaults
-3. `src/main.tsx` -- Wire up provider
-4. `src/components/layout/AppSidebar.tsx` -- Semantic colors
-5. `src/components/layout/AppHeader.tsx` -- Semantic colors + theme switcher
-6. `src/pages/Dashboard.tsx` -- KPI redesign + chart adaptation
-7. `src/pages/Employees.tsx` -- Login enforcement
+Due to the large dataset (~2500 lines), the data import will:
+1. Parse the Excel in the edge function, filtering to consumer products only (skip Demo, Enterprise, volume licenses)
+2. Auto-categorize based on section headers (iPhone, Mac, iPad, Watch, etc.)
+3. Parse offers from the PDF structure into structured offer records
+4. Insert all data in one batch
+
+The page will then read from these tables for real-time search, filtering, and calculations.
+
