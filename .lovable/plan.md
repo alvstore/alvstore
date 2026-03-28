@@ -1,135 +1,81 @@
 
 
-# Apple Pricing Engine & Offer Management System
+# Apple Pricing Engine — Production Upgrade
 
-## Overview
+## What Changes
 
-Build a new module at `/apple-pricing` that imports product data from the uploaded Apple price list and offers PDF, stores it in a new database table, and provides a powerful pricing calculator with offers, margins, and search.
+### 1. Excel Import System (in-browser)
+Add an "Import" tab with:
+- File upload input for `.xlsx` files
+- Field mapping UI: dropdowns to map Excel columns → system fields (Part Number, Description, Category, MRP, ALP Ex VAT, GST%)
+- Save/reuse mapping templates (stored in `localStorage`)
+- Preview of first 5 rows before import
+- Batch upsert into `apple_products` (upsert on `part_number` to prevent duplicates)
+- Import history section showing last imports with count + timestamp
 
-## Data Analysis
+### 2. Manual Offer Entry Form
+Add "Add Offer" dialog in the Offers tab:
+- Fields: Offer Type, Bank Name, Category, Product (optional), Discount Amount, Description, Start/End Date
+- Insert into `apple_offers`
+- PDF upload is informational only (no server-side parsing in this stack)
 
-The uploaded files contain:
-- **Price List**: ~2500 lines covering all Apple categories (iPhone, Mac, iPad, Watch, AirPods, Accessories, AppleCare) with Part Number, Description, ALP Inc VAT (MRP), ALP Ex VAT
-- **Offers PDF**: Q3'26 affordability offers — Card EMI cashbacks (₹1K-₹7K by product), Loan discounts, Trade-in offers by bank (Axis, ICICI, SBI Card, Bajaj Finance, HDB)
+### 3. Cash Discount Engine
 
-## Database Migration
-
-**New table: `apple_products`**
-
+**Database Migration:**
 ```sql
-CREATE TABLE public.apple_products (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  part_number text NOT NULL UNIQUE,
-  description text NOT NULL,
-  sap_description text,
-  category text NOT NULL, -- iPhone, Mac, iPad, Watch, AirPods, Accessories, AppleCare, HomePod, Beats
-  subcategory text,
-  mrp numeric NOT NULL DEFAULT 0,
-  alp_ex_vat numeric NOT NULL DEFAULT 0,
-  gst_percentage numeric DEFAULT 18,
-  is_new boolean DEFAULT false,
-  status text DEFAULT 'active',
-  created_at timestamptz DEFAULT now()
-);
+ALTER TABLE public.apple_pricing_rules
+  ADD COLUMN IF NOT EXISTS cash_discount_type text DEFAULT 'on_base_price',
+  ADD COLUMN IF NOT EXISTS cash_discount_value numeric DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS cash_discount_mode text DEFAULT 'percentage';
+```
+- `cash_discount_type`: `on_base_price` / `on_mrp` / `on_landing_cost`
+- `cash_discount_mode`: `percentage` / `fixed`
+
+### 4. Updated Calculation Engine
+Current formula is too simple. New formula:
+
+```
+Base Price = MRP / (1 + GST%)
+Base Discount = MRP * rule.discount_percentage%
+Offer Discount = best applicable offer amount
+Landing Cost = MRP - Base Discount - Offer Discount
+Cash Discount = applied on (Base Price | MRP | Landing Cost) based on type
+Final Cost = Landing Cost - Cash Discount
+Margin = Selling Price - Final Cost
 ```
 
-**New table: `apple_offers`**
+Update `getBaseDiscount`, `getLandingCost`, and calculator to use this formula. Add `getCashDiscount` and `getFinalCost` helpers.
 
-```sql
-CREATE TABLE public.apple_offers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  offer_type text NOT NULL, -- card_emi, card_fs, loan, trade_in, iphone_for_life
-  bank_name text,
-  applicable_category text NOT NULL,
-  applicable_product text, -- specific product name pattern
-  discount_amount numeric DEFAULT 0,
-  discount_description text,
-  start_date date,
-  end_date date,
-  status text DEFAULT 'active',
-  created_at timestamptz DEFAULT now()
-);
-```
+### 5. UI Improvements
+- Add action buttons row: "Import Excel", "Add Product", "Add Offer", "Recalculate All"
+- Add "Add Product" dialog for manual single-product entry
+- Calculator tab: add Cash Discount section showing breakdown (MRP → Base Price → Base Disc → Offer Disc → Cash Disc → Final Cost → Margin)
+- Catalog table: add "Final Cost" column after Landing Cost
+- Show calculation breakdown on row click/expand
 
-**New table: `apple_pricing_rules`**
+### 6. Validation
+- Upsert on `part_number` prevents duplicate products
+- Offer date validation (warn if expired)
+- Required field validation on all forms
 
-```sql
-CREATE TABLE public.apple_pricing_rules (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  category text NOT NULL,
-  discount_percentage numeric DEFAULT 0,
-  discount_amount numeric DEFAULT 0,
-  rule_name text,
-  status text DEFAULT 'active',
-  created_at timestamptz DEFAULT now()
-);
-```
+### 7. Performance
+- Already paginated to 100 rows with virtual scroll message
+- Add `useMemo` on all computed values (already done)
+- No changes needed
 
-RLS: admin + staff full access on all three tables.
-
-## Data Seeding
-
-Parse the uploaded Excel and PDF via a backend function to insert:
-- ~300+ unique consumer products (filtering out Demo, Enterprise AppleCare, volume licenses) into `apple_products`
-- Q3'26 offers (Card EMI cashbacks, Loan discounts per product category) into `apple_offers`
-
-This will be done via an edge function `import-apple-pricing` that accepts the parsed data as JSON.
-
-## New Page: `src/pages/ApplePricing.tsx`
-
-### KPI Cards (5)
-- Total Products
-- Active Offers
-- Avg Margin %
-- Best Margin Product
-- Products with Offers
-
-### Tabs
-1. **Product Catalog** — Searchable table of all Apple products with MRP, ALP Ex VAT, category filter, and margin column
-2. **Pricing Rules** — Admin-editable category-wise discount rules (iPhone → X%, MacBook → Y%)
-3. **Offers & Schemes** — Grid of active offers by type (Card EMI / Loan / Trade-in), bank, amount, applicable products
-4. **Price Calculator** — Select product → auto-show MRP, apply base discount (from rules), select applicable offers, live calculate Landing Cost, Selling Price, Margin with color coding (green profit, red loss)
-
-### Calculator Logic
-```
-Landing Cost = MRP - Base Discount (from pricing rules) - Offer Discount
-Margin = Selling Price - Landing Cost
-```
-
-Color coding:
-- Green badge if margin > 0
-- Red badge if margin < 0
-- Orange if margin = 0
-
-### Features
-- Search by product name, part number, category
-- Filter by category, offer availability, margin range
-- Compare up to 3 products side-by-side
-- CSV export of filtered product list
-- "Best margin" sort option
-
-## Routing & Navigation
-
-- Route: `/apple-pricing` in App.tsx
-- Sidebar: Add "Apple Pricing" under Commerce category with a Tag/DollarSign icon
-
-## Files Summary
+## Files
 
 ```text
-MIGRATION:  apple_products, apple_offers, apple_pricing_rules + RLS
-CREATE:     src/pages/ApplePricing.tsx
-CREATE:     supabase/functions/import-apple-pricing/index.ts (data import endpoint)
-EDIT:       src/App.tsx (add route)
-EDIT:       src/components/layout/AppSidebar.tsx (add nav item)
+MIGRATION:  Add cash_discount columns to apple_pricing_rules
+EDIT:       src/pages/ApplePricing.tsx
+            - Add Import tab with Excel upload + field mapping
+            - Add "Add Product" dialog
+            - Add "Add Offer" dialog  
+            - Update calculation engine with Base Price + Cash Discount
+            - Add action buttons row
+            - Enhanced calculator breakdown
+            - Final Cost column in catalog
 ```
 
-## Implementation Approach
-
-Due to the large dataset (~2500 lines), the data import will:
-1. Parse the Excel in the edge function, filtering to consumer products only (skip Demo, Enterprise, volume licenses)
-2. Auto-categorize based on section headers (iPhone, Mac, iPad, Watch, etc.)
-3. Parse offers from the PDF structure into structured offer records
-4. Insert all data in one batch
-
-The page will then read from these tables for real-time search, filtering, and calculations.
+No new files needed — all changes fit in the existing page component.
 
