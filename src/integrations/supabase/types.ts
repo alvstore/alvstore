@@ -58,6 +58,9 @@ export type Database = {
       }
       apple_pricing_rules: {
         Row: {
+          cash_discount_mode: string | null
+          cash_discount_type: string | null
+          cash_discount_value: number | null
           category: string
           created_at: string | null
           discount_amount: number | null
@@ -67,6 +70,9 @@ export type Database = {
           status: string | null
         }
         Insert: {
+          cash_discount_mode?: string | null
+          cash_discount_type?: string | null
+          cash_discount_value?: number | null
           category: string
           created_at?: string | null
           discount_amount?: number | null
@@ -76,6 +82,9 @@ export type Database = {
           status?: string | null
         }
         Update: {
+          cash_discount_mode?: string | null
+          cash_discount_type?: string | null
+          cash_discount_value?: number | null
           category?: string
           created_at?: string | null
           discount_amount?: number | null
