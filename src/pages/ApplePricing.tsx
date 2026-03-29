@@ -8,56 +8,34 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import {
   Package, Tag, Percent, TrendingUp, Gift, Search,
   Plus, Calculator, Download, ArrowUpDown, Star, X,
   IndianRupee, Layers, BarChart3, Upload, FileSpreadsheet,
-  RefreshCw, ChevronDown, ChevronUp
+  RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Info
 } from "lucide-react";
 
 type AppleProduct = {
-  id: string;
-  part_number: string;
-  description: string;
-  sap_description: string | null;
-  category: string;
-  subcategory: string | null;
-  mrp: number;
-  alp_ex_vat: number;
-  gst_percentage: number;
-  is_new: boolean;
-  status: string;
-  created_at: string;
+  id: string; part_number: string; description: string; sap_description: string | null;
+  category: string; subcategory: string | null; mrp: number; alp_ex_vat: number;
+  gst_percentage: number; is_new: boolean; status: string; created_at: string;
 };
 
 type AppleOffer = {
-  id: string;
-  offer_type: string;
-  bank_name: string | null;
-  applicable_category: string;
-  applicable_product: string | null;
-  discount_amount: number;
-  discount_description: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  status: string;
+  id: string; offer_type: string; bank_name: string | null; applicable_category: string;
+  applicable_product: string | null; discount_amount: number; discount_description: string | null;
+  start_date: string | null; end_date: string | null; status: string;
 };
 
 type PricingRule = {
-  id: string;
-  category: string;
-  discount_percentage: number;
-  discount_amount: number;
-  rule_name: string | null;
-  status: string;
-  cash_discount_type: string | null;
-  cash_discount_value: number | null;
-  cash_discount_mode: string | null;
+  id: string; category: string; discount_percentage: number; discount_amount: number;
+  rule_name: string | null; status: string; cash_discount_type: string | null;
+  cash_discount_value: number | null; cash_discount_mode: string | null;
 };
 
 type FieldMapping = Record<string, string>;
@@ -74,6 +52,21 @@ const OFFER_TYPES: Record<string, string> = {
 
 const formatINR = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
+// Canonical category key for case-insensitive matching
+const normCat = (cat: string) => (cat || "").trim().toLowerCase();
+
+// Map common imported uppercase categories to canonical display names
+const CATEGORY_NORMALIZE_MAP: Record<string, string> = {
+  iphone: "iPhone", mac: "Mac", ipad: "iPad", watch: "Watch", airpods: "AirPods",
+  homepod: "HomePod", beats: "Beats", accessories: "Accessories", applecare: "AppleCare",
+  macbook: "Mac", "macbook pro": "Mac", "macbook air": "Mac", imac: "Mac",
+};
+
+const normalizeCategory = (raw: string): string => {
+  const key = normCat(raw);
+  return CATEGORY_NORMALIZE_MAP[key] || raw;
+};
+
 export default function ApplePricing() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -88,12 +81,13 @@ export default function ApplePricing() {
   const [calcProduct, setCalcProduct] = useState("");
   const [calcSellingPrice, setCalcSellingPrice] = useState("");
   const [calcSelectedOffers, setCalcSelectedOffers] = useState<string[]>([]);
+  const [calcCashDiscountEnabled, setCalcCashDiscountEnabled] = useState(false);
+  const [calcSearch, setCalcSearch] = useState("");
 
   // Dialog states
   const [showRuleDialog, setShowRuleDialog] = useState(false);
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [showOfferDialog, setShowOfferDialog] = useState(false);
-  const [showImportDialog, setShowImportDialog] = useState(false);
 
   // New rule form
   const [newRule, setNewRule] = useState({
@@ -116,7 +110,6 @@ export default function ApplePricing() {
   const [importData, setImportData] = useState<string[][]>([]);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
   const [fieldMapping, setFieldMapping] = useState<FieldMapping>({});
-  const [importStep, setImportStep] = useState<"upload" | "map" | "preview">("upload");
   const [importHistory, setImportHistory] = useState<Array<{ date: string; count: number }>>(() => {
     try { return JSON.parse(localStorage.getItem("apple_import_history") || "[]"); } catch { return []; }
   });
@@ -154,6 +147,15 @@ export default function ApplePricing() {
     },
   });
 
+  // Active (non-expired) offers
+  const activeOffersList = useMemo(() => {
+    const now = new Date();
+    return offers.filter((o) => {
+      if (o.end_date && new Date(o.end_date) < now) return false;
+      return true;
+    });
+  }, [offers]);
+
   // Mutations
   const addRuleMutation = useMutation({
     mutationFn: async (rule: any) => {
@@ -187,28 +189,34 @@ export default function ApplePricing() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["apple-offers"] }); toast.success("Offer added"); setShowOfferDialog(false); setNewOffer({ offer_type: "", bank_name: "", applicable_category: "", applicable_product: "", discount_amount: "", discount_description: "", start_date: "", end_date: "" }); },
   });
 
-  // Calculation engine
+  // ===== CALCULATION ENGINE (CASE-INSENSITIVE) =====
+
+  // Build rule map keyed by normalized category
   const ruleMap = useMemo(() => {
     const m: Record<string, PricingRule> = {};
-    rules.forEach((r) => (m[r.category] = r));
+    rules.forEach((r) => (m[normCat(r.category)] = r));
     return m;
   }, [rules]);
+
+  const getRuleForProduct = (product: AppleProduct): PricingRule | undefined => {
+    return ruleMap[normCat(product.category)];
+  };
 
   const getBasePrice = (product: AppleProduct) => product.mrp / (1 + (product.gst_percentage || 18) / 100);
 
   const getBaseDiscount = (product: AppleProduct) => {
-    const rule = ruleMap[product.category];
+    const rule = getRuleForProduct(product);
     if (!rule) return 0;
     if (rule.discount_percentage > 0) return (product.mrp * rule.discount_percentage) / 100;
     return rule.discount_amount;
   };
 
   const getOffersForProduct = useCallback((product: AppleProduct) => {
-    return offers.filter(
-      (o) => o.applicable_category === product.category &&
+    return activeOffersList.filter(
+      (o) => normCat(o.applicable_category) === normCat(product.category) &&
         (!o.applicable_product || product.description.toLowerCase().includes(o.applicable_product.toLowerCase()))
     );
-  }, [offers]);
+  }, [activeOffersList]);
 
   const getBestOfferDiscount = (product: AppleProduct) => {
     const pOffers = getOffersForProduct(product);
@@ -219,7 +227,7 @@ export default function ApplePricing() {
   const getLandingCost = (product: AppleProduct) => product.mrp - getBaseDiscount(product) - getBestOfferDiscount(product);
 
   const getCashDiscount = (product: AppleProduct) => {
-    const rule = ruleMap[product.category];
+    const rule = getRuleForProduct(product);
     if (!rule || !rule.cash_discount_value) return 0;
     let base = 0;
     if (rule.cash_discount_type === "on_base_price") base = getBasePrice(product);
@@ -229,13 +237,15 @@ export default function ApplePricing() {
     return rule.cash_discount_value || 0;
   };
 
-  const getFinalCost = (product: AppleProduct) => getLandingCost(product) - getCashDiscount(product);
+  // In catalog: Final Cost = Landing Cost (cash discount is optional, not auto-applied)
+  const getFinalCost = (product: AppleProduct) => getLandingCost(product);
 
   // Filtered list
   const filtered = useMemo(() => {
     let list = products.filter((p) => {
-      const matchSearch = !search || p.description.toLowerCase().includes(search.toLowerCase()) || p.part_number.toLowerCase().includes(search.toLowerCase());
-      const matchCat = categoryFilter === "all" || p.category === categoryFilter;
+      const q = search.toLowerCase();
+      const matchSearch = !search || p.description.toLowerCase().includes(q) || p.part_number.toLowerCase().includes(q) || normCat(p.category).includes(q);
+      const matchCat = categoryFilter === "all" || normCat(p.category) === normCat(categoryFilter);
       const matchOffer = !offerFilter || getOffersForProduct(p).length > 0;
       return matchSearch && matchCat && matchOffer;
     });
@@ -245,11 +255,11 @@ export default function ApplePricing() {
       return a.description.localeCompare(b.description);
     });
     return list;
-  }, [products, search, categoryFilter, offerFilter, sortBy, ruleMap, offers]);
+  }, [products, search, categoryFilter, offerFilter, sortBy, ruleMap, activeOffersList]);
 
   // KPIs
   const totalProducts = products.length;
-  const activeOffers = offers.length;
+  const totalActiveOffers = activeOffersList.length;
   const productsWithOffers = products.filter((p) => getOffersForProduct(p).length > 0).length;
   const avgDiscPct = products.length > 0
     ? products.reduce((s, p) => s + ((p.mrp - getFinalCost(p)) / p.mrp) * 100, 0) / products.length : 0;
@@ -261,13 +271,24 @@ export default function ApplePricing() {
   // Calculator
   const calcProductData = products.find((p) => p.id === calcProduct);
   const calcBaseDiscount = calcProductData ? getBaseDiscount(calcProductData) : 0;
-  const calcOfferDiscount = calcSelectedOffers.reduce((s, id) => s + (offers.find((o) => o.id === id)?.discount_amount || 0), 0);
+  const calcOfferDiscount = calcSelectedOffers.reduce((s, id) => s + (activeOffersList.find((o) => o.id === id)?.discount_amount || 0), 0);
   const calcLandingCost = calcProductData ? calcProductData.mrp - calcBaseDiscount - calcOfferDiscount : 0;
-  const calcCashDiscount = calcProductData ? getCashDiscount(calcProductData) : 0;
+  const calcCashDiscount = calcCashDiscountEnabled && calcProductData ? getCashDiscount(calcProductData) : 0;
   const calcFinalCost = calcLandingCost - calcCashDiscount;
   const calcSP = parseFloat(calcSellingPrice) || 0;
   const calcMargin = calcSP - calcFinalCost;
   const calcMarginPct = calcSP > 0 ? (calcMargin / calcSP) * 100 : 0;
+
+  // Calculator search results
+  const calcSearchResults = useMemo(() => {
+    if (!calcSearch.trim()) return [];
+    const q = calcSearch.toLowerCase();
+    return products.filter((p) =>
+      p.description.toLowerCase().includes(q) ||
+      p.part_number.toLowerCase().includes(q) ||
+      normCat(p.category).includes(q)
+    ).slice(0, 10);
+  }, [products, calcSearch]);
 
   // Excel import handlers
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,7 +302,6 @@ export default function ApplePricing() {
       if (data.length < 2) { toast.error("File has no data rows"); return; }
       setImportHeaders(data[0].map(String));
       setImportData(data.slice(1).filter((row) => row.some(Boolean)));
-      // Auto-detect mapping
       const autoMap: FieldMapping = {};
       const headers = data[0].map((h) => String(h).toLowerCase().trim());
       headers.forEach((h, i) => {
@@ -294,10 +314,8 @@ export default function ApplePricing() {
         else if (h.includes("ex vat") || h.includes("alp ex")) autoMap["alp_ex_vat"] = col;
       });
       setFieldMapping(autoMap);
-      // Try load saved mapping
       const saved = localStorage.getItem("apple_field_mapping");
       if (saved) { try { setFieldMapping(JSON.parse(saved)); } catch {} }
-      setImportStep("map");
     };
     reader.readAsBinaryString(file);
   };
@@ -318,13 +336,14 @@ export default function ApplePricing() {
           else obj[sysField] = String(val).trim();
         }
       });
+      // Normalize category during import
+      if (obj.category) obj.category = normalizeCategory(obj.category);
       if (!obj.category) obj.category = "Uncategorized";
       return obj;
     }).filter((r) => r.part_number && r.description && r.mrp > 0);
 
     if (rows.length === 0) { toast.error("No valid rows to import"); return; }
 
-    // Batch upsert in chunks of 100
     let imported = 0;
     for (let i = 0; i < rows.length; i += 100) {
       const chunk = rows.slice(i, i + 100);
@@ -339,17 +358,15 @@ export default function ApplePricing() {
     localStorage.setItem("apple_import_history", JSON.stringify(newHistory));
     queryClient.invalidateQueries({ queryKey: ["apple-products"] });
     toast.success(`Imported ${imported} products`);
-    setShowImportDialog(false);
-    setImportStep("upload");
     setImportData([]);
   };
 
   // CSV export
   const exportCSV = () => {
-    const headers = ["Part Number", "Description", "Category", "MRP", "ALP Ex VAT", "Base Price", "Base Disc", "Offer Disc", "Landing Cost", "Cash Disc", "Final Cost"];
+    const headers = ["Part Number", "Description", "Category", "MRP", "ALP Ex VAT", "Base Price", "Base Disc", "Offer Disc", "Landing Cost"];
     const rows = filtered.map((p) => [
       p.part_number, `"${p.description}"`, p.category, p.mrp, p.alp_ex_vat, getBasePrice(p).toFixed(0),
-      getBaseDiscount(p), getBestOfferDiscount(p), getLandingCost(p), getCashDiscount(p), getFinalCost(p),
+      getBaseDiscount(p), getBestOfferDiscount(p), getLandingCost(p),
     ]);
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -367,9 +384,10 @@ export default function ApplePricing() {
           <p className="text-sm text-muted-foreground">Dynamic pricing, offers & margin calculator</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => { setImportStep("upload"); setShowImportDialog(true); }}>
+          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-4 w-4 mr-1" /> Import Excel
           </Button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="hidden" />
           <Button variant="outline" size="sm" onClick={() => setShowProductDialog(true)}>
             <Plus className="h-4 w-4 mr-1" /> Add Product
           </Button>
@@ -389,7 +407,7 @@ export default function ApplePricing() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
           { icon: Package, color: "text-primary", bg: "bg-primary/10", value: totalProducts, label: "Products" },
-          { icon: Gift, color: "text-green-500", bg: "bg-green-500/10", value: activeOffers, label: "Active Offers" },
+          { icon: Gift, color: "text-green-500", bg: "bg-green-500/10", value: totalActiveOffers, label: "Active Offers" },
           { icon: Percent, color: "text-blue-500", bg: "bg-blue-500/10", value: `${avgDiscPct.toFixed(1)}%`, label: "Avg Discount" },
           { icon: Star, color: "text-amber-500", bg: "bg-amber-500/10", value: bestMarginProduct.product?.description?.split(" ").slice(0, 3).join(" ") || "—", label: "Best Discount", small: true },
           { icon: Tag, color: "text-purple-500", bg: "bg-purple-500/10", value: productsWithOffers, label: "With Offers" },
@@ -427,7 +445,7 @@ export default function ApplePricing() {
               <div className="flex flex-wrap gap-3 items-center">
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search product or part number..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+                  <Input placeholder="Search product, part number, or category..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
                 </div>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-[160px]"><SelectValue placeholder="Category" /></SelectTrigger>
@@ -464,23 +482,22 @@ export default function ApplePricing() {
                       <TableHead className="text-right">Base Disc.</TableHead>
                       <TableHead className="text-right">Offer Disc.</TableHead>
                       <TableHead className="text-right">Landing Cost</TableHead>
-                      <TableHead className="text-right">Cash Disc.</TableHead>
-                      <TableHead className="text-right">Final Cost</TableHead>
                       <TableHead>Offers</TableHead>
                       <TableHead className="w-8"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loadingProducts ? (
-                      <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
                     ) : filtered.length === 0 ? (
-                      <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No products found. Import data to get started.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No products found. Import data to get started.</TableCell></TableRow>
                     ) : (
                       filtered.slice(0, 100).map((p) => {
+                        const rule = getRuleForProduct(p);
                         const baseDisc = getBaseDiscount(p);
                         const offerDisc = getBestOfferDiscount(p);
+                        const landingCost = getLandingCost(p);
                         const cashDisc = getCashDiscount(p);
-                        const finalCost = getFinalCost(p);
                         const pOffers = getOffersForProduct(p);
                         const inCompare = compareList.includes(p.id);
                         const isExpanded = expandedRow === p.id;
@@ -509,9 +526,7 @@ export default function ApplePricing() {
                               <TableCell className="text-right font-mono text-sm">{formatINR(p.mrp)}</TableCell>
                               <TableCell className="text-right font-mono text-sm">{baseDisc > 0 ? <span className="text-green-600">-{formatINR(baseDisc)}</span> : "—"}</TableCell>
                               <TableCell className="text-right font-mono text-sm">{offerDisc > 0 ? <span className="text-blue-600">-{formatINR(offerDisc)}</span> : "—"}</TableCell>
-                              <TableCell className="text-right font-mono text-sm">{formatINR(p.mrp - baseDisc - offerDisc)}</TableCell>
-                              <TableCell className="text-right font-mono text-sm">{cashDisc > 0 ? <span className="text-purple-600">-{formatINR(cashDisc)}</span> : "—"}</TableCell>
-                              <TableCell className="text-right font-mono text-sm font-semibold">{formatINR(finalCost)}</TableCell>
+                              <TableCell className="text-right font-mono text-sm font-semibold">{formatINR(landingCost)}</TableCell>
                               <TableCell>
                                 {pOffers.length > 0 ? (
                                   <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">{pOffers.length} offer{pOffers.length > 1 ? "s" : ""}</Badge>
@@ -521,23 +536,37 @@ export default function ApplePricing() {
                             </TableRow>
                             {isExpanded && (
                               <TableRow key={`${p.id}-detail`}>
-                                <TableCell colSpan={11} className="bg-muted/30 p-4">
-                                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-sm">
+                                <TableCell colSpan={9} className="bg-muted/30 p-4">
+                                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-sm">
                                     {[
-                                      { label: "MRP", value: formatINR(p.mrp) },
-                                      { label: `Base Price (ex ${p.gst_percentage}% GST)`, value: formatINR(getBasePrice(p)) },
-                                      { label: `Base Discount (${ruleMap[p.category]?.discount_percentage || 0}%)`, value: `-${formatINR(baseDisc)}`, color: "text-green-600" },
-                                      { label: "Offer Discount", value: `-${formatINR(offerDisc)}`, color: "text-blue-600" },
-                                      { label: "Landing Cost", value: formatINR(p.mrp - baseDisc - offerDisc), bold: true },
-                                      { label: "Cash Discount", value: `-${formatINR(cashDisc)}`, color: "text-purple-600" },
-                                      { label: "Final Cost", value: formatINR(finalCost), bold: true },
+                                      { label: "MRP (incl GST)", value: formatINR(p.mrp) },
+                                      { label: `Base Price (ex ${p.gst_percentage || 18}% GST)`, value: formatINR(getBasePrice(p)) },
+                                      { label: `Base Discount (${rule?.discount_percentage || 0}% on MRP)`, value: baseDisc > 0 ? `-${formatINR(baseDisc)}` : "—", color: "text-green-600" },
+                                      { label: "Best Offer Discount", value: offerDisc > 0 ? `-${formatINR(offerDisc)}` : "—", color: "text-blue-600" },
+                                      { label: "Landing Cost", value: formatINR(landingCost), bold: true },
+                                      { label: `Cash Disc. (${rule?.cash_discount_value || 0}% on Base Price)`, value: cashDisc > 0 ? `-${formatINR(cashDisc)}` : "—", color: "text-purple-600", note: "Optional — advance payment" },
                                     ].map((item, i) => (
                                       <div key={i} className="p-2 rounded-lg bg-background border">
                                         <p className="text-[10px] text-muted-foreground">{item.label}</p>
                                         <p className={`font-mono ${item.bold ? "font-bold" : ""} ${item.color || ""}`}>{item.value}</p>
+                                        {item.note && <p className="text-[9px] text-muted-foreground italic mt-0.5">{item.note}</p>}
                                       </div>
                                     ))}
                                   </div>
+                                  {rule && (
+                                    <div className="mt-3 p-2 rounded bg-muted/50 text-xs text-muted-foreground flex items-center gap-2">
+                                      <Info className="h-3 w-3" />
+                                      <span>Matched Rule: <strong>{rule.rule_name || rule.category}</strong> — {rule.discount_percentage}% base discount
+                                        {(rule.cash_discount_value ?? 0) > 0 && ` + ${rule.cash_discount_value}% cash discount on ${rule.cash_discount_type === "on_base_price" ? "Base Price" : rule.cash_discount_type === "on_mrp" ? "MRP" : "Landing Cost"}`}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {!rule && (
+                                    <div className="mt-3 p-2 rounded bg-amber-500/10 text-xs text-amber-700 flex items-center gap-2">
+                                      <AlertTriangle className="h-3 w-3" />
+                                      <span>No pricing rule found for category "{p.category}". Add a rule to enable discounts.</span>
+                                    </div>
+                                  )}
                                 </TableCell>
                               </TableRow>
                             )}
@@ -569,17 +598,18 @@ export default function ApplePricing() {
                       <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Base Discount %</Label><Input type="number" placeholder="e.g. 5" value={newRule.discount_percentage} onChange={(e) => setNewRule({ ...newRule, discount_percentage: e.target.value })} /></div>
+                  <div><Label>Base Discount % (on MRP incl GST)</Label><Input type="number" placeholder="e.g. 5.5" value={newRule.discount_percentage} onChange={(e) => setNewRule({ ...newRule, discount_percentage: e.target.value })} /></div>
                   <div><Label>Rule Name</Label><Input placeholder="e.g. Standard iPhone Discount" value={newRule.rule_name} onChange={(e) => setNewRule({ ...newRule, rule_name: e.target.value })} /></div>
                   <div className="border-t pt-4">
-                    <p className="text-sm font-semibold mb-3">Cash Discount</p>
+                    <p className="text-sm font-semibold mb-1">Cash Discount (Optional — advance payment)</p>
+                    <p className="text-xs text-muted-foreground mb-3">Only applied when customer opts for advance cash billing</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">Applied On</Label>
                         <Select value={newRule.cash_discount_type} onValueChange={(v) => setNewRule({ ...newRule, cash_discount_type: v })}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="on_base_price">Base Price</SelectItem>
+                            <SelectItem value="on_base_price">Base Price (ex GST)</SelectItem>
                             <SelectItem value="on_mrp">MRP</SelectItem>
                             <SelectItem value="on_landing_cost">Landing Cost</SelectItem>
                           </SelectContent>
@@ -596,7 +626,7 @@ export default function ApplePricing() {
                         </Select>
                       </div>
                     </div>
-                    <div className="mt-2"><Label className="text-xs">Value</Label><Input type="number" placeholder="e.g. 2" value={newRule.cash_discount_value} onChange={(e) => setNewRule({ ...newRule, cash_discount_value: e.target.value })} /></div>
+                    <div className="mt-2"><Label className="text-xs">Value</Label><Input type="number" placeholder="e.g. 0.5" value={newRule.cash_discount_value} onChange={(e) => setNewRule({ ...newRule, cash_discount_value: e.target.value })} /></div>
                   </div>
                   <Button className="w-full" onClick={() => {
                     if (!newRule.category || !newRule.discount_percentage) { toast.error("Fill required fields"); return; }
@@ -621,13 +651,14 @@ export default function ApplePricing() {
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteRuleMutation.mutate(rule.id)}><X className="h-3 w-3" /></Button>
                   </div>
                   <p className="text-2xl font-bold text-green-600">{rule.discount_percentage}%</p>
-                  <p className="text-xs text-muted-foreground">{rule.rule_name || "Base discount"}</p>
+                  <p className="text-xs text-muted-foreground">{rule.rule_name || "Base discount on MRP (incl GST)"}</p>
                   {(rule.cash_discount_value ?? 0) > 0 && (
                     <div className="mt-2 p-2 rounded bg-purple-500/5 border border-purple-500/10">
                       <p className="text-xs text-purple-600">
                         Cash: {rule.cash_discount_value}{rule.cash_discount_mode === "percentage" ? "%" : " flat"} on{" "}
-                        {rule.cash_discount_type === "on_base_price" ? "Base Price" : rule.cash_discount_type === "on_mrp" ? "MRP" : "Landing Cost"}
+                        {rule.cash_discount_type === "on_base_price" ? "Base Price (ex GST)" : rule.cash_discount_type === "on_mrp" ? "MRP" : "Landing Cost"}
                       </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Optional — requires advance payment</p>
                     </div>
                   )}
                 </CardContent>
@@ -672,91 +703,175 @@ export default function ApplePricing() {
             <Card>
               <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Calculator className="h-5 w-5" /> Price Calculator</CardTitle></CardHeader>
               <CardContent className="space-y-4">
+                {/* Searchable product finder */}
                 <div>
-                  <Label>Select Product</Label>
-                  <Select value={calcProduct} onValueChange={(v) => { setCalcProduct(v); setCalcSelectedOffers([]); }}>
-                    <SelectTrigger><SelectValue placeholder="Choose a product" /></SelectTrigger>
-                    <SelectContent>{products.map((p) => <SelectItem key={p.id} value={p.id}>{p.description} — {formatINR(p.mrp)}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <Label>Search & Select Product</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Type product name, SKU, or category..."
+                      value={calcSearch}
+                      onChange={(e) => setCalcSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  {calcSearch.trim() && calcSearchResults.length > 0 && (
+                    <div className="mt-1 border rounded-lg max-h-[200px] overflow-y-auto bg-background shadow-sm">
+                      {calcSearchResults.map((p) => (
+                        <button
+                          key={p.id}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors flex justify-between items-center ${calcProduct === p.id ? "bg-primary/5 border-l-2 border-primary" : ""}`}
+                          onClick={() => { setCalcProduct(p.id); setCalcSearch(p.description); setCalcSelectedOffers([]); setCalcCashDiscountEnabled(false); }}
+                        >
+                          <div>
+                            <p className="font-medium">{p.description}</p>
+                            <p className="text-xs text-muted-foreground">{p.part_number} · {p.category}</p>
+                          </div>
+                          <span className="font-mono text-sm">{formatINR(p.mrp)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {calcSearch.trim() && calcSearchResults.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">No products found</p>
+                  )}
                 </div>
-                {calcProductData && (
-                  <>
-                    <div className="grid grid-cols-3 gap-3 text-sm">
-                      <div className="p-3 rounded-lg bg-muted/50"><p className="text-muted-foreground text-xs">MRP</p><p className="font-bold text-lg">{formatINR(calcProductData.mrp)}</p></div>
-                      <div className="p-3 rounded-lg bg-muted/50"><p className="text-muted-foreground text-xs">Base Price (ex GST)</p><p className="font-bold text-lg">{formatINR(getBasePrice(calcProductData))}</p></div>
-                      <div className="p-3 rounded-lg bg-muted/50"><p className="text-muted-foreground text-xs">ALP Ex VAT</p><p className="font-bold text-lg">{formatINR(calcProductData.alp_ex_vat)}</p></div>
-                    </div>
-                    <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/10">
-                      <p className="text-xs text-muted-foreground">Base Discount ({ruleMap[calcProductData.category]?.discount_percentage || 0}%)</p>
-                      <p className="font-semibold text-green-600">-{formatINR(calcBaseDiscount)}</p>
-                    </div>
-                    {getOffersForProduct(calcProductData).length > 0 && (
-                      <div>
-                        <Label className="text-xs">Apply Offers</Label>
-                        <div className="space-y-2 mt-1">
-                          {getOffersForProduct(calcProductData).map((o) => (
-                            <label key={o.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input type="checkbox" checked={calcSelectedOffers.includes(o.id)}
-                                onChange={(e) => setCalcSelectedOffers(e.target.checked ? [...calcSelectedOffers, o.id] : calcSelectedOffers.filter((id) => id !== o.id))}
-                                className="rounded" />
-                              <span>{OFFER_TYPES[o.offer_type] || o.offer_type} — {o.bank_name} — <strong>{formatINR(o.discount_amount)}</strong></span>
-                            </label>
-                          ))}
+
+                {calcProductData && (() => {
+                  const rule = getRuleForProduct(calcProductData);
+                  return (
+                    <>
+                      {/* Selected product card */}
+                      <div className="p-3 rounded-lg border bg-muted/30">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-semibold text-sm">{calcProductData.description}</p>
+                            <p className="text-xs text-muted-foreground">{calcProductData.part_number} · {calcProductData.category}</p>
+                          </div>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setCalcProduct(""); setCalcSearch(""); }}>
+                            <X className="h-3 w-3" />
+                          </Button>
                         </div>
                       </div>
-                    )}
-                    {calcCashDiscount > 0 && (
-                      <div className="p-3 rounded-lg bg-purple-500/5 border border-purple-500/10">
-                        <p className="text-xs text-muted-foreground">Cash Discount</p>
-                        <p className="font-semibold text-purple-600">-{formatINR(calcCashDiscount)}</p>
+
+                      <div className="grid grid-cols-3 gap-3 text-sm">
+                        <div className="p-3 rounded-lg bg-muted/50"><p className="text-muted-foreground text-xs">MRP (incl GST)</p><p className="font-bold text-lg">{formatINR(calcProductData.mrp)}</p></div>
+                        <div className="p-3 rounded-lg bg-muted/50"><p className="text-muted-foreground text-xs">Base Price (ex {calcProductData.gst_percentage || 18}% GST)</p><p className="font-bold text-lg">{formatINR(getBasePrice(calcProductData))}</p></div>
+                        <div className="p-3 rounded-lg bg-muted/50"><p className="text-muted-foreground text-xs">ALP Ex VAT</p><p className="font-bold text-lg">{formatINR(calcProductData.alp_ex_vat)}</p></div>
                       </div>
-                    )}
-                    <div><Label>Your Selling Price</Label>
-                      <div className="relative"><IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="number" placeholder="Enter selling price" value={calcSellingPrice} onChange={(e) => setCalcSellingPrice(e.target.value)} className="pl-9" /></div>
-                    </div>
-                  </>
-                )}
+
+                      <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/10">
+                        <p className="text-xs text-muted-foreground">Base Discount on MRP ({rule?.discount_percentage || 0}%)</p>
+                        <p className="font-semibold text-green-600">-{formatINR(calcBaseDiscount)}</p>
+                      </div>
+
+                      {getOffersForProduct(calcProductData).length > 0 && (
+                        <div>
+                          <Label className="text-xs">Apply Offers (active only)</Label>
+                          <div className="space-y-2 mt-1">
+                            {getOffersForProduct(calcProductData).map((o) => (
+                              <label key={o.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input type="checkbox" checked={calcSelectedOffers.includes(o.id)}
+                                  onChange={(e) => setCalcSelectedOffers(e.target.checked ? [...calcSelectedOffers, o.id] : calcSelectedOffers.filter((id) => id !== o.id))}
+                                  className="rounded" />
+                                <span>{OFFER_TYPES[o.offer_type] || o.offer_type} — {o.bank_name} — <strong>{formatINR(o.discount_amount)}</strong></span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cash Discount Toggle */}
+                      {rule && (rule.cash_discount_value ?? 0) > 0 && (
+                        <div className="p-3 rounded-lg bg-purple-500/5 border border-purple-500/10">
+                          <div className="flex items-center justify-between mb-1">
+                            <div>
+                              <p className="text-xs font-medium">Apply Cash Discount</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {rule.cash_discount_value}{rule.cash_discount_mode === "percentage" ? "%" : " flat"} on{" "}
+                                {rule.cash_discount_type === "on_base_price" ? "Base Price (ex GST)" : rule.cash_discount_type === "on_mrp" ? "MRP" : "Landing Cost"}
+                              </p>
+                            </div>
+                            <Switch checked={calcCashDiscountEnabled} onCheckedChange={setCalcCashDiscountEnabled} />
+                          </div>
+                          {calcCashDiscountEnabled && (
+                            <p className="font-semibold text-purple-600">-{formatINR(getCashDiscount(calcProductData))}</p>
+                          )}
+                          <p className="text-[9px] text-muted-foreground mt-1 italic flex items-center gap-1">
+                            <Info className="h-2.5 w-2.5" /> Requires advance cash billing / payment
+                          </p>
+                        </div>
+                      )}
+
+                      <div><Label>Your Selling Price</Label>
+                        <div className="relative"><IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="number" placeholder="Enter selling price" value={calcSellingPrice} onChange={(e) => setCalcSellingPrice(e.target.value)} className="pl-9" /></div>
+                      </div>
+                    </>
+                  );
+                })()}
               </CardContent>
             </Card>
 
-            {calcProductData && (
-              <Card>
-                <CardHeader><CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5" /> Calculation Breakdown</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-4 rounded-xl bg-muted/50 space-y-3">
-                    {[
-                      { label: "MRP", value: formatINR(calcProductData.mrp) },
-                      { label: `Base Price (ex ${calcProductData.gst_percentage}% GST)`, value: formatINR(getBasePrice(calcProductData)), muted: true },
-                      { label: "Base Discount", value: `-${formatINR(calcBaseDiscount)}`, color: "text-green-600" },
-                      { label: "Offer Discount", value: `-${formatINR(calcOfferDiscount)}`, color: "text-blue-600" },
-                      { label: "Landing Cost", value: formatINR(calcLandingCost), bold: true, border: true },
-                      { label: "Cash Discount", value: `-${formatINR(calcCashDiscount)}`, color: "text-purple-600" },
-                      { label: "Final Cost", value: formatINR(calcFinalCost), bold: true, border: true },
-                    ].map((row, i) => (
-                      <div key={i} className={`flex justify-between text-sm ${row.border ? "border-t border-border pt-2" : ""} ${row.muted ? "text-muted-foreground" : ""}`}>
-                        <span className={row.bold ? "font-bold" : ""}>{row.label}</span>
-                        <span className={`font-mono ${row.bold ? "font-bold" : ""} ${row.color || ""}`}>{row.value}</span>
-                      </div>
-                    ))}
-                  </div>
+            {calcProductData && (() => {
+              const rule = getRuleForProduct(calcProductData);
+              return (
+                <Card>
+                  <CardHeader><CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5" /> Calculation Breakdown</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="p-4 rounded-xl bg-muted/50 space-y-3">
+                      {[
+                        { label: "MRP (incl GST)", value: formatINR(calcProductData.mrp) },
+                        { label: `Base Price (ex ${calcProductData.gst_percentage || 18}% GST)`, value: formatINR(getBasePrice(calcProductData)), muted: true },
+                        { label: `Base Discount (${rule?.discount_percentage || 0}% on MRP)`, value: `-${formatINR(calcBaseDiscount)}`, color: "text-green-600" },
+                        { label: "Offer Discount", value: `-${formatINR(calcOfferDiscount)}`, color: "text-blue-600" },
+                        { label: "Landing Cost", value: formatINR(calcLandingCost), bold: true, border: true },
+                        ...(calcCashDiscountEnabled ? [{ label: `Cash Discount (${rule?.cash_discount_value || 0}% on Base Price ex GST)`, value: `-${formatINR(calcCashDiscount)}`, color: "text-purple-600" }] : []),
+                        { label: "Final Cost", value: formatINR(calcFinalCost), bold: true, border: true },
+                      ].map((row, i) => (
+                        <div key={i} className={`flex justify-between text-sm ${row.border ? "border-t border-border pt-2" : ""} ${row.muted ? "text-muted-foreground" : ""}`}>
+                          <span className={row.bold ? "font-bold" : ""}>{row.label}</span>
+                          <span className={`font-mono ${row.bold ? "font-bold" : ""} ${row.color || ""}`}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
 
-                  {calcSP > 0 && (
-                    <div className={`p-4 rounded-xl border-2 ${calcMargin > 0 ? "bg-green-500/5 border-green-500/20" : calcMargin < 0 ? "bg-red-500/5 border-red-500/20" : "bg-amber-500/5 border-amber-500/20"}`}>
-                      <div className="flex justify-between text-sm mb-2"><span>Selling Price</span><span className="font-mono">{formatINR(calcSP)}</span></div>
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-lg">Margin</span>
-                        <div className="text-right">
-                          <p className={`text-2xl font-bold ${calcMargin > 0 ? "text-green-600" : calcMargin < 0 ? "text-red-600" : "text-amber-600"}`}>{formatINR(Math.abs(calcMargin))}</p>
-                          <Badge className={calcMargin > 0 ? "bg-green-500/10 text-green-600" : calcMargin < 0 ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-600"}>
-                            {calcMarginPct.toFixed(1)}% {calcMargin > 0 ? "PROFIT" : calcMargin < 0 ? "LOSS" : "BREAK-EVEN"}
-                          </Badge>
+                    {!calcCashDiscountEnabled && rule && (rule.cash_discount_value ?? 0) > 0 && (
+                      <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded flex items-center gap-1.5">
+                        <Info className="h-3 w-3" />
+                        Cash discount available ({rule.cash_discount_value}% on Base Price) — enable toggle to apply
+                      </div>
+                    )}
+
+                    {/* Rule info */}
+                    {rule && (
+                      <div className="p-3 rounded-lg border text-xs space-y-1">
+                        <p className="font-semibold text-sm">Matched Rule</p>
+                        <p><span className="text-muted-foreground">Category:</span> {rule.category}</p>
+                        <p><span className="text-muted-foreground">Base Rule:</span> {rule.discount_percentage}% discount on MRP</p>
+                        {(rule.cash_discount_value ?? 0) > 0 && (
+                          <p><span className="text-muted-foreground">Cash Rule:</span> {rule.cash_discount_value}% on {rule.cash_discount_type === "on_base_price" ? "Base Price (ex GST)" : rule.cash_discount_type === "on_mrp" ? "MRP" : "Landing Cost"}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {calcSP > 0 && (
+                      <div className={`p-4 rounded-xl border-2 ${calcMargin > 0 ? "bg-green-500/5 border-green-500/20" : calcMargin < 0 ? "bg-red-500/5 border-red-500/20" : "bg-amber-500/5 border-amber-500/20"}`}>
+                        <div className="flex justify-between text-sm mb-2"><span>Selling Price</span><span className="font-mono">{formatINR(calcSP)}</span></div>
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-lg">Margin</span>
+                          <div className="text-right">
+                            <p className={`text-2xl font-bold ${calcMargin > 0 ? "text-green-600" : calcMargin < 0 ? "text-red-600" : "text-amber-600"}`}>{formatINR(Math.abs(calcMargin))}</p>
+                            <Badge className={calcMargin > 0 ? "bg-green-500/10 text-green-600" : calcMargin < 0 ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-600"}>
+                              {calcMarginPct.toFixed(1)}% {calcMargin > 0 ? "PROFIT" : calcMargin < 0 ? "LOSS" : "BREAK-EVEN"}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </div>
         </TabsContent>
 
@@ -770,8 +885,8 @@ export default function ApplePricing() {
                 <div className="mt-2 border-2 border-dashed rounded-xl p-8 text-center">
                   <FileSpreadsheet className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
                   <p className="text-sm text-muted-foreground mb-3">Drag & drop or click to select an Excel file</p>
-                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="hidden" />
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="h-4 w-4 mr-1" /> Select File</Button>
+                  <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="hidden" id="import-file" />
+                  <Button variant="outline" onClick={() => document.getElementById("import-file")?.click()}><Upload className="h-4 w-4 mr-1" /> Select File</Button>
                 </div>
               </div>
 
@@ -795,6 +910,9 @@ export default function ApplePricing() {
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                      <Info className="h-3 w-3" /> Categories will be auto-normalized during import (e.g. IPHONE → iPhone)
+                    </p>
                   </div>
 
                   <div>
@@ -844,10 +962,11 @@ export default function ApplePricing() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {compareProducts.map((p) => {
+                const rule = getRuleForProduct(p);
                 const baseDisc = getBaseDiscount(p);
                 const offerDisc = getBestOfferDiscount(p);
                 const cashDisc = getCashDiscount(p);
-                const finalCost = getFinalCost(p);
+                const landingCost = getLandingCost(p);
                 return (
                   <Card key={p.id}>
                     <CardContent className="p-4 space-y-3">
@@ -856,13 +975,12 @@ export default function ApplePricing() {
                         <Badge variant="outline">{p.category}</Badge>
                       </div>
                       {[
-                        { label: "MRP", value: formatINR(p.mrp) },
+                        { label: "MRP (incl GST)", value: formatINR(p.mrp) },
                         { label: "Base Price (ex GST)", value: formatINR(getBasePrice(p)) },
-                        { label: "Base Discount", value: formatINR(baseDisc), color: "text-green-600" },
-                        { label: "Offer Discount", value: formatINR(offerDisc), color: "text-blue-600" },
-                        { label: "Landing Cost", value: formatINR(p.mrp - baseDisc - offerDisc), bold: true },
-                        { label: "Cash Discount", value: formatINR(cashDisc), color: "text-purple-600" },
-                        { label: "Final Cost", value: formatINR(finalCost), bold: true },
+                        { label: `Base Discount (${rule?.discount_percentage || 0}%)`, value: baseDisc > 0 ? `-${formatINR(baseDisc)}` : "—", color: "text-green-600" },
+                        { label: "Offer Discount", value: offerDisc > 0 ? `-${formatINR(offerDisc)}` : "—", color: "text-blue-600" },
+                        { label: "Landing Cost", value: formatINR(landingCost), bold: true },
+                        { label: "Cash Discount (optional)", value: cashDisc > 0 ? `-${formatINR(cashDisc)}` : "—", color: "text-purple-600" },
                       ].map((item, i) => (
                         <div key={i} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">{item.label}</span>
@@ -937,25 +1055,12 @@ export default function ApplePricing() {
             </div>
             <Button className="w-full" onClick={() => {
               if (!newOffer.offer_type || !newOffer.applicable_category || !newOffer.discount_amount) { toast.error("Fill required fields"); return; }
-              const endDate = newOffer.end_date ? new Date(newOffer.end_date) : null;
-              if (endDate && endDate < new Date()) { toast.error("End date is in the past — offer will be marked expired"); }
               addOfferMutation.mutate({
                 offer_type: newOffer.offer_type, bank_name: newOffer.bank_name || null, applicable_category: newOffer.applicable_category,
                 applicable_product: newOffer.applicable_product || null, discount_amount: parseFloat(newOffer.discount_amount),
                 discount_description: newOffer.discount_description || null, start_date: newOffer.start_date || null, end_date: newOffer.end_date || null,
               });
             }}>Save Offer</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* IMPORT DIALOG (quick access from header button) */}
-      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Quick Import</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <input type="file" accept=".xlsx,.xls" onChange={(e) => { handleFileUpload(e); setShowImportDialog(false); }} />
-            <p className="text-xs text-muted-foreground">Upload an Excel file and use the Import tab to map fields and complete import.</p>
           </div>
         </DialogContent>
       </Dialog>
