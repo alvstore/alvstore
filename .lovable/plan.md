@@ -1,81 +1,141 @@
 
+Audit summary: the module is not failing because of one formula only; it has a workflow mismatch between imported product data, pricing rules, offer matching, and calculator UX.
 
-# Apple Pricing Engine — Production Upgrade
+1. Core bug to fix first
+- The imported product category is stored as uppercase like `IPHONE`.
+- The pricing rule row is stored as `iPhone`.
+- The code uses exact lookup: `ruleMap[product.category]`.
+- Result: no rule is found, so:
+  - base discount = 0
+  - cash discount = 0
+  - landing cost = MRP - 0 - 0
+  - final cost = same as MRP
+- This is the main reason you are seeing MRP and landing cost as equal.
 
-## What Changes
+2. Pricing logic issues found
+- Base discount is currently being applied on MRP, which matches your “MRP less 5.5% include GST 18%” requirement for iPhone.
+- Cash discount is configured as `0.5% on base price`, but it is hidden whenever rule lookup fails.
+- Cash discount is always auto-subtracted from final cost when a rule exists. That is wrong for your workflow because cash discount is optional and should only apply when advance payment is available.
+- Offer matching is also fragile because:
+  - category matching is exact
+  - product keyword matching is plain substring
+  - expired offers are still loaded into the calculation pool
 
-### 1. Excel Import System (in-browser)
-Add an "Import" tab with:
-- File upload input for `.xlsx` files
-- Field mapping UI: dropdowns to map Excel columns → system fields (Part Number, Description, Category, MRP, ALP Ex VAT, GST%)
-- Save/reuse mapping templates (stored in `localStorage`)
-- Preview of first 5 rows before import
-- Batch upsert into `apple_products` (upsert on `part_number` to prevent duplicates)
-- Import history section showing last imports with count + timestamp
+3. Search/calculator UX issues found
+- Catalog search only checks `description` and `part_number`.
+- Calculator product picker is a long dropdown with no search.
+- No dedicated calculator search by SKU, product family, storage, or color.
+- This makes the calculator hard to use with a large Apple list.
 
-### 2. Manual Offer Entry Form
-Add "Add Offer" dialog in the Offers tab:
-- Fields: Offer Type, Bank Name, Category, Product (optional), Discount Amount, Description, Start/End Date
-- Insert into `apple_offers`
-- PDF upload is informational only (no server-side parsing in this stack)
+4. Production upgrade plan
 
-### 3. Cash Discount Engine
+A. Normalize the pricing engine data layer
+- Normalize category matching everywhere:
+  - compare categories case-insensitively
+  - trim spaces
+  - optionally standardize imported categories to canonical labels
+- Add a helper for canonical category keys so products, rules, and offers all align.
+- Update rule matching and offer matching to use normalized values.
 
-**Database Migration:**
-```sql
-ALTER TABLE public.apple_pricing_rules
-  ADD COLUMN IF NOT EXISTS cash_discount_type text DEFAULT 'on_base_price',
-  ADD COLUMN IF NOT EXISTS cash_discount_value numeric DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS cash_discount_mode text DEFAULT 'percentage';
-```
-- `cash_discount_type`: `on_base_price` / `on_mrp` / `on_landing_cost`
-- `cash_discount_mode`: `percentage` / `fixed`
+B. Fix the calculation workflow
+- Keep iPhone base rule as:
+  - Base Discount = MRP × 5.5%
+- Keep Base Price as:
+  - Base Price = MRP / 1.18
+- Compute:
+  - Landing Cost = MRP - Base Discount - Offer Discount
+- Make cash discount optional with a toggle:
+  - “Apply Cash Discount”
+  - default OFF
+- Only when ON:
+  - Cash Discount = Base Price × 0.5%
+  - Final Cost = Landing Cost - Cash Discount
+- When OFF:
+  - Final Cost = Landing Cost
+- Show a note in UI that cash discount requires advance billing/payment.
 
-### 4. Updated Calculation Engine
-Current formula is too simple. New formula:
+C. Improve the UI breakdown
+- Update calculator and row expansion to show:
+  - MRP
+  - Base Price (ex GST)
+  - Base Discount 5.5% on MRP
+  - Offer Discount
+  - Landing Cost
+  - Cash Discount (optional)
+  - Final Cost
+- Add explicit labels so users understand:
+  - “Base Discount on MRP (incl GST)”
+  - “Cash Discount on Base Price (ex GST)”
+- Show the rule source card for selected product:
+  - matched category
+  - base rule
+  - cash rule
+  - applied offers
 
-```
-Base Price = MRP / (1 + GST%)
-Base Discount = MRP * rule.discount_percentage%
-Offer Discount = best applicable offer amount
-Landing Cost = MRP - Base Discount - Offer Discount
-Cash Discount = applied on (Base Price | MRP | Landing Cost) based on type
-Final Cost = Landing Cost - Cash Discount
-Margin = Selling Price - Final Cost
-```
+D. Enhance calculator search
+- Replace the plain Select product dropdown with searchable product selection.
+- Search across:
+  - description
+  - part number / SKU
+  - category
+  - storage capacity terms
+  - color words
+- Add quick filters in calculator:
+  - category
+  - with offers only
+  - recently imported / new
+- Keep the selected product pinned at top of results.
 
-Update `getBaseDiscount`, `getLandingCost`, and calculator to use this formula. Add `getCashDiscount` and `getFinalCost` helpers.
+E. Tighten offer logic
+- Exclude expired offers from active calculations by date.
+- Normalize category/product matching.
+- Show “best offer available” separately from “selected offers”.
+- Prevent accidental double discounting where only one scheme should apply.
 
-### 5. UI Improvements
-- Add action buttons row: "Import Excel", "Add Product", "Add Offer", "Recalculate All"
-- Add "Add Product" dialog for manual single-product entry
-- Calculator tab: add Cash Discount section showing breakdown (MRP → Base Price → Base Disc → Offer Disc → Cash Disc → Final Cost → Margin)
-- Catalog table: add "Final Cost" column after Landing Cost
-- Show calculation breakdown on row click/expand
+F. Validate imported data
+- Audit import flow so category values are normalized during import.
+- Detect duplicates and blank required fields earlier.
+- Add import preview warnings for:
+  - unknown category
+  - missing MRP
+  - missing SKU
+  - mixed category casing
 
-### 6. Validation
-- Upsert on `part_number` prevents duplicate products
-- Offer date validation (warn if expired)
-- Required field validation on all forms
+5. Files to update
+- `src/pages/ApplePricing.tsx`
+  - normalize category matching
+  - fix pricing helpers
+  - add optional cash discount toggle
+  - improve breakdown labels
+  - replace calculator selector with searchable product finder
+  - exclude expired offers
+- New migration recommended
+  - optionally normalize existing `apple_products.category` values
+  - optionally normalize existing `apple_pricing_rules.category` values
+  - optionally add a canonical category constraint or helper strategy
 
-### 7. Performance
-- Already paginated to 100 rows with virtual scroll message
-- Add `useMemo` on all computed values (already done)
-- No changes needed
+6. Recommended implementation order
+- Step 1: fix category normalization and rule lookup
+- Step 2: fix optional cash discount behavior
+- Step 3: fix offer filtering by active date
+- Step 4: improve calculator search UX
+- Step 5: improve import normalization so the bug does not return
 
-## Files
+7. Expected result after fix
+For iPhone products with your active rule:
+- MRP will no longer equal landing cost
+- 5.5% base discount will apply correctly
+- 0.5% cash discount on base price will appear as an optional switch, not forced
+- calculator search will be usable on large Apple catalogs
+- pricing output will match actual billing workflow more closely
 
-```text
-MIGRATION:  Add cash_discount columns to apple_pricing_rules
-EDIT:       src/pages/ApplePricing.tsx
-            - Add Import tab with Excel upload + field mapping
-            - Add "Add Product" dialog
-            - Add "Add Offer" dialog  
-            - Update calculation engine with Base Price + Cash Discount
-            - Add action buttons row
-            - Enhanced calculator breakdown
-            - Final Cost column in catalog
-```
-
-No new files needed — all changes fit in the existing page component.
-
+Technical notes
+- Current live data confirms the mismatch:
+  - products category: `IPHONE`
+  - active rule category: `iPhone`
+- Current rule data already contains:
+  - discount_percentage = 5.5
+  - cash_discount_type = `on_base_price`
+  - cash_discount_value = 0.5
+  - cash_discount_mode = `percentage`
+- So the data for the rule exists; the lookup logic is what is breaking the workflow.
