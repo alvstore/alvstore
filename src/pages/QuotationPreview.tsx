@@ -20,6 +20,7 @@ export default function QuotationPreview() {
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+  const [bankDetails, setBankDetails] = useState<{ bank_name?: string; bank_account_number?: string; bank_ifsc?: string; bank_branch?: string; bank_upi_id?: string } | null>(null);
 
   useEffect(() => {
     if (!id) return;

@@ -397,6 +397,20 @@ export default function QuotationAdd() {
                   </div>
                 </div>
               </div>
+
+              {/* Bank Details */}
+              {business?.bank_name && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{business.bank_name}</span>
+                    {business.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{business.bank_account_number}</span></>}
+                    {business.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{business.bank_ifsc}</span></>}
+                    {business.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{business.bank_branch}</span></>}
+                    {business.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{business.bank_upi_id}</span></>}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
