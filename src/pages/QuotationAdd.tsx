@@ -15,9 +15,9 @@ import { toast } from "sonner";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
 
-interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; }
-interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; }
-interface BusinessSettings { company_name: string | null; company_address: string | null; company_phone: string | null; company_email: string | null; gst_number: string | null; logo_url: string | null; }
+interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; image_url?: string | null; }
+interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; shipping_address?: string | null; shipping_city?: string | null; shipping_state?: string | null; shipping_pincode?: string | null; }
+interface BusinessSettings { company_name: string | null; company_address: string | null; company_phone: string | null; company_email: string | null; gst_number: string | null; logo_url: string | null; bank_name?: string | null; bank_account_number?: string | null; bank_ifsc?: string | null; bank_branch?: string | null; bank_upi_id?: string | null; }
 
 export default function QuotationAdd() {
   const { user } = useAuth();
