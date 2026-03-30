@@ -126,7 +126,8 @@ export default function QuotationAdd() {
         gst_amount: totals.gstAmount, total: totals.grandTotal,
         notes: notes || null, terms: terms || null, valid_until: validUntil || null,
         discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
-      }).eq("id", editId);
+        payment_terms: paymentTerms || null,
+      } as any).eq("id", editId);
       if (qErr) { toast.error(qErr.message); setSaving(false); return; }
 
       // Delete old items and insert new
