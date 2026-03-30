@@ -347,6 +347,17 @@ function BusinessTab() {
             <SelectContent>{timezones.map(tz => <SelectItem key={tz} value={tz}>{tz}</SelectItem>)}</SelectContent>
           </Select>
         </div>
+
+        <Separator className="my-4" />
+        <h3 className="text-sm font-semibold text-foreground">Bank Details</h3>
+        <p className="text-xs text-muted-foreground mb-2">Displayed on quotations and invoices for customer payment</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5"><Label>Bank Name</Label><Input value={form.bank_name} onChange={e => setForm(p => ({ ...p, bank_name: e.target.value }))} placeholder="e.g. HDFC Bank" /></div>
+          <div className="space-y-1.5"><Label>Account Number</Label><Input value={form.bank_account_number} onChange={e => setForm(p => ({ ...p, bank_account_number: e.target.value }))} /></div>
+          <div className="space-y-1.5"><Label>IFSC Code</Label><Input value={form.bank_ifsc} onChange={e => setForm(p => ({ ...p, bank_ifsc: e.target.value }))} /></div>
+          <div className="space-y-1.5"><Label>Branch</Label><Input value={form.bank_branch} onChange={e => setForm(p => ({ ...p, bank_branch: e.target.value }))} /></div>
+        </div>
+        <div className="space-y-1.5"><Label>UPI ID</Label><Input value={form.bank_upi_id} onChange={e => setForm(p => ({ ...p, bank_upi_id: e.target.value }))} placeholder="e.g. business@upi" /></div>
         <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Settings</Button>
       </CardContent>
     </Card>
