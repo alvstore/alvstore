@@ -160,6 +160,7 @@ export default function QuotationAdd() {
         quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
         total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
         discount_type: i.discount_type, discount_value: i.discount_value,
+        image_url: i.image_url || null,
       }));
       const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
       setSaving(false);
