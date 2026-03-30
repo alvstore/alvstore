@@ -10,14 +10,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Send, Eye, Save, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Send, Eye, Save, Trash2, Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
 
-interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; }
-interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; }
-interface BusinessSettings { company_name: string | null; company_address: string | null; company_phone: string | null; company_email: string | null; gst_number: string | null; logo_url: string | null; }
+interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; image_url?: string | null; }
+interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; shipping_address?: string | null; shipping_city?: string | null; shipping_state?: string | null; shipping_pincode?: string | null; }
+interface BusinessSettings { company_name: string | null; company_address: string | null; company_phone: string | null; company_email: string | null; gst_number: string | null; logo_url: string | null; bank_name?: string | null; bank_account_number?: string | null; bank_ifsc?: string | null; bank_branch?: string | null; bank_upi_id?: string | null; }
 
 export default function QuotationAdd() {
   const { user } = useAuth();
@@ -46,9 +46,9 @@ export default function QuotationAdd() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
-      supabase.from("products").select("id, name, description, selling_price, gst_percentage").order("name"),
-      supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url").limit(1).single(),
+      supabase.from("customers").select("id, name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode").order("name"),
+      supabase.from("products").select("id, name, description, selling_price, gst_percentage, image_url").order("name"),
+      supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url, bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single(),
       supabase.from("employees").select("id, name").in("role", ["admin", "staff"]).eq("status", "active").order("name"),
     ]).then(([c, p, b, e]) => {
       setCustomers(c.data || []);
@@ -99,6 +99,7 @@ export default function QuotationAdd() {
       discount_type: "percentage", discount_value: 0,
       gst_percentage: product.gst_percentage || 18, gst_enabled: true,
       total: product.selling_price || 0,
+      image_url: product.image_url || null,
     }]);
   };
 
@@ -125,7 +126,8 @@ export default function QuotationAdd() {
         gst_amount: totals.gstAmount, total: totals.grandTotal,
         notes: notes || null, terms: terms || null, valid_until: validUntil || null,
         discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
-      }).eq("id", editId);
+        payment_terms: paymentTerms || null,
+      } as any).eq("id", editId);
       if (qErr) { toast.error(qErr.message); setSaving(false); return; }
 
       // Delete old items and insert new
@@ -135,6 +137,7 @@ export default function QuotationAdd() {
         quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
         total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
         discount_type: i.discount_type, discount_value: i.discount_value,
+        image_url: i.image_url || null,
       }));
       await supabase.from("quotation_items").insert(qItems);
       setSaving(false);
@@ -148,7 +151,8 @@ export default function QuotationAdd() {
         notes: notes || null, terms: terms || null, valid_until: validUntil || null,
         discount_type: discountType, discount_value: discountValue,
         gst_inclusive: gstInclusive, created_by: user?.id,
-      }).select().single();
+        payment_terms: paymentTerms || null,
+      } as any).select().single();
       if (qErr) { toast.error(qErr.message); setSaving(false); return; }
 
       const qItems = items.map(i => ({
@@ -156,6 +160,7 @@ export default function QuotationAdd() {
         quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
         total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
         discount_type: i.discount_type, discount_value: i.discount_value,
+        image_url: i.image_url || null,
       }));
       const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
       setSaving(false);
@@ -217,12 +222,36 @@ export default function QuotationAdd() {
                     </Select>
                   </div>
                   {selectedCustomer && (
-                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
-                      <p className="text-sm font-medium text-foreground">{selectedCustomer.name}</p>
-                      {selectedCustomer.phone && <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>}
-                      {selectedCustomer.email && <p className="text-xs text-muted-foreground">{selectedCustomer.email}</p>}
-                      {selectedCustomer.address && <p className="text-xs text-muted-foreground">{selectedCustomer.address}</p>}
-                      {selectedCustomer.gst_number && <p className="text-xs text-muted-foreground">GSTIN: {selectedCustomer.gst_number}</p>}
+                    <div className="space-y-3">
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Bill To</p>
+                        <p className="text-sm font-medium text-foreground">{selectedCustomer.name}</p>
+                        {selectedCustomer.phone && <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>}
+                        {selectedCustomer.email && <p className="text-xs text-muted-foreground">{selectedCustomer.email}</p>}
+                        {selectedCustomer.address && <p className="text-xs text-muted-foreground">{selectedCustomer.address}</p>}
+                        {selectedCustomer.gst_number && <p className="text-xs text-muted-foreground">GSTIN: {selectedCustomer.gst_number}</p>}
+                      </div>
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Ship To</p>
+                          {!selectedCustomer.shipping_address && (
+                            <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] gap-1 px-2"
+                              onClick={() => {
+                                toast.success("Shipping = Billing address");
+                              }}>
+                              <Copy className="h-3 w-3" /> Same as Billing
+                            </Button>
+                          )}
+                        </div>
+                        {selectedCustomer.shipping_address ? (
+                          <>
+                            <p className="text-xs text-muted-foreground">{selectedCustomer.shipping_address}</p>
+                            {selectedCustomer.shipping_city && <p className="text-xs text-muted-foreground">{selectedCustomer.shipping_city}{selectedCustomer.shipping_state ? `, ${selectedCustomer.shipping_state}` : ""} {selectedCustomer.shipping_pincode || ""}</p>}
+                          </>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">Same as billing address</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -368,6 +397,20 @@ export default function QuotationAdd() {
                   </div>
                 </div>
               </div>
+
+              {/* Bank Details */}
+              {business?.bank_name && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{business.bank_name}</span>
+                    {business.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{business.bank_account_number}</span></>}
+                    {business.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{business.bank_ifsc}</span></>}
+                    {business.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{business.bank_branch}</span></>}
+                    {business.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{business.bank_upi_id}</span></>}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

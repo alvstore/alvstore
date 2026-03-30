@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -281,6 +282,7 @@ function BusinessTab() {
     company_name: "", company_address: "", company_phone: "",
     company_email: "", logo_url: "", invoice_prefix: "INV-", quotation_prefix: "QT-",
     timezone: "Asia/Kolkata",
+    bank_name: "", bank_account_number: "", bank_ifsc: "", bank_branch: "", bank_upi_id: "",
   });
   const [saving, setSaving] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
@@ -289,6 +291,7 @@ function BusinessTab() {
     supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
       if (data) {
         setSettingsId(data.id);
+        const d = data as any;
         setForm({
           company_name: data.company_name || "",
           company_address: data.company_address || "",
@@ -297,7 +300,12 @@ function BusinessTab() {
           logo_url: data.logo_url || "",
           invoice_prefix: data.invoice_prefix || "INV-",
           quotation_prefix: data.quotation_prefix || "QT-",
-          timezone: (data as any).timezone || "Asia/Kolkata",
+          timezone: d.timezone || "Asia/Kolkata",
+          bank_name: d.bank_name || "",
+          bank_account_number: d.bank_account_number || "",
+          bank_ifsc: d.bank_ifsc || "",
+          bank_branch: d.bank_branch || "",
+          bank_upi_id: d.bank_upi_id || "",
         });
       }
     });
@@ -340,6 +348,17 @@ function BusinessTab() {
             <SelectContent>{timezones.map(tz => <SelectItem key={tz} value={tz}>{tz}</SelectItem>)}</SelectContent>
           </Select>
         </div>
+
+        <Separator className="my-4" />
+        <h3 className="text-sm font-semibold text-foreground">Bank Details</h3>
+        <p className="text-xs text-muted-foreground mb-2">Displayed on quotations and invoices for customer payment</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5"><Label>Bank Name</Label><Input value={form.bank_name} onChange={e => setForm(p => ({ ...p, bank_name: e.target.value }))} placeholder="e.g. HDFC Bank" /></div>
+          <div className="space-y-1.5"><Label>Account Number</Label><Input value={form.bank_account_number} onChange={e => setForm(p => ({ ...p, bank_account_number: e.target.value }))} /></div>
+          <div className="space-y-1.5"><Label>IFSC Code</Label><Input value={form.bank_ifsc} onChange={e => setForm(p => ({ ...p, bank_ifsc: e.target.value }))} /></div>
+          <div className="space-y-1.5"><Label>Branch</Label><Input value={form.bank_branch} onChange={e => setForm(p => ({ ...p, bank_branch: e.target.value }))} /></div>
+        </div>
+        <div className="space-y-1.5"><Label>UPI ID</Label><Input value={form.bank_upi_id} onChange={e => setForm(p => ({ ...p, bank_upi_id: e.target.value }))} placeholder="e.g. business@upi" /></div>
         <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Settings</Button>
       </CardContent>
     </Card>

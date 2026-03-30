@@ -19,6 +19,7 @@ export interface DocumentItem {
   gst_percentage: number;
   gst_enabled: boolean;
   total: number;
+  image_url?: string | null;
 }
 
 interface Product {
@@ -98,9 +99,16 @@ export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTa
               <TableRow key={idx}>
                 <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
                 <TableCell>
-                  <p className="text-sm font-medium">{item.product_name}</p>
-                  {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
-                  {item.hsn_code && <p className="text-xs text-muted-foreground">HSN: {item.hsn_code}</p>}
+                  <div className="flex items-start gap-2.5">
+                    {item.image_url && (
+                      <img src={item.image_url} alt={item.product_name} className="h-10 w-10 rounded-md object-cover border border-border shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <p className="text-sm font-medium">{item.product_name}</p>
+                      {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+                      {item.hsn_code && <p className="text-xs text-muted-foreground">HSN: {item.hsn_code}</p>}
+                    </div>
+                  </div>
                 </TableCell>
                 <TableCell className="text-right text-sm">{item.quantity}</TableCell>
                 <TableCell className="text-right text-sm">₹{item.unit_price.toFixed(2)}</TableCell>

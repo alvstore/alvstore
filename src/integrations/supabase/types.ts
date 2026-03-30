@@ -181,6 +181,11 @@ export type Database = {
       }
       business_settings: {
         Row: {
+          bank_account_number: string | null
+          bank_branch: string | null
+          bank_ifsc: string | null
+          bank_name: string | null
+          bank_upi_id: string | null
           company_address: string | null
           company_email: string | null
           company_name: string | null
@@ -205,6 +210,11 @@ export type Database = {
           whatsapp_phone_id: string | null
         }
         Insert: {
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_ifsc?: string | null
+          bank_name?: string | null
+          bank_upi_id?: string | null
           company_address?: string | null
           company_email?: string | null
           company_name?: string | null
@@ -229,6 +239,11 @@ export type Database = {
           whatsapp_phone_id?: string | null
         }
         Update: {
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_ifsc?: string | null
+          bank_name?: string | null
+          bank_upi_id?: string | null
           company_address?: string | null
           company_email?: string | null
           company_name?: string | null
@@ -445,6 +460,10 @@ export type Database = {
           notes: string | null
           phone: string | null
           pincode: string | null
+          shipping_address: string | null
+          shipping_city: string | null
+          shipping_pincode: string | null
+          shipping_state: string | null
           state: string | null
           updated_at: string
           user_id: string | null
@@ -461,6 +480,10 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           pincode?: string | null
+          shipping_address?: string | null
+          shipping_city?: string | null
+          shipping_pincode?: string | null
+          shipping_state?: string | null
           state?: string | null
           updated_at?: string
           user_id?: string | null
@@ -477,6 +500,10 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           pincode?: string | null
+          shipping_address?: string | null
+          shipping_city?: string | null
+          shipping_pincode?: string | null
+          shipping_state?: string | null
           state?: string | null
           updated_at?: string
           user_id?: string | null

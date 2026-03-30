@@ -12,6 +12,7 @@ import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { SignaturePad } from "@/components/documents/SignaturePad";
+import { createNotification } from "@/lib/notifications";
 
 interface QuotationData {
   id: string; quotation_number: string; status: string; subtotal: number; gst_amount: number;
@@ -29,6 +30,7 @@ export default function PublicQuotation() {
   const [responding, setResponding] = useState(false);
   const [signatureData, setSignatureData] = useState("");
   const [signatureName, setSignatureName] = useState("");
+  const [bankDetails, setBankDetails] = useState<{ bank_name?: string; bank_account_number?: string; bank_ifsc?: string; bank_branch?: string; bank_upi_id?: string } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -45,7 +47,11 @@ export default function PublicQuotation() {
           quantity: i.quantity, unit_price: i.unit_price,
           discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
           gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+          image_url: i.image_url || null,
         })));
+        // Fetch bank details
+        const { data: bs } = await supabase.from("business_settings").select("bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single();
+        if (bs) setBankDetails(bs as any);
       }
       setLoading(false);
     };
@@ -63,7 +69,20 @@ export default function PublicQuotation() {
     }
     const { error } = await supabase.from("quotations").update(updates).eq("id", quotation.id);
     if (error) toast.error(error.message);
-    else { toast.success(`Quotation ${status}`); setQuotation(prev => prev ? { ...prev, ...updates } : null); }
+    else {
+      toast.success(`Quotation ${status}`);
+      setQuotation(prev => prev ? { ...prev, ...updates } : null);
+      // Notify creator
+      if ((quotation as any).created_by) {
+        createNotification(
+          (quotation as any).created_by,
+          `Quotation ${status === "accepted" ? "Accepted" : "Rejected"}`,
+          `${quotation.quotation_number} was ${status} by ${quotation.customers?.name || "customer"}`,
+          status === "accepted" ? "success" : "warning",
+          `/sales/${quotation.id}`
+        );
+      }
+    }
     setResponding(false);
   };
 
@@ -118,6 +137,18 @@ export default function PublicQuotation() {
               <div><p className="text-xs font-semibold mb-1">Terms & Conditions</p><p className="text-xs text-muted-foreground whitespace-pre-line">{quotation.terms}</p></div>
             )}
 
+            {bankDetails?.bank_name && (
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{bankDetails.bank_name}</span>
+                  {bankDetails.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{bankDetails.bank_account_number}</span></>}
+                  {bankDetails.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{bankDetails.bank_ifsc}</span></>}
+                  {bankDetails.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{bankDetails.bank_branch}</span></>}
+                  {bankDetails.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{bankDetails.bank_upi_id}</span></>}
+                </div>
+              </div>
+            )}
             {quotation.signature_data && (
               <div className="rounded-lg border border-border p-4 text-center bg-muted/20">
                 <img src={quotation.signature_data} alt="Signature" className="h-16 mx-auto" />

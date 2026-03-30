@@ -20,6 +20,7 @@ export default function QuotationPreview() {
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+  const [bankDetails, setBankDetails] = useState<{ bank_name?: string; bank_account_number?: string; bank_ifsc?: string; bank_branch?: string; bank_upi_id?: string } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -27,7 +28,7 @@ export default function QuotationPreview() {
       setLoading(true);
       const { data: q } = await supabase
         .from("quotations")
-        .select("*, customers(name, email, phone, address, gst_number)")
+        .select("*, customers(name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode)")
         .eq("id", id)
         .single();
       if (q) setQuotation(q);
@@ -40,8 +41,14 @@ export default function QuotationPreview() {
           quantity: i.quantity, unit_price: i.unit_price,
           discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
           gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+          image_url: i.image_url || null,
         }))
       );
+
+      // Fetch bank details
+      const { data: bs } = await supabase.from("business_settings").select("bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single();
+      if (bs) setBankDetails(bs as any);
+
       setLoading(false);
     };
     load();
@@ -145,13 +152,35 @@ export default function QuotationPreview() {
               <Separator />
 
               {customer && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Quotation To:</p>
-                  <p className="text-sm font-semibold text-foreground">{customer.name}</p>
-                  {customer.address && <p className="text-xs text-muted-foreground mt-0.5">{customer.address}</p>}
-                  {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
-                  {customer.email && <p className="text-xs text-muted-foreground">{customer.email}</p>}
-                  {customer.gst_number && <p className="text-xs text-muted-foreground mt-1">GSTIN: {customer.gst_number}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bill To:</p>
+                    <p className="text-sm font-semibold text-foreground">{customer.name}</p>
+                    {customer.address && <p className="text-xs text-muted-foreground mt-0.5">{customer.address}</p>}
+                    {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
+                    {customer.email && <p className="text-xs text-muted-foreground">{customer.email}</p>}
+                    {customer.gst_number && <p className="text-xs text-muted-foreground mt-1">GSTIN: {customer.gst_number}</p>}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ship To:</p>
+                    {customer.shipping_address ? (
+                      <>
+                        <p className="text-sm font-semibold text-foreground">{customer.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{customer.shipping_address}</p>
+                        {customer.shipping_city && <p className="text-xs text-muted-foreground">{customer.shipping_city}{customer.shipping_state ? `, ${customer.shipping_state}` : ""} {customer.shipping_pincode || ""}</p>}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">Same as billing address</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {(quotation as any).payment_terms && (
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="text-muted-foreground font-medium">Payment Terms:</span>
+                  <span className="font-semibold text-foreground">{(quotation as any).payment_terms?.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                  {quotation.valid_until && <span className="text-muted-foreground ml-auto">Valid Until: {new Date(quotation.valid_until).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>}
                 </div>
               )}
 
@@ -188,6 +217,19 @@ export default function QuotationPreview() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Signature</p>
                   <img src={quotation.signature_data} alt="Signature" className="h-16 border border-border rounded" />
                   {quotation.signature_name && <p className="text-xs text-muted-foreground mt-1">{quotation.signature_name}</p>}
+                </div>
+              )}
+
+              {bankDetails?.bank_name && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{bankDetails.bank_name}</span>
+                    {bankDetails.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{bankDetails.bank_account_number}</span></>}
+                    {bankDetails.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{bankDetails.bank_ifsc}</span></>}
+                    {bankDetails.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{bankDetails.bank_branch}</span></>}
+                    {bankDetails.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{bankDetails.bank_upi_id}</span></>}
+                  </div>
                 </div>
               )}
             </CardContent>
