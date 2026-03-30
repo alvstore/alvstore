@@ -69,7 +69,20 @@ export default function PublicQuotation() {
     }
     const { error } = await supabase.from("quotations").update(updates).eq("id", quotation.id);
     if (error) toast.error(error.message);
-    else { toast.success(`Quotation ${status}`); setQuotation(prev => prev ? { ...prev, ...updates } : null); }
+    else {
+      toast.success(`Quotation ${status}`);
+      setQuotation(prev => prev ? { ...prev, ...updates } : null);
+      // Notify creator
+      if ((quotation as any).created_by) {
+        createNotification(
+          (quotation as any).created_by,
+          `Quotation ${status === "accepted" ? "Accepted" : "Rejected"}`,
+          `${quotation.quotation_number} was ${status} by ${quotation.customers?.name || "customer"}`,
+          status === "accepted" ? "success" : "warning",
+          `/sales/${quotation.id}`
+        );
+      }
+    }
     setResponding(false);
   };
 
