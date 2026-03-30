@@ -400,6 +400,31 @@ export default function ApplePricing() {
           <Button variant="outline" size="sm" onClick={exportCSV}>
             <Download className="h-4 w-4 mr-1" /> Export CSV
           </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
+                <Trash2 className="h-4 w-4 mr-1" /> Delete All
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete All Products?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">This will permanently delete all Apple products from the database. This action cannot be undone. Use this before importing a fresh price list.</p>
+              <div className="flex justify-end gap-2 mt-4">
+                <Button variant="outline" onClick={() => {}}>Cancel</Button>
+                <Button variant="destructive" onClick={async () => {
+                  const { error } = await supabase.from("apple_products").update({ status: "inactive" } as any).neq("id", "00000000-0000-0000-0000-000000000000");
+                  if (error) { toast.error(error.message); return; }
+                  queryClient.invalidateQueries({ queryKey: ["apple-products"] });
+                  toast.success("All products marked inactive");
+                }}>Delete All</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" size="sm" onClick={() => setPdfUploading(true)}>
+            <FileText className="h-4 w-4 mr-1" /> Upload Offer PDF
+          </Button>
         </div>
       </div>
 
