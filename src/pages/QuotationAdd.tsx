@@ -46,9 +46,9 @@ export default function QuotationAdd() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
-      supabase.from("products").select("id, name, description, selling_price, gst_percentage").order("name"),
-      supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url").limit(1).single(),
+      supabase.from("customers").select("id, name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode").order("name"),
+      supabase.from("products").select("id, name, description, selling_price, gst_percentage, image_url").order("name"),
+      supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url, bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single(),
       supabase.from("employees").select("id, name").in("role", ["admin", "staff"]).eq("status", "active").order("name"),
     ]).then(([c, p, b, e]) => {
       setCustomers(c.data || []);
