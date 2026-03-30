@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Send, Eye, Save, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Send, Eye, Save, Trash2, Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
