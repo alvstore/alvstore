@@ -151,7 +151,8 @@ export default function QuotationAdd() {
         notes: notes || null, terms: terms || null, valid_until: validUntil || null,
         discount_type: discountType, discount_value: discountValue,
         gst_inclusive: gstInclusive, created_by: user?.id,
-      }).select().single();
+        payment_terms: paymentTerms || null,
+      } as any).select().single();
       if (qErr) { toast.error(qErr.message); setSaving(false); return; }
 
       const qItems = items.map(i => ({
