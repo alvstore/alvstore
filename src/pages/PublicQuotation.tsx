@@ -30,6 +30,7 @@ export default function PublicQuotation() {
   const [responding, setResponding] = useState(false);
   const [signatureData, setSignatureData] = useState("");
   const [signatureName, setSignatureName] = useState("");
+  const [bankDetails, setBankDetails] = useState<{ bank_name?: string; bank_account_number?: string; bank_ifsc?: string; bank_branch?: string; bank_upi_id?: string } | null>(null);
 
   useEffect(() => {
     const load = async () => {
