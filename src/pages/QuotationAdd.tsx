@@ -222,12 +222,36 @@ export default function QuotationAdd() {
                     </Select>
                   </div>
                   {selectedCustomer && (
-                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
-                      <p className="text-sm font-medium text-foreground">{selectedCustomer.name}</p>
-                      {selectedCustomer.phone && <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>}
-                      {selectedCustomer.email && <p className="text-xs text-muted-foreground">{selectedCustomer.email}</p>}
-                      {selectedCustomer.address && <p className="text-xs text-muted-foreground">{selectedCustomer.address}</p>}
-                      {selectedCustomer.gst_number && <p className="text-xs text-muted-foreground">GSTIN: {selectedCustomer.gst_number}</p>}
+                    <div className="space-y-3">
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Bill To</p>
+                        <p className="text-sm font-medium text-foreground">{selectedCustomer.name}</p>
+                        {selectedCustomer.phone && <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>}
+                        {selectedCustomer.email && <p className="text-xs text-muted-foreground">{selectedCustomer.email}</p>}
+                        {selectedCustomer.address && <p className="text-xs text-muted-foreground">{selectedCustomer.address}</p>}
+                        {selectedCustomer.gst_number && <p className="text-xs text-muted-foreground">GSTIN: {selectedCustomer.gst_number}</p>}
+                      </div>
+                      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Ship To</p>
+                          {!selectedCustomer.shipping_address && (
+                            <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] gap-1 px-2"
+                              onClick={() => {
+                                toast.success("Shipping = Billing address");
+                              }}>
+                              <Copy className="h-3 w-3" /> Same as Billing
+                            </Button>
+                          )}
+                        </div>
+                        {selectedCustomer.shipping_address ? (
+                          <>
+                            <p className="text-xs text-muted-foreground">{selectedCustomer.shipping_address}</p>
+                            {selectedCustomer.shipping_city && <p className="text-xs text-muted-foreground">{selectedCustomer.shipping_city}{selectedCustomer.shipping_state ? `, ${selectedCustomer.shipping_state}` : ""} {selectedCustomer.shipping_pincode || ""}</p>}
+                          </>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">Same as billing address</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
