@@ -12,6 +12,7 @@ import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { SignaturePad } from "@/components/documents/SignaturePad";
+import { createNotification } from "@/lib/notifications";
 
 interface QuotationData {
   id: string; quotation_number: string; status: string; subtotal: number; gst_amount: number;
