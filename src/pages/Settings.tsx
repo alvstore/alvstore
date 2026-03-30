@@ -281,6 +281,7 @@ function BusinessTab() {
     company_name: "", company_address: "", company_phone: "",
     company_email: "", logo_url: "", invoice_prefix: "INV-", quotation_prefix: "QT-",
     timezone: "Asia/Kolkata",
+    bank_name: "", bank_account_number: "", bank_ifsc: "", bank_branch: "", bank_upi_id: "",
   });
   const [saving, setSaving] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
@@ -289,6 +290,7 @@ function BusinessTab() {
     supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
       if (data) {
         setSettingsId(data.id);
+        const d = data as any;
         setForm({
           company_name: data.company_name || "",
           company_address: data.company_address || "",
@@ -297,7 +299,12 @@ function BusinessTab() {
           logo_url: data.logo_url || "",
           invoice_prefix: data.invoice_prefix || "INV-",
           quotation_prefix: data.quotation_prefix || "QT-",
-          timezone: (data as any).timezone || "Asia/Kolkata",
+          timezone: d.timezone || "Asia/Kolkata",
+          bank_name: d.bank_name || "",
+          bank_account_number: d.bank_account_number || "",
+          bank_ifsc: d.bank_ifsc || "",
+          bank_branch: d.bank_branch || "",
+          bank_upi_id: d.bank_upi_id || "",
         });
       }
     });

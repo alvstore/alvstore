@@ -137,6 +137,18 @@ export default function PublicQuotation() {
               <div><p className="text-xs font-semibold mb-1">Terms & Conditions</p><p className="text-xs text-muted-foreground whitespace-pre-line">{quotation.terms}</p></div>
             )}
 
+            {bankDetails?.bank_name && (
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{bankDetails.bank_name}</span>
+                  {bankDetails.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{bankDetails.bank_account_number}</span></>}
+                  {bankDetails.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{bankDetails.bank_ifsc}</span></>}
+                  {bankDetails.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{bankDetails.bank_branch}</span></>}
+                  {bankDetails.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{bankDetails.bank_upi_id}</span></>}
+                </div>
+              </div>
+            )}
             {quotation.signature_data && (
               <div className="rounded-lg border border-border p-4 text-center bg-muted/20">
                 <img src={quotation.signature_data} alt="Signature" className="h-16 mx-auto" />
