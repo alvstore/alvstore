@@ -695,10 +695,57 @@ export default function ApplePricing() {
 
         {/* OFFERS TAB */}
         <TabsContent value="offers" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">Offers & Schemes</h2>
-            <Button size="sm" onClick={() => setShowOfferDialog(true)}><Plus className="h-4 w-4 mr-1" /> Add Offer</Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setPdfUploading(true)}><FileText className="h-4 w-4 mr-1" /> AI Parse PDF</Button>
+              <Button size="sm" onClick={() => setShowOfferDialog(true)}><Plus className="h-4 w-4 mr-1" /> Add Offer</Button>
+            </div>
           </div>
+          {pdfUploading && (
+            <Card className="border-primary/30">
+              <CardContent className="p-4 space-y-3">
+                <p className="text-sm font-medium">Paste offer PDF text content below for AI extraction:</p>
+                <textarea
+                  id="pdf-text-input"
+                  className="w-full h-32 text-xs border border-border rounded-lg p-3 bg-background resize-y"
+                  placeholder="Copy & paste all text from your Apple offers PDF here..."
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={async () => {
+                    const text = (document.getElementById("pdf-text-input") as HTMLTextAreaElement)?.value;
+                    if (!text || text.length < 20) { toast.error("Paste PDF text first"); return; }
+                    toast.loading("AI is parsing offers...");
+                    try {
+                      const { data, error } = await supabase.functions.invoke("parse-offer-pdf", { body: { pdfText: text } });
+                      toast.dismiss();
+                      if (error) throw error;
+                      if (data?.offers?.length) {
+                        let inserted = 0;
+                        for (const o of data.offers) {
+                          const { error: ie } = await supabase.from("apple_offers").insert({
+                            offer_type: o.offer_type || "other", bank_name: o.bank_name || null,
+                            applicable_category: o.applicable_category || "All",
+                            applicable_product: o.applicable_product || null,
+                            discount_amount: o.discount_amount || 0,
+                            discount_description: o.discount_description || null,
+                            start_date: o.start_date || null, end_date: o.end_date || null, status: "active",
+                          });
+                          if (!ie) inserted++;
+                        }
+                        queryClient.invalidateQueries({ queryKey: ["apple-offers"] });
+                        toast.success(`Imported ${inserted} offers from PDF`);
+                        setPdfUploading(false);
+                      } else { toast.error("No offers found in text"); }
+                    } catch (e: any) { toast.dismiss(); toast.error(e.message || "Parse failed"); }
+                  }}>
+                    <Upload className="h-4 w-4 mr-1" /> Parse & Import
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setPdfUploading(false)}>Cancel</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {offers.length === 0 ? (
               <Card className="col-span-full"><CardContent className="p-8 text-center text-muted-foreground">No offers loaded yet.</CardContent></Card>
