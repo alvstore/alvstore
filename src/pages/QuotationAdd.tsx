@@ -99,6 +99,7 @@ export default function QuotationAdd() {
       discount_type: "percentage", discount_value: 0,
       gst_percentage: product.gst_percentage || 18, gst_enabled: true,
       total: product.selling_price || 0,
+      image_url: product.image_url || null,
     }]);
   };
 
