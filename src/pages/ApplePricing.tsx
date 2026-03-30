@@ -88,6 +88,7 @@ export default function ApplePricing() {
   const [showRuleDialog, setShowRuleDialog] = useState(false);
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [showOfferDialog, setShowOfferDialog] = useState(false);
+  const [pdfUploading, setPdfUploading] = useState(false);
 
   // New rule form
   const [newRule, setNewRule] = useState({
