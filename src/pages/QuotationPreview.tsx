@@ -219,6 +219,19 @@ export default function QuotationPreview() {
                   {quotation.signature_name && <p className="text-xs text-muted-foreground mt-1">{quotation.signature_name}</p>}
                 </div>
               )}
+
+              {bankDetails?.bank_name && (
+                <div className="rounded-lg border border-border bg-muted/20 p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{bankDetails.bank_name}</span>
+                    {bankDetails.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{bankDetails.bank_account_number}</span></>}
+                    {bankDetails.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{bankDetails.bank_ifsc}</span></>}
+                    {bankDetails.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{bankDetails.bank_branch}</span></>}
+                    {bankDetails.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{bankDetails.bank_upi_id}</span></>}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
