@@ -17,7 +17,7 @@ import {
   Package, Tag, Percent, TrendingUp, Gift, Search,
   Plus, Calculator, Download, ArrowUpDown, Star, X,
   IndianRupee, Layers, BarChart3, Upload, FileSpreadsheet,
-  RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Info
+  RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Info, Trash2, FileText
 } from "lucide-react";
 
 type AppleProduct = {
