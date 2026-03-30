@@ -152,13 +152,35 @@ export default function QuotationPreview() {
               <Separator />
 
               {customer && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Quotation To:</p>
-                  <p className="text-sm font-semibold text-foreground">{customer.name}</p>
-                  {customer.address && <p className="text-xs text-muted-foreground mt-0.5">{customer.address}</p>}
-                  {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
-                  {customer.email && <p className="text-xs text-muted-foreground">{customer.email}</p>}
-                  {customer.gst_number && <p className="text-xs text-muted-foreground mt-1">GSTIN: {customer.gst_number}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bill To:</p>
+                    <p className="text-sm font-semibold text-foreground">{customer.name}</p>
+                    {customer.address && <p className="text-xs text-muted-foreground mt-0.5">{customer.address}</p>}
+                    {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
+                    {customer.email && <p className="text-xs text-muted-foreground">{customer.email}</p>}
+                    {customer.gst_number && <p className="text-xs text-muted-foreground mt-1">GSTIN: {customer.gst_number}</p>}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ship To:</p>
+                    {customer.shipping_address ? (
+                      <>
+                        <p className="text-sm font-semibold text-foreground">{customer.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{customer.shipping_address}</p>
+                        {customer.shipping_city && <p className="text-xs text-muted-foreground">{customer.shipping_city}{customer.shipping_state ? `, ${customer.shipping_state}` : ""} {customer.shipping_pincode || ""}</p>}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">Same as billing address</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {(quotation as any).payment_terms && (
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="text-muted-foreground font-medium">Payment Terms:</span>
+                  <span className="font-semibold text-foreground">{(quotation as any).payment_terms?.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                  {quotation.valid_until && <span className="text-muted-foreground ml-auto">Valid Until: {new Date(quotation.valid_until).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>}
                 </div>
               )}
 
