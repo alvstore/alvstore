@@ -47,7 +47,11 @@ export default function PublicQuotation() {
           quantity: i.quantity, unit_price: i.unit_price,
           discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
           gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+          image_url: i.image_url || null,
         })));
+        // Fetch bank details
+        const { data: bs } = await supabase.from("business_settings").select("bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single();
+        if (bs) setBankDetails(bs as any);
       }
       setLoading(false);
     };
