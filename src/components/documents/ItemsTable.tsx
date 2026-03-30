@@ -19,6 +19,7 @@ export interface DocumentItem {
   gst_percentage: number;
   gst_enabled: boolean;
   total: number;
+  image_url?: string | null;
 }
 
 interface Product {
