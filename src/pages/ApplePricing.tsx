@@ -17,7 +17,7 @@ import {
   Package, Tag, Percent, TrendingUp, Gift, Search,
   Plus, Calculator, Download, ArrowUpDown, Star, X,
   IndianRupee, Layers, BarChart3, Upload, FileSpreadsheet,
-  RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Info, Trash2, FileText
+  RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Info, Trash2, FileText, Pencil
 } from "lucide-react";
 
 type AppleProduct = {
@@ -47,15 +47,14 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
   category: "Category", subcategory: "Subcategory", mrp: "MRP (Inc VAT)", alp_ex_vat: "ALP Ex VAT", gst_percentage: "GST %",
 };
 const OFFER_TYPES: Record<string, string> = {
-  card_emi: "Card EMI", card_fs: "Card Full Swipe", loan: "Loan", trade_in: "Trade-in", iphone_for_life: "iPhone for Life",
+  card_emi: "Card EMI", card_fs: "Card Full Swipe", loan: "Loan", trade_in: "Trade-in",
+  iphone_for_life: "iPhone for Life", cashback: "Cashback", instant_discount: "Instant Discount", other: "Other",
 };
 
 const formatINR = (n: number) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
-// Canonical category key for case-insensitive matching
 const normCat = (cat: string) => (cat || "").trim().toLowerCase();
 
-// Map common imported uppercase categories to canonical display names
 const CATEGORY_NORMALIZE_MAP: Record<string, string> = {
   iphone: "iPhone", mac: "Mac", ipad: "iPad", watch: "Watch", airpods: "AirPods",
   homepod: "HomePod", beats: "Beats", accessories: "Accessories", applecare: "AppleCare",
@@ -67,14 +66,33 @@ const normalizeCategory = (raw: string): string => {
   return CATEGORY_NORMALIZE_MAP[key] || raw;
 };
 
+// Extract color from description
+const extractColor = (desc: string): string => {
+  const colors = ["black", "white", "blue", "green", "red", "pink", "purple", "yellow", "orange",
+    "silver", "gold", "space gray", "space grey", "midnight", "starlight", "natural titanium",
+    "desert titanium", "blue titanium", "white titanium", "teal", "ultramarine"];
+  const lower = desc.toLowerCase();
+  for (const c of colors) {
+    if (lower.includes(c)) return c.split(" ").map(w => w[0].toUpperCase() + w.slice(1)).join(" ");
+  }
+  return "";
+};
+
+// Extract storage from description
+const extractStorage = (desc: string): string => {
+  const match = desc.match(/(\d+)\s*(GB|TB)/i);
+  return match ? `${match[1]}${match[2].toUpperCase()}` : "";
+};
+
 export default function ApplePricing() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [colorFilter, setColorFilter] = useState<string>("all");
+  const [storageFilter, setStorageFilter] = useState<string>("all");
   const [offerFilter, setOfferFilter] = useState(false);
   const [sortBy, setSortBy] = useState<"mrp" | "margin" | "name">("name");
-  const [compareList, setCompareList] = useState<string[]>([]);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   // Calculator state
@@ -88,6 +106,7 @@ export default function ApplePricing() {
   const [showRuleDialog, setShowRuleDialog] = useState(false);
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [showOfferDialog, setShowOfferDialog] = useState(false);
+  const [editingOffer, setEditingOffer] = useState<AppleOffer | null>(null);
   const [pdfUploading, setPdfUploading] = useState(false);
 
   // New rule form
@@ -128,7 +147,7 @@ export default function ApplePricing() {
   const { data: offers = [] } = useQuery({
     queryKey: ["apple-offers"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("apple_offers").select("*").eq("status", "active");
+      const { data, error } = await supabase.from("apple_offers").select("*");
       if (error) throw error;
       return data as AppleOffer[];
     },
@@ -148,14 +167,39 @@ export default function ApplePricing() {
     },
   });
 
-  // Active (non-expired) offers
+  // Active (non-expired) offers only
   const activeOffersList = useMemo(() => {
     const now = new Date();
     return offers.filter((o) => {
+      if (o.status !== "active") return false;
       if (o.end_date && new Date(o.end_date) < now) return false;
       return true;
     });
   }, [offers]);
+
+  // Extract unique colors and storage values for filters
+  const uniqueColors = useMemo(() => {
+    const colors = new Set<string>();
+    products.forEach(p => {
+      const c = extractColor(p.description);
+      if (c) colors.add(c);
+    });
+    return Array.from(colors).sort();
+  }, [products]);
+
+  const uniqueStorages = useMemo(() => {
+    const storages = new Set<string>();
+    products.forEach(p => {
+      const s = extractStorage(p.description);
+      if (s) storages.add(s);
+    });
+    return Array.from(storages).sort((a, b) => {
+      const numA = parseInt(a); const numB = parseInt(b);
+      if (a.includes("TB") && !b.includes("TB")) return 1;
+      if (!a.includes("TB") && b.includes("TB")) return -1;
+      return numA - numB;
+    });
+  }, [products]);
 
   // Mutations
   const addRuleMutation = useMutation({
@@ -182,27 +226,42 @@ export default function ApplePricing() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["apple-products"] }); toast.success("Product added"); setShowProductDialog(false); setNewProduct({ part_number: "", description: "", category: "", mrp: "", alp_ex_vat: "", gst_percentage: "18" }); },
   });
 
-  const addOfferMutation = useMutation({
+  const saveOfferMutation = useMutation({
     mutationFn: async (offer: any) => {
-      const { error } = await supabase.from("apple_offers").insert(offer);
-      if (error) throw error;
+      if (offer.id) {
+        const { id, ...rest } = offer;
+        const { error } = await supabase.from("apple_offers").update(rest).eq("id", id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("apple_offers").insert(offer);
+        if (error) throw error;
+      }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["apple-offers"] }); toast.success("Offer added"); setShowOfferDialog(false); setNewOffer({ offer_type: "", bank_name: "", applicable_category: "", applicable_product: "", discount_amount: "", discount_description: "", start_date: "", end_date: "" }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["apple-offers"] });
+      toast.success(editingOffer ? "Offer updated" : "Offer added");
+      setShowOfferDialog(false);
+      setEditingOffer(null);
+      setNewOffer({ offer_type: "", bank_name: "", applicable_category: "", applicable_product: "", discount_amount: "", discount_description: "", start_date: "", end_date: "" });
+    },
   });
 
-  // ===== CALCULATION ENGINE (CASE-INSENSITIVE) =====
+  const deleteOfferMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("apple_offers").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["apple-offers"] }); toast.success("Offer deleted"); },
+  });
 
-  // Build rule map keyed by normalized category
+  // ===== CALCULATION ENGINE =====
   const ruleMap = useMemo(() => {
     const m: Record<string, PricingRule> = {};
     rules.forEach((r) => (m[normCat(r.category)] = r));
     return m;
   }, [rules]);
 
-  const getRuleForProduct = (product: AppleProduct): PricingRule | undefined => {
-    return ruleMap[normCat(product.category)];
-  };
-
+  const getRuleForProduct = (product: AppleProduct): PricingRule | undefined => ruleMap[normCat(product.category)];
   const getBasePrice = (product: AppleProduct) => product.mrp / (1 + (product.gst_percentage || 18) / 100);
 
   const getBaseDiscount = (product: AppleProduct) => {
@@ -238,7 +297,6 @@ export default function ApplePricing() {
     return rule.cash_discount_value || 0;
   };
 
-  // In catalog: Final Cost = Landing Cost (cash discount is optional, not auto-applied)
   const getFinalCost = (product: AppleProduct) => getLandingCost(product);
 
   // Filtered list
@@ -247,8 +305,10 @@ export default function ApplePricing() {
       const q = search.toLowerCase();
       const matchSearch = !search || p.description.toLowerCase().includes(q) || p.part_number.toLowerCase().includes(q) || normCat(p.category).includes(q);
       const matchCat = categoryFilter === "all" || normCat(p.category) === normCat(categoryFilter);
+      const matchColor = colorFilter === "all" || extractColor(p.description).toLowerCase() === colorFilter.toLowerCase();
+      const matchStorage = storageFilter === "all" || extractStorage(p.description) === storageFilter;
       const matchOffer = !offerFilter || getOffersForProduct(p).length > 0;
-      return matchSearch && matchCat && matchOffer;
+      return matchSearch && matchCat && matchColor && matchStorage && matchOffer;
     });
     list.sort((a, b) => {
       if (sortBy === "mrp") return b.mrp - a.mrp;
@@ -256,7 +316,7 @@ export default function ApplePricing() {
       return a.description.localeCompare(b.description);
     });
     return list;
-  }, [products, search, categoryFilter, offerFilter, sortBy, ruleMap, activeOffersList]);
+  }, [products, search, categoryFilter, colorFilter, storageFilter, offerFilter, sortBy, ruleMap, activeOffersList]);
 
   // KPIs
   const totalProducts = products.length;
@@ -337,7 +397,6 @@ export default function ApplePricing() {
           else obj[sysField] = String(val).trim();
         }
       });
-      // Normalize category during import
       if (obj.category) obj.category = normalizeCategory(obj.category);
       if (!obj.category) obj.category = "Uncategorized";
       return obj;
@@ -362,7 +421,6 @@ export default function ApplePricing() {
     setImportData([]);
   };
 
-  // CSV export
   const exportCSV = () => {
     const headers = ["Part Number", "Description", "Category", "MRP", "ALP Ex VAT", "Base Price", "Base Disc", "Offer Disc", "Landing Cost"];
     const rows = filtered.map((p) => [
@@ -374,7 +432,45 @@ export default function ApplePricing() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "apple-pricing-export.csv"; a.click();
   };
 
-  const compareProducts = products.filter((p) => compareList.includes(p.id));
+  const openEditOffer = (offer: AppleOffer) => {
+    setEditingOffer(offer);
+    setNewOffer({
+      offer_type: offer.offer_type, bank_name: offer.bank_name || "",
+      applicable_category: offer.applicable_category, applicable_product: offer.applicable_product || "",
+      discount_amount: String(offer.discount_amount), discount_description: offer.discount_description || "",
+      start_date: offer.start_date || "", end_date: offer.end_date || "",
+    });
+    setShowOfferDialog(true);
+  };
+
+  const handleSaveOffer = () => {
+    if (!newOffer.offer_type || !newOffer.applicable_category || !newOffer.discount_amount) { toast.error("Fill required fields"); return; }
+    const payload: any = {
+      offer_type: newOffer.offer_type, bank_name: newOffer.bank_name || null, applicable_category: newOffer.applicable_category,
+      applicable_product: newOffer.applicable_product || null, discount_amount: parseFloat(newOffer.discount_amount),
+      discount_description: newOffer.discount_description || null, start_date: newOffer.start_date || null, end_date: newOffer.end_date || null,
+    };
+    if (editingOffer) payload.id = editingOffer.id;
+    else payload.status = "active";
+    saveOfferMutation.mutate(payload);
+  };
+
+  // Offer category filter for offers tab
+  const [offerCategoryFilter, setOfferCategoryFilter] = useState("all");
+  const [offerStatusFilter, setOfferStatusFilter] = useState<"all" | "active" | "expired">("all");
+
+  const filteredOffers = useMemo(() => {
+    const now = new Date();
+    return offers.filter(o => {
+      if (offerCategoryFilter !== "all" && normCat(o.applicable_category) !== normCat(offerCategoryFilter)) return false;
+      const expired = o.end_date && new Date(o.end_date) < now;
+      if (offerStatusFilter === "active" && (expired || o.status !== "active")) return false;
+      if (offerStatusFilter === "expired" && !expired) return false;
+      return true;
+    });
+  }, [offers, offerCategoryFilter, offerStatusFilter]);
+
+  const compareList: string[] = [];
 
   return (
     <div className="space-y-6">
@@ -392,7 +488,7 @@ export default function ApplePricing() {
           <Button variant="outline" size="sm" onClick={() => setShowProductDialog(true)}>
             <Plus className="h-4 w-4 mr-1" /> Add Product
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowOfferDialog(true)}>
+          <Button variant="outline" size="sm" onClick={() => { setEditingOffer(null); setNewOffer({ offer_type: "", bank_name: "", applicable_category: "", applicable_product: "", discount_amount: "", discount_description: "", start_date: "", end_date: "" }); setShowOfferDialog(true); }}>
             <Gift className="h-4 w-4 mr-1" /> Add Offer
           </Button>
           <Button variant="outline" size="sm" onClick={() => { queryClient.invalidateQueries(); toast.success("Recalculated"); }}>
@@ -408,12 +504,9 @@ export default function ApplePricing() {
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete All Products?</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">This will permanently delete all Apple products from the database. This action cannot be undone. Use this before importing a fresh price list.</p>
+              <DialogHeader><DialogTitle>Delete All Products?</DialogTitle></DialogHeader>
+              <p className="text-sm text-muted-foreground">This will permanently delete all Apple products. Use before importing a fresh price list.</p>
               <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" onClick={() => {}}>Cancel</Button>
                 <Button variant="destructive" onClick={async () => {
                   const { error } = await supabase.from("apple_products").update({ status: "inactive" } as any).neq("id", "00000000-0000-0000-0000-000000000000");
                   if (error) { toast.error(error.message); return; }
@@ -423,9 +516,6 @@ export default function ApplePricing() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" size="sm" onClick={() => setPdfUploading(true)}>
-            <FileText className="h-4 w-4 mr-1" /> Upload Offer PDF
-          </Button>
         </div>
       </div>
 
@@ -461,7 +551,6 @@ export default function ApplePricing() {
           <TabsTrigger value="offers"><Gift className="h-4 w-4 mr-1" /> Offers</TabsTrigger>
           <TabsTrigger value="calculator"><Calculator className="h-4 w-4 mr-1" /> Calculator</TabsTrigger>
           <TabsTrigger value="import"><FileSpreadsheet className="h-4 w-4 mr-1" /> Import</TabsTrigger>
-          {compareList.length > 0 && <TabsTrigger value="compare"><BarChart3 className="h-4 w-4 mr-1" /> Compare ({compareList.length})</TabsTrigger>}
         </TabsList>
 
         {/* CATALOG TAB */}
@@ -474,12 +563,30 @@ export default function ApplePricing() {
                   <Input placeholder="Search product, part number, or category..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
                 </div>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-[160px]"><SelectValue placeholder="Category" /></SelectTrigger>
+                  <SelectTrigger className="w-[140px]"><SelectValue placeholder="Category" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
                     {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {uniqueColors.length > 0 && (
+                  <Select value={colorFilter} onValueChange={setColorFilter}>
+                    <SelectTrigger className="w-[130px]"><SelectValue placeholder="Color" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Colors</SelectItem>
+                      {uniqueColors.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+                {uniqueStorages.length > 0 && (
+                  <Select value={storageFilter} onValueChange={setStorageFilter}>
+                    <SelectTrigger className="w-[120px]"><SelectValue placeholder="Storage" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Storage</SelectItem>
+                      {uniqueStorages.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
                 <Button variant={offerFilter ? "default" : "outline"} size="sm" onClick={() => setOfferFilter(!offerFilter)}>
                   <Gift className="h-4 w-4 mr-1" /> Offers Only
                 </Button>
@@ -501,8 +608,8 @@ export default function ApplePricing() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-8"></TableHead>
                       <TableHead>Product</TableHead>
+                      <TableHead>Part Number</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead className="text-right">MRP</TableHead>
                       <TableHead className="text-right">Base Disc.</TableHead>
@@ -525,29 +632,16 @@ export default function ApplePricing() {
                         const landingCost = getLandingCost(p);
                         const cashDisc = getCashDiscount(p);
                         const pOffers = getOffersForProduct(p);
-                        const inCompare = compareList.includes(p.id);
                         const isExpanded = expandedRow === p.id;
 
                         return (
-                          <>
-                            <TableRow key={p.id} className="group cursor-pointer" onClick={() => setExpandedRow(isExpanded ? null : p.id)}>
+                          <Fragment key={p.id}>
+                            <TableRow className="group cursor-pointer" onClick={() => setExpandedRow(isExpanded ? null : p.id)}>
                               <TableCell>
-                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (inCompare) setCompareList((l) => l.filter((id) => id !== p.id));
-                                  else if (compareList.length < 3) setCompareList((l) => [...l, p.id]);
-                                  else toast.error("Max 3 products");
-                                }}>
-                                  <ArrowUpDown className={`h-3 w-3 ${inCompare ? "text-primary" : "text-muted-foreground"}`} />
-                                </Button>
+                                <span className="font-medium text-sm">{p.description}</span>
+                                {p.is_new && <Badge variant="secondary" className="ml-2 text-[10px] bg-green-500/10 text-green-600">NEW</Badge>}
                               </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-sm">{p.description}</span>
-                                  {p.is_new && <Badge variant="secondary" className="text-[10px] bg-green-500/10 text-green-600">NEW</Badge>}
-                                </div>
-                                <span className="text-xs text-muted-foreground">{p.part_number}</span>
-                              </TableCell>
+                              <TableCell><span className="font-mono text-xs text-muted-foreground">{p.part_number}</span></TableCell>
                               <TableCell><Badge variant="outline" className="text-xs">{p.category}</Badge></TableCell>
                               <TableCell className="text-right font-mono text-sm">{formatINR(p.mrp)}</TableCell>
                               <TableCell className="text-right font-mono text-sm">{baseDisc > 0 ? <span className="text-green-600">-{formatINR(baseDisc)}</span> : "—"}</TableCell>
@@ -561,9 +655,9 @@ export default function ApplePricing() {
                               <TableCell>{isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}</TableCell>
                             </TableRow>
                             {isExpanded && (
-                              <TableRow key={`${p.id}-detail`}>
+                              <TableRow>
                                 <TableCell colSpan={9} className="bg-muted/30 p-4">
-                                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-sm">
+                                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-sm">
                                     {[
                                       { label: "MRP (incl GST)", value: formatINR(p.mrp) },
                                       { label: `Base Price (ex ${p.gst_percentage || 18}% GST)`, value: formatINR(getBasePrice(p)) },
@@ -571,6 +665,7 @@ export default function ApplePricing() {
                                       { label: "Best Offer Discount", value: offerDisc > 0 ? `-${formatINR(offerDisc)}` : "—", color: "text-blue-600" },
                                       { label: "Landing Cost", value: formatINR(landingCost), bold: true },
                                       { label: `Cash Disc. (${rule?.cash_discount_value || 0}% on Base Price)`, value: cashDisc > 0 ? `-${formatINR(cashDisc)}` : "—", color: "text-purple-600", note: "Optional — advance payment" },
+                                      { label: "Final Cost (with cash disc.)", value: cashDisc > 0 ? formatINR(landingCost - cashDisc) : "—", bold: true, note: "If advance paid" },
                                     ].map((item, i) => (
                                       <div key={i} className="p-2 rounded-lg bg-background border">
                                         <p className="text-[10px] text-muted-foreground">{item.label}</p>
@@ -579,6 +674,15 @@ export default function ApplePricing() {
                                       </div>
                                     ))}
                                   </div>
+                                  {pOffers.length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {pOffers.map(o => (
+                                        <Badge key={o.id} variant="outline" className="text-xs">
+                                          {OFFER_TYPES[o.offer_type] || o.offer_type} — {o.bank_name} — {formatINR(o.discount_amount)}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  )}
                                   {rule && (
                                     <div className="mt-3 p-2 rounded bg-muted/50 text-xs text-muted-foreground flex items-center gap-2">
                                       <Info className="h-3 w-3" />
@@ -596,7 +700,7 @@ export default function ApplePricing() {
                                 </TableCell>
                               </TableRow>
                             )}
-                          </>
+                          </Fragment>
                         );
                       })
                     )}
@@ -695,13 +799,55 @@ export default function ApplePricing() {
 
         {/* OFFERS TAB */}
         <TabsContent value="offers" className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Offers & Schemes</h2>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => setPdfUploading(true)}><FileText className="h-4 w-4 mr-1" /> AI Parse PDF</Button>
-              <Button size="sm" onClick={() => setShowOfferDialog(true)}><Plus className="h-4 w-4 mr-1" /> Add Offer</Button>
+              <Button size="sm" onClick={() => { setEditingOffer(null); setNewOffer({ offer_type: "", bank_name: "", applicable_category: "", applicable_product: "", discount_amount: "", discount_description: "", start_date: "", end_date: "" }); setShowOfferDialog(true); }}>
+                <Plus className="h-4 w-4 mr-1" /> Add Offer
+              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline" className="text-destructive hover:text-destructive">
+                    <Trash2 className="h-4 w-4 mr-1" /> Delete All Offers
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader><DialogTitle>Delete All Offers?</DialogTitle></DialogHeader>
+                  <p className="text-sm text-muted-foreground">This will permanently delete all offers. Use before importing fresh offer data.</p>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button variant="destructive" onClick={async () => {
+                      const { error } = await supabase.from("apple_offers").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+                      if (error) { toast.error(error.message); return; }
+                      queryClient.invalidateQueries({ queryKey: ["apple-offers"] });
+                      toast.success("All offers deleted");
+                    }}>Delete All</Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
+
+          {/* Offer Filters */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <Select value={offerCategoryFilter} onValueChange={setOfferCategoryFilter}>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={offerStatusFilter} onValueChange={(v) => setOfferStatusFilter(v as any)}>
+              <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{filteredOffers.length} offer{filteredOffers.length !== 1 ? "s" : ""}</p>
+          </div>
+
           {pdfUploading && (
             <Card className="border-primary/30">
               <CardContent className="p-4 space-y-3">
@@ -725,7 +871,7 @@ export default function ApplePricing() {
                         for (const o of data.offers) {
                           const { error: ie } = await supabase.from("apple_offers").insert({
                             offer_type: o.offer_type || "other", bank_name: o.bank_name || null,
-                            applicable_category: o.applicable_category || "All",
+                            applicable_category: normalizeCategory(o.applicable_category || "All"),
                             applicable_product: o.applicable_product || null,
                             discount_amount: o.discount_amount || 0,
                             discount_description: o.discount_description || null,
@@ -746,10 +892,11 @@ export default function ApplePricing() {
               </CardContent>
             </Card>
           )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {offers.length === 0 ? (
-              <Card className="col-span-full"><CardContent className="p-8 text-center text-muted-foreground">No offers loaded yet.</CardContent></Card>
-            ) : offers.map((offer) => {
+            {filteredOffers.length === 0 ? (
+              <Card className="col-span-full"><CardContent className="p-8 text-center text-muted-foreground">No offers found.</CardContent></Card>
+            ) : filteredOffers.map((offer) => {
               const expired = offer.end_date && new Date(offer.end_date) < new Date();
               return (
                 <Card key={offer.id} className={`hover:border-primary/30 transition-colors ${expired ? "opacity-60" : ""}`}>
@@ -761,8 +908,18 @@ export default function ApplePricing() {
                     <p className="font-medium text-sm">{offer.applicable_product || offer.applicable_category}</p>
                     <p className="text-xs text-muted-foreground mt-1">{offer.bank_name}</p>
                     {offer.discount_description && <p className="text-xs text-muted-foreground mt-1">{offer.discount_description}</p>}
-                    {offer.start_date && <p className="text-[10px] text-muted-foreground mt-2">{offer.start_date} — {offer.end_date}</p>}
+                    {offer.start_date && <p className="text-[10px] text-muted-foreground mt-2">{offer.start_date} — {offer.end_date || "No end"}</p>}
                     {expired && <Badge variant="destructive" className="mt-2 text-[10px]">EXPIRED</Badge>}
+                    <div className="flex items-center gap-1 mt-3 pt-3 border-t border-border">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => openEditOffer(offer)}>
+                        <Pencil className="h-3 w-3 mr-1" /> Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => {
+                        if (confirm("Delete this offer?")) deleteOfferMutation.mutate(offer.id);
+                      }}>
+                        <Trash2 className="h-3 w-3 mr-1" /> Delete
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -776,17 +933,11 @@ export default function ApplePricing() {
             <Card>
               <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Calculator className="h-5 w-5" /> Price Calculator</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {/* Searchable product finder */}
                 <div>
                   <Label>Search & Select Product</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Type product name, SKU, or category..."
-                      value={calcSearch}
-                      onChange={(e) => setCalcSearch(e.target.value)}
-                      className="pl-9"
-                    />
+                    <Input placeholder="Type product name, part number, or category..." value={calcSearch} onChange={(e) => setCalcSearch(e.target.value)} className="pl-9" />
                   </div>
                   {calcSearch.trim() && calcSearchResults.length > 0 && (
                     <div className="mt-1 border rounded-lg max-h-[200px] overflow-y-auto bg-background shadow-sm">
@@ -814,7 +965,6 @@ export default function ApplePricing() {
                   const rule = getRuleForProduct(calcProductData);
                   return (
                     <>
-                      {/* Selected product card */}
                       <div className="p-3 rounded-lg border bg-muted/30">
                         <div className="flex justify-between items-start">
                           <div>
@@ -840,21 +990,20 @@ export default function ApplePricing() {
 
                       {getOffersForProduct(calcProductData).length > 0 && (
                         <div>
-                          <Label className="text-xs">Apply Offers (active only)</Label>
+                          <Label className="text-xs">Select Offers to Apply</Label>
                           <div className="space-y-2 mt-1">
                             {getOffersForProduct(calcProductData).map((o) => (
-                              <label key={o.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                              <label key={o.id} className="flex items-center gap-2 text-sm cursor-pointer p-2 rounded-lg hover:bg-muted/30">
                                 <input type="checkbox" checked={calcSelectedOffers.includes(o.id)}
                                   onChange={(e) => setCalcSelectedOffers(e.target.checked ? [...calcSelectedOffers, o.id] : calcSelectedOffers.filter((id) => id !== o.id))}
                                   className="rounded" />
-                                <span>{OFFER_TYPES[o.offer_type] || o.offer_type} — {o.bank_name} — <strong>{formatINR(o.discount_amount)}</strong></span>
+                                <span className="flex-1">{OFFER_TYPES[o.offer_type] || o.offer_type} — {o.bank_name} — <strong>{formatINR(o.discount_amount)}</strong></span>
                               </label>
                             ))}
                           </div>
                         </div>
                       )}
 
-                      {/* Cash Discount Toggle */}
                       {rule && (rule.cash_discount_value ?? 0) > 0 && (
                         <div className="p-3 rounded-lg bg-purple-500/5 border border-purple-500/10">
                           <div className="flex items-center justify-between mb-1">
@@ -896,7 +1045,7 @@ export default function ApplePricing() {
                         { label: "MRP (incl GST)", value: formatINR(calcProductData.mrp) },
                         { label: `Base Price (ex ${calcProductData.gst_percentage || 18}% GST)`, value: formatINR(getBasePrice(calcProductData)), muted: true },
                         { label: `Base Discount (${rule?.discount_percentage || 0}% on MRP)`, value: `-${formatINR(calcBaseDiscount)}`, color: "text-green-600" },
-                        { label: "Offer Discount", value: `-${formatINR(calcOfferDiscount)}`, color: "text-blue-600" },
+                        { label: "Offer Discount", value: calcOfferDiscount > 0 ? `-${formatINR(calcOfferDiscount)}` : "—", color: "text-blue-600" },
                         { label: "Landing Cost", value: formatINR(calcLandingCost), bold: true, border: true },
                         ...(calcCashDiscountEnabled ? [{ label: `Cash Discount (${rule?.cash_discount_value || 0}% on Base Price ex GST)`, value: `-${formatINR(calcCashDiscount)}`, color: "text-purple-600" }] : []),
                         { label: "Final Cost", value: formatINR(calcFinalCost), bold: true, border: true },
@@ -915,7 +1064,6 @@ export default function ApplePricing() {
                       </div>
                     )}
 
-                    {/* Rule info */}
                     {rule && (
                       <div className="p-3 rounded-lg border text-xs space-y-1">
                         <p className="font-semibold text-sm">Matched Rule</p>
@@ -1025,48 +1173,6 @@ export default function ApplePricing() {
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* COMPARE TAB */}
-        {compareList.length > 0 && (
-          <TabsContent value="compare" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Compare Products</h2>
-              <Button variant="outline" size="sm" onClick={() => setCompareList([])}>Clear All</Button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {compareProducts.map((p) => {
-                const rule = getRuleForProduct(p);
-                const baseDisc = getBaseDiscount(p);
-                const offerDisc = getBestOfferDiscount(p);
-                const cashDisc = getCashDiscount(p);
-                const landingCost = getLandingCost(p);
-                return (
-                  <Card key={p.id}>
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div><h3 className="font-semibold text-sm">{p.description}</h3><p className="text-xs text-muted-foreground">{p.part_number}</p></div>
-                        <Badge variant="outline">{p.category}</Badge>
-                      </div>
-                      {[
-                        { label: "MRP (incl GST)", value: formatINR(p.mrp) },
-                        { label: "Base Price (ex GST)", value: formatINR(getBasePrice(p)) },
-                        { label: `Base Discount (${rule?.discount_percentage || 0}%)`, value: baseDisc > 0 ? `-${formatINR(baseDisc)}` : "—", color: "text-green-600" },
-                        { label: "Offer Discount", value: offerDisc > 0 ? `-${formatINR(offerDisc)}` : "—", color: "text-blue-600" },
-                        { label: "Landing Cost", value: formatINR(landingCost), bold: true },
-                        { label: "Cash Discount (optional)", value: cashDisc > 0 ? `-${formatINR(cashDisc)}` : "—", color: "text-purple-600" },
-                      ].map((item, i) => (
-                        <div key={i} className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{item.label}</span>
-                          <span className={`font-mono ${item.bold ? "font-bold" : ""} ${item.color || ""}`}>{item.value}</span>
-                        </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </TabsContent>
-        )}
       </Tabs>
 
       {/* ADD PRODUCT DIALOG */}
@@ -1099,10 +1205,10 @@ export default function ApplePricing() {
         </DialogContent>
       </Dialog>
 
-      {/* ADD OFFER DIALOG */}
-      <Dialog open={showOfferDialog} onOpenChange={setShowOfferDialog}>
+      {/* ADD/EDIT OFFER DIALOG */}
+      <Dialog open={showOfferDialog} onOpenChange={(open) => { setShowOfferDialog(open); if (!open) setEditingOffer(null); }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Offer</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingOffer ? "Edit Offer" : "Add Offer"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
               <Label>Offer Type *</Label>
@@ -1119,24 +1225,19 @@ export default function ApplePricing() {
                 <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div><Label>Applicable Product (optional)</Label><Input value={newOffer.applicable_product} onChange={(e) => setNewOffer({ ...newOffer, applicable_product: e.target.value })} placeholder="e.g. iPhone 16 Pro" /></div>
-            <div><Label>Discount Amount *</Label><Input type="number" value={newOffer.discount_amount} onChange={(e) => setNewOffer({ ...newOffer, discount_amount: e.target.value })} /></div>
+            <div><Label>Applicable Product (optional keyword)</Label><Input value={newOffer.applicable_product} onChange={(e) => setNewOffer({ ...newOffer, applicable_product: e.target.value })} placeholder="e.g. iPhone 16 Pro" /></div>
+            <div><Label>Discount Amount (₹) *</Label><Input type="number" value={newOffer.discount_amount} onChange={(e) => setNewOffer({ ...newOffer, discount_amount: e.target.value })} /></div>
             <div><Label>Description</Label><Input value={newOffer.discount_description} onChange={(e) => setNewOffer({ ...newOffer, discount_description: e.target.value })} placeholder="e.g. 6/9 month EMI cashback" /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Start Date</Label><Input type="date" value={newOffer.start_date} onChange={(e) => setNewOffer({ ...newOffer, start_date: e.target.value })} /></div>
               <div><Label>End Date</Label><Input type="date" value={newOffer.end_date} onChange={(e) => setNewOffer({ ...newOffer, end_date: e.target.value })} /></div>
             </div>
-            <Button className="w-full" onClick={() => {
-              if (!newOffer.offer_type || !newOffer.applicable_category || !newOffer.discount_amount) { toast.error("Fill required fields"); return; }
-              addOfferMutation.mutate({
-                offer_type: newOffer.offer_type, bank_name: newOffer.bank_name || null, applicable_category: newOffer.applicable_category,
-                applicable_product: newOffer.applicable_product || null, discount_amount: parseFloat(newOffer.discount_amount),
-                discount_description: newOffer.discount_description || null, start_date: newOffer.start_date || null, end_date: newOffer.end_date || null,
-              });
-            }}>Save Offer</Button>
+            <Button className="w-full" onClick={handleSaveOffer}>{editingOffer ? "Update Offer" : "Save Offer"}</Button>
           </div>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+import { Fragment } from "react";
