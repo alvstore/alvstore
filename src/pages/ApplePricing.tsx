@@ -1239,5 +1239,3 @@ export default function ApplePricing() {
     </div>
   );
 }
-
-import { Fragment } from "react";
