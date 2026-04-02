@@ -1,131 +1,93 @@
 
 
-# Comprehensive Audit & Enhancement Plan
+# Cinematic Home Theater Website + CRM Enhancements
 
-## Issues Found
+This is a large, multi-phase request. Here is the prioritized implementation plan.
 
-### Sidebar Collapse Bug
-The sidebar width is `w-[260px]` when expanded, but `AppLayout` uses `md:ml-[240px]` — a 20px mismatch. The collapse toggle button exists and localStorage persistence works. The actual collapse mechanism appears functional, but the width inconsistency may cause layout shift. Need to verify the toggle button is rendering and clickable.
+## Current State
 
-### Notifications System
-The `createNotification()` helper exists but is only called in **one place** (JobSheetDetail technician assignment). No notifications are triggered for:
-- Quotation created/accepted/rejected
-- Invoice created/paid
-- Payment received
-- New customer added
-- Employee attendance events
-- Task assignments
+- `/home-theater` route exists with a functional but generic SaaS-style page
+- Three.js scene exists (`TheaterScene.tsx`) with speakers/screen — uses purple/indigo palette
+- WhatsApp edge function exists (`send-whatsapp/index.ts`) but no webhook receiver or settings UI
+- Notification system exists in `AppHeader.tsx` with realtime — but few triggers wired up
 
-The fetch/display in AppHeader looks correct (realtime subscription, mark-read, click navigation).
+## Phase 1 — Design System + Hero (this approval cycle)
 
-### Quotation Missing Features
-- **Product photos**: `quotation_items` already has `image_url` column in DB, but it's never populated during item creation and never displayed in preview/public view
-- **Ship-to / Bill-to**: Customers table only has one `address` field — no separate shipping address
-- **Payment terms**: Field exists in QuotationAdd but is not saved to the database (no `payment_terms` column on `quotations`)
-- **Bank details**: `business_settings` has no bank detail columns
-- **Terms & Conditions**: Already implemented with a textarea and toggle
+### File: `src/lib/design-system.ts`
+Export all tokens as constants:
+- Colors: `CINEMA_BLACK (#000000)`, `DEEP_NAVY (#050A18)`, `GOLD (#FFD700)`, `AMBER (#FF8C00)`, `WARM_WHITE (#F5F0E8)`
+- Typography scale: display (72/80px), h1-h4, body, caption — fonts: Cinzel (display), DM Sans (body)
+- Animation timings: `HERO_LETTER_DELAY`, `STAGGER_DELAY`, `SECTION_FADE_DURATION`
+- Spacing scale: 4/8/12/16/24/32/48/64/96/128
 
-### Apple Pricing — Offer Import
-Currently manual-only. User wants AI-powered PDF parsing to extract offers automatically.
+### File: `src/pages/public/HomeTheaterHome.tsx` — Full Rewrite
+Replace entire page with cinematic design:
 
----
+**Hero Section:**
+- Full 100vh, black background
+- Three.js particle starfield (500 points, slow drift, scroll-zoom parallax) via new `CinemaParticles.tsx`
+- Letter-by-letter "EXPERIENCE CINEMA AT HOME" using Framer Motion `staggerChildren`
+- Subheading fade-in 800ms after heading
+- Gold-bordered CTA with pulse glow
+- Bouncing chevron scroll indicator
+- Mobile: CSS gradient fallback (no Three.js)
 
-## Plan
+**Services Section:**
+- Horizontal scroll container with 4 cards
+- CSS `transform-style: preserve-3d` + `rotateY(180deg)` on hover for card flip
+- Front: gradient placeholder + title + tagline
+- Back: 3 features + price range + CTA
+- Staggered scroll-triggered entrance via Framer Motion
 
-### 1. AI-Powered Offer PDF Import (Edge Function)
+**Gallery Section:**
+- Masonry grid (3/2/1 cols responsive)
+- Hover: scale 1.05 + overlay with project name + location
+- Click: fullscreen lightbox modal
+- Placeholder gradient cards for now
 
-Create `supabase/functions/parse-offer-pdf/index.ts`:
-- Accept base64 PDF content
-- Send to Lovable AI (gemini-3-flash-preview) with structured output via tool calling
-- Extract: offer_type, bank_name, category, product, discount_amount, dates
-- Return parsed offers as JSON for user review before insert
-- Add "Upload & Parse PDF" button in Apple Pricing Offers tab
+**Testimonials Section:**
+- Auto-scrolling infinite carousel (CSS animation, pause on hover)
+- Dark glassmorphism cards: `rgba(255,255,255,0.05)` bg, 1px white/10 border
 
-Also add to Apple Pricing:
-- "Delete All Products" button with confirmation dialog
-- "Replace Price List" flow (delete all → re-import)
+**Fixed Navigation:**
+- Transparent over hero, solid black + backdrop-blur on scroll
+- Logo left, nav center, "Get Quote" gold button right
+- Mobile: hamburger → fullscreen overlay
 
-### 2. Quotation Enhancements
+### New File: `src/components/home-theater/CinemaParticles.tsx`
+- @react-three/fiber Canvas with 500 particles (BufferGeometry + Points)
+- Slow random drift, scroll-based Z-axis parallax
+- Gold/amber color palette for particles
 
-**Database Migration:**
-```sql
--- Add payment_terms + bank details to quotations
-ALTER TABLE quotations ADD COLUMN IF NOT EXISTS payment_terms text;
+### Dependency: `framer-motion`
 
--- Add bank details to business_settings  
-ALTER TABLE business_settings
-  ADD COLUMN IF NOT EXISTS bank_name text,
-  ADD COLUMN IF NOT EXISTS bank_account_number text,
-  ADD COLUMN IF NOT EXISTS bank_ifsc text,
-  ADD COLUMN IF NOT EXISTS bank_branch text,
-  ADD COLUMN IF NOT EXISTS bank_upi_id text;
+### Font: Add Cinzel + DM Sans to `index.html` via Google Fonts link
 
--- Add shipping address to customers
-ALTER TABLE customers
-  ADD COLUMN IF NOT EXISTS shipping_address text,
-  ADD COLUMN IF NOT EXISTS shipping_city text,
-  ADD COLUMN IF NOT EXISTS shipping_state text,
-  ADD COLUMN IF NOT EXISTS shipping_pincode text;
-```
+## Phase 2 — WhatsApp Settings + Webhook (next cycle)
+- WhatsApp settings page at `/settings` (new tab, not separate route)
+- `whatsapp-webhook` edge function with GET verify + POST message handling
+- New tables: `whatsapp_messages`, `whatsapp_conversations`
+- Widget generator UI + `/public/whatsapp-widget.js`
 
-**QuotationAdd.tsx changes:**
-- Fetch product `image_url` and pass it when creating quotation items
-- Add Bill-to / Ship-to dual address display with "Same as billing" copy button
-- Save `payment_terms` to the quotation record
-- Show validity period (already has `valid_until`)
-- Display bank details from business_settings at the bottom
+## Phase 3 — Notification Expansion + Security Audit (final cycle)
+- Wire `createNotification` into quotation, invoice, payment, attendance workflows
+- Notification drawer with date grouping
+- Security checklist review and fixes
 
-**QuotationPreview.tsx / PublicQuotation.tsx changes:**
-- Show product thumbnail next to item name in the items table
-- Show Ship-to address if different from Bill-to
-- Show payment terms with validity
-- Show bank details section for payment
-
-**ItemsTable.tsx changes:**
-- Add optional `image_url` to `DocumentItem` interface
-- Show small product thumbnail in read-only mode
-
-### 3. Sidebar Collapse Fix
-
-**AppLayout.tsx:** Fix margin from `md:ml-[240px]` to `md:ml-[260px]` to match sidebar width.
-
-### 4. Notifications System
-
-Add `createNotification` calls across key workflows:
-
-**QuotationAdd.tsx** — on create: notify admin
-**QuotationPreview.tsx** — on convert to invoice: notify creator
-**PublicQuotation.tsx** — on accept/reject: notify quotation creator
-**Invoices.tsx** — on payment recorded: notify admin
-**JobSheetDetail.tsx** — already has technician assignment notification; add status change notifications
-**Settings.tsx** — add bank details section under Business Info tab
-
-### 5. Settings — Bank Details
-
-Add bank details fields (Bank Name, Account Number, IFSC, Branch, UPI ID) in the Business Info settings section.
-
----
-
-## Files Summary
+## Files Changed (Phase 1)
 
 ```
-MIGRATION:  quotations.payment_terms, business_settings bank columns, customers shipping address columns
-CREATE:     supabase/functions/parse-offer-pdf/index.ts
-EDIT:       src/pages/ApplePricing.tsx (PDF upload + parse, delete all products)
-EDIT:       src/pages/QuotationAdd.tsx (product images, ship-to/bill-to, payment terms save, bank details)
-EDIT:       src/pages/QuotationPreview.tsx (product images, bank details, payment terms display)
-EDIT:       src/pages/PublicQuotation.tsx (product images, bank details, notifications on response)
-EDIT:       src/components/documents/ItemsTable.tsx (image_url in DocumentItem, thumbnail display)
-EDIT:       src/components/layout/AppLayout.tsx (fix 240→260 margin)
-EDIT:       src/pages/Invoices.tsx (add notification on payment)
-EDIT:       src/pages/Settings.tsx (add bank details section)
+CREATE:  src/lib/design-system.ts
+CREATE:  src/components/home-theater/CinemaParticles.tsx
+REWRITE: src/pages/public/HomeTheaterHome.tsx
+EDIT:    index.html (add Google Fonts)
+INSTALL: framer-motion
 ```
 
-## Implementation Order
+## Technical Notes
+- Framer Motion v11 is compatible with React 18
+- Three.js particles use `BufferGeometry` + `PointsMaterial` for performance (no individual mesh per particle)
+- Mobile detection via existing `useIsMobile()` hook to skip Three.js canvas
+- All existing lead capture form logic preserved in the rewrite
+- Configurator component kept as-is, restyled to match new palette
 
-1. Sidebar fix (quick)
-2. Database migration (all new columns)
-3. Bank details in Settings
-4. Quotation enhancements (images, addresses, payment terms, bank details)
-5. Notifications across workflows
-6. AI offer PDF parser edge function + Apple Pricing UI updates
