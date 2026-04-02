@@ -127,6 +127,7 @@ function FadeSection({ children, className, id, style }: { children: React.React
       ref={ref}
       id={id}
       className={className}
+      style={style}
       initial={{ opacity: 0, y: 50 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: ANIMATION.SECTION_FADE_DURATION, ease: "easeOut" }}
