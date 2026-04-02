@@ -119,7 +119,7 @@ function AnimatedHeading({ text, className }: { text: string; className?: string
 }
 
 // ─── Section wrapper with scroll animation ───
-function FadeSection({ children, className, id }: { children: React.ReactNode; className?: string; id?: string }) {
+function FadeSection({ children, className, id, style }: { children: React.ReactNode; className?: string; id?: string; style?: React.CSSProperties }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "-80px" });
   return (
