@@ -1057,43 +1057,58 @@ export type Database = {
       }
       hikvision_attendance_logs: {
         Row: {
+          attendance_status: string | null
           created_at: string
+          dedupe_key: string | null
           device_id: string | null
           device_ip: string | null
           device_name: string | null
           employee_code: string | null
           employee_id: string | null
           employee_name: string | null
+          event_serial_no: string | null
           event_time: string
           event_type: string | null
           id: string
           raw_data: Json | null
+          source_mode: string | null
+          verify_mode: string | null
         }
         Insert: {
+          attendance_status?: string | null
           created_at?: string
+          dedupe_key?: string | null
           device_id?: string | null
           device_ip?: string | null
           device_name?: string | null
           employee_code?: string | null
           employee_id?: string | null
           employee_name?: string | null
+          event_serial_no?: string | null
           event_time: string
           event_type?: string | null
           id?: string
           raw_data?: Json | null
+          source_mode?: string | null
+          verify_mode?: string | null
         }
         Update: {
+          attendance_status?: string | null
           created_at?: string
+          dedupe_key?: string | null
           device_id?: string | null
           device_ip?: string | null
           device_name?: string | null
           employee_code?: string | null
           employee_id?: string | null
           employee_name?: string | null
+          event_serial_no?: string | null
           event_time?: string
           event_type?: string | null
           id?: string
           raw_data?: Json | null
+          source_mode?: string | null
+          verify_mode?: string | null
         }
         Relationships: [
           {
