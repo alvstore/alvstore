@@ -1,93 +1,143 @@
 
 
-# Cinematic Home Theater Website + CRM Enhancements
+# Hikvision Hik-Partner Pro V2.15.0 — Full Redesign Plan
 
-This is a large, multi-phase request. Here is the prioritized implementation plan.
+## Audit Findings
 
-## Current State
+### Critical: Removed APIs Still in Use
+The current edge function calls these endpoints that were **removed in V2.15.0**:
+- `POST /api/hpcgw/v1/person/synchronize` (line 331)
+- `POST /api/hpcgw/v1/person/synchronize/progress` (line 347)
+- `POST /api/hpcgw/v1/person/synchronize/details` (line 368)
 
-- `/home-theater` route exists with a functional but generic SaaS-style page
-- Three.js scene exists (`TheaterScene.tsx`) with speakers/screen — uses purple/indigo palette
-- WhatsApp edge function exists (`send-whatsapp/index.ts`) but no webhook receiver or settings UI
-- Notification system exists in `AppHeader.tsx` with realtime — but few triggers wired up
+These are used in `cloudSyncEmployees()` and `sync-departments` action. They will fail at runtime.
 
-## Phase 1 — Design System + Hero (this approval cycle)
+### Critical: Transparent API Format Wrong
+Current code (line 153-227) sends a JSON body with `{ url, method, contentType, body }` to `/api/hpcgw/v2/device/transparent`. Per V2.15.0, the correct format is:
+- `POST /api/hpcgw/v1/device/transparent/{isapi_uri}` with header `X-Devserial: {serial}`
+- The ISAPI path goes in the URL, not the body
 
-### File: `src/lib/design-system.ts`
-Export all tokens as constants:
-- Colors: `CINEMA_BLACK (#000000)`, `DEEP_NAVY (#050A18)`, `GOLD (#FFD700)`, `AMBER (#FF8C00)`, `WARM_WHITE (#F5F0E8)`
-- Typography scale: display (72/80px), h1-h4, body, caption — fonts: Cinzel (display), DM Sans (body)
-- Animation timings: `HERO_LETTER_DELAY`, `STAGGER_DELAY`, `SECTION_FADE_DURATION`
-- Spacing scale: 4/8/12/16/24/32/48/64/96/128
+### Critical: No Offline Backfill
+No ISAPI `AcsEvent` search for historical attendance recovery. The MQ queue only retains ~2 hours. If polling is missed, events are lost permanently.
 
-### File: `src/pages/public/HomeTheaterHome.tsx` — Full Rewrite
-Replace entire page with cinematic design:
+### Issue: Credentials Not Actually Saved
+`save-credentials` (line 637-652) only validates the token — it does NOT save the keys as secrets. The keys must already be pre-configured as `HIK_PARTNER_APP_KEY` / `HIK_PARTNER_SECRET_KEY`. The UI misleads users into thinking entering keys will persist them.
 
-**Hero Section:**
-- Full 100vh, black background
-- Three.js particle starfield (500 points, slow drift, scroll-zoom parallax) via new `CinemaParticles.tsx`
-- Letter-by-letter "EXPERIENCE CINEMA AT HOME" using Framer Motion `staggerChildren`
-- Subheading fade-in 800ms after heading
-- Gold-bordered CTA with pulse glow
-- Bouncing chevron scroll indicator
-- Mobile: CSS gradient fallback (no Three.js)
+### Issue: Weak Auth Gate
+Line 620-626: the auth check skips validation if the Authorization header contains the anon key. This is a security gap.
 
-**Services Section:**
-- Horizontal scroll container with 4 cards
-- CSS `transform-style: preserve-3d` + `rotateY(180deg)` on hover for card flip
-- Front: gradient placeholder + title + tagline
-- Back: 3 features + price range + CTA
-- Staggered scroll-triggered entrance via Framer Motion
+### Issue: No Webhook Ingestion
+V2.15.0 recommends webhook delivery for production. Current code only uses MQ polling (3 attempts max). No webhook endpoint exists.
 
-**Gallery Section:**
-- Masonry grid (3/2/1 cols responsive)
-- Hover: scale 1.05 + overlay with project name + location
-- Click: fullscreen lightbox modal
-- Placeholder gradient cards for now
+---
 
-**Testimonials Section:**
-- Auto-scrolling infinite carousel (CSS animation, pause on hover)
-- Dark glassmorphism cards: `rgba(255,255,255,0.05)` bg, 1px white/10 border
+## Redesign Plan
 
-**Fixed Navigation:**
-- Transparent over hero, solid black + backdrop-blur on scroll
-- Logo left, nav center, "Get Quote" gold button right
-- Mobile: hamburger → fullscreen overlay
+### 1. Rewrite Edge Function: `supabase/functions/hikvision-sync/index.ts`
 
-### New File: `src/components/home-theater/CinemaParticles.tsx`
-- @react-three/fiber Canvas with 500 particles (BufferGeometry + Points)
-- Slow random drift, scroll-based Z-axis parallax
-- Gold/amber color palette for particles
+**Remove:**
+- `cloudSyncEmployees()` — uses removed person/synchronize APIs
+- `sync-departments` action using person/synchronize
+- Incorrect v2/transparent body-wrapping logic
 
-### Dependency: `framer-motion`
-
-### Font: Add Cinzel + DM Sans to `index.html` via Google Fonts link
-
-## Phase 2 — WhatsApp Settings + Webhook (next cycle)
-- WhatsApp settings page at `/settings` (new tab, not separate route)
-- `whatsapp-webhook` edge function with GET verify + POST message handling
-- New tables: `whatsapp_messages`, `whatsapp_conversations`
-- Widget generator UI + `/public/whatsapp-widget.js`
-
-## Phase 3 — Notification Expansion + Security Audit (final cycle)
-- Wire `createNotification` into quotation, invoice, payment, attendance workflows
-- Notification drawer with date grouping
-- Security checklist review and fixes
-
-## Files Changed (Phase 1)
-
+**Fix transparent API:**
 ```
-CREATE:  src/lib/design-system.ts
-CREATE:  src/components/home-theater/CinemaParticles.tsx
-REWRITE: src/pages/public/HomeTheaterHome.tsx
-EDIT:    index.html (add Google Fonts)
-INSTALL: framer-motion
+// V2.15.0 correct format:
+POST {areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/AccessControl/UserInfo/Search?format=json
+Header: X-Devserial: {deviceSerial}
+Body: { UserInfoSearchCond: { ... } }
 ```
 
-## Technical Notes
-- Framer Motion v11 is compatible with React 18
-- Three.js particles use `BufferGeometry` + `PointsMaterial` for performance (no individual mesh per particle)
-- Mobile detection via existing `useIsMobile()` hook to skip Three.js canvas
-- All existing lead capture form logic preserved in the rewrite
-- Configurator component kept as-is, restyled to match new palette
+**Add new action: `backfill-attendance`**
+- Uses ISAPI transparent channel to call `/ISAPI/AccessControl/AcsEvent?format=json`
+- Accepts `start_time`, `end_time` parameters
+- Pages through results using `searchResultPosition` + `maxResults`
+- Deduplicates using `deviceSerial + serialNo` (primary) or `deviceSerial + employeeNoString + eventTime + attendanceStatus` (fallback)
+- Saves raw events to `hikvision_attendance_logs`
+- Converts to `attendance_records` for CRM
+
+**Fix auth gate:**
+- Always validate JWT via `supabase.auth.getUser()` (no anon key bypass)
+- Check admin role
+
+**Fix `save-credentials`:**
+- Remove the misleading action entirely — keys are already stored as backend secrets
+- Replace with a `test-credentials` action that only validates
+
+**Simplify `sync-employees`:**
+- Keep only ISAPI UserInfo/Search (working) + attendance logs fallback
+- Remove broken cloud person/synchronize path
+
+**Simplify `sync-departments`:**
+- Extract from ISAPI UserInfo/Search `PersonInfoExtends` field
+- Fallback to attendance log extraction (keep existing)
+
+### 2. Add Webhook Endpoint: `supabase/functions/hikvision-webhook/index.ts`
+
+New edge function for Hik-Partner Pro webhook push delivery:
+
+**GET handler:** Verification challenge response (if Hik uses one)
+
+**POST handler:**
+- Validate `X-Hook-Signature` using HMAC-SHA256: `HMAC(timestamp + "." + batchId, signSecret)`
+- Parse access control events from payload
+- Extract `employeeNoString`, `dateTime`, `attendanceStatus`, `currentVerifyMode`, `cardNo`
+- Deduplicate and insert into `hikvision_attendance_logs`
+- Map to `attendance_records` via employee mapping
+- Return 200 immediately
+
+**Config:** Add `[functions.hikvision-webhook] verify_jwt = false` to `supabase/config.toml`
+
+### 3. Database Migration
+
+```sql
+-- Add dedupe_key to prevent duplicate event insertion
+ALTER TABLE hikvision_attendance_logs
+  ADD COLUMN IF NOT EXISTS dedupe_key text,
+  ADD COLUMN IF NOT EXISTS source_mode text DEFAULT 'polling',
+  ADD COLUMN IF NOT EXISTS attendance_status text,
+  ADD COLUMN IF NOT EXISTS verify_mode text,
+  ADD COLUMN IF NOT EXISTS event_serial_no text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hik_attendance_dedupe
+  ON hikvision_attendance_logs (dedupe_key)
+  WHERE dedupe_key IS NOT NULL;
+```
+
+### 4. Settings UI Redesign: `HikvisionTab` in Settings.tsx
+
+**Step 1 — Credentials:**
+- Remove the App Key / Secret Key input fields (they're already backend secrets)
+- Show only a "Test Connection" button that calls `test-credentials`
+- Display connection status: connected/disconnected badge, area domain, token expiry
+- Add note: "API keys are configured as backend secrets. Contact admin to change."
+
+**Step 2 — Sites:** Keep as-is (works correctly)
+
+**Step 3 — Devices:** Keep as-is (works correctly)
+
+**Step 4 — Sync & Monitoring:**
+- Remove "Sync Departments" button (uses removed API)
+- Rename buttons: "Sync Employees (from Device)", "Poll Attendance (MQ)", "Backfill Attendance (ISAPI)"
+- Add date range picker for backfill action
+- Add webhook status card showing webhook URL and configuration instructions
+- Keep manual employee mapping and sync dashboard
+
+---
+
+## Files Summary
+
+```
+REWRITE:  supabase/functions/hikvision-sync/index.ts
+CREATE:   supabase/functions/hikvision-webhook/index.ts
+MIGRATE:  Add dedupe_key, source_mode, attendance_status columns to hikvision_attendance_logs
+EDIT:     src/pages/Settings.tsx (HikvisionTab section only)
+EDIT:     supabase/config.toml (add hikvision-webhook function config)
+```
+
+## Implementation Order
+1. Database migration (new columns)
+2. Rewrite edge function (fix transparent API, remove dead code, add backfill)
+3. Create webhook endpoint
+4. Update Settings UI
 
