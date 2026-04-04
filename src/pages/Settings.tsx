@@ -936,16 +936,12 @@ function RazorpayTab() {
 function HikvisionTab() {
   const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
   const [step, setStep] = useState(1);
-  const [appKey, setAppKey] = useState("");
-  const [secretKey, setSecretKey] = useState("");
-  const [showAppKey, setShowAppKey] = useState(false);
-  const [showSecretKey, setShowSecretKey] = useState(false);
   const [credentialStatus, setCredentialStatus] = useState<"idle" | "valid" | "invalid">("idle");
-  const [savingCredentials, setSavingCredentials] = useState(false);
-  const [credentialInfo, setCredentialInfo] = useState<{ areaDomain?: string } | null>(null);
+  const [testingCredentials, setTestingCredentials] = useState(false);
+  const [credentialInfo, setCredentialInfo] = useState<{ areaDomain?: string; expireTime?: number } | null>(null);
 
   // Step 2: Sites
-  const [sites, setSites] = useState<Array<{ id: string; siteName: string; deviceCount?: number }>>([]);
+  const [sites, setSites] = useState<Array<{ id: string; siteName: string }>>([]);
   const [loadingSites, setLoadingSites] = useState(false);
   const [selectedSiteId, setSelectedSiteId] = useState(integrations["hik_default_site_id"] || "");
 
@@ -958,27 +954,26 @@ function HikvisionTab() {
   // Step 4: Sync
   const [syncingAction, setSyncingAction] = useState<string | null>(null);
   const [syncResults, setSyncResults] = useState<Record<string, any>>({});
+  const [backfillStart, setBackfillStart] = useState("");
+  const [backfillEnd, setBackfillEnd] = useState("");
 
   useEffect(() => {
-    // Load saved devices from DB
     supabase.from("hikvision_devices").select("*").order("created_at").then(({ data }) => setSavedDevices(data || []));
-    // Auto-advance if credentials already set
     if (integrations["hik_default_site_id"]) setSelectedSiteId(integrations["hik_default_site_id"]);
   }, [integrations]);
 
-  const saveAndTestCredentials = async () => {
-    if (!appKey || !secretKey) { toast.error("Both App Key and Secret Key are required"); return; }
-    setSavingCredentials(true);
+  const testCredentials = async () => {
+    setTestingCredentials(true);
     setCredentialStatus("idle");
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action: "save-credentials", appKey, secretKey },
+        body: { action: "test-credentials" },
       });
       if (error) throw error;
       if (data?.success) {
         setCredentialStatus("valid");
-        setCredentialInfo({ areaDomain: data.areaDomain });
-        toast.success("Credentials validated! Proceed to select your site.");
+        setCredentialInfo({ areaDomain: data.areaDomain, expireTime: data.expireTime });
+        toast.success("Backend credentials are valid!");
         setStep(2);
       } else {
         setCredentialStatus("invalid");
@@ -986,9 +981,9 @@ function HikvisionTab() {
       }
     } catch (e: any) {
       setCredentialStatus("invalid");
-      toast.error(e.message || "Credential validation failed");
+      toast.error(e.message || "Credential test failed");
     }
-    setSavingCredentials(false);
+    setTestingCredentials(false);
   };
 
   const discoverSites = async () => {
@@ -996,10 +991,8 @@ function HikvisionTab() {
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "site-search" } });
       if (error) throw error;
-      if (data?.success) {
-        setSites(data.sites || []);
-        toast.success(`Found ${data.sites?.length || 0} sites`);
-      } else toast.error(data?.error || "Failed to discover sites");
+      if (data?.success) { setSites(data.sites || []); toast.success(`Found ${data.sites?.length || 0} sites`); }
+      else toast.error(data?.error || "Failed");
     } catch (e: any) { toast.error(e.message); }
     setLoadingSites(false);
   };
@@ -1017,10 +1010,8 @@ function HikvisionTab() {
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "list-devices" } });
       if (error) throw error;
-      if (data?.success) {
-        setCloudDevices(data.devices || []);
-        toast.success(`Found ${data.devices?.length || 0} devices`);
-      } else toast.error(data?.error || "Failed");
+      if (data?.success) { setCloudDevices(data.devices || []); toast.success(`Found ${data.devices?.length || 0} devices`); }
+      else toast.error(data?.error || "Failed");
     } catch (e: any) { toast.error(e.message); }
     setLoadingDevices(false);
   };
@@ -1042,11 +1033,11 @@ function HikvisionTab() {
     setImportingDevices(false);
   };
 
-  const runDeviceSync = async (deviceId: string, deviceSerial: string, action: string) => {
+  const runDeviceSync = async (deviceId: string, deviceSerial: string, action: string, extraBody?: Record<string, any>) => {
     setSyncingAction(`${deviceId}-${action}`);
     try {
       const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action, device_id: deviceId, device_serial: deviceSerial },
+        body: { action, device_id: deviceId, device_serial: deviceSerial, ...extraBody },
       });
       if (error) throw error;
       setSyncResults(prev => ({ ...prev, [`${deviceId}-${action}`]: data }));
@@ -1056,11 +1047,13 @@ function HikvisionTab() {
     setSyncingAction(null);
   };
 
+  const webhookUrl = `${window.location.origin.replace("://", "://").includes("localhost") ? "https://hqdacqysfhzrpjktwrbm.supabase.co" : `https://hqdacqysfhzrpjktwrbm.supabase.co`}/functions/v1/hikvision-webhook`;
+
   const STEPS = [
-    { num: 1, label: "Credentials" },
+    { num: 1, label: "Connection" },
     { num: 2, label: "Select Site" },
     { num: 3, label: "Devices" },
-    { num: 4, label: "Sync" },
+    { num: 4, label: "Sync & Monitor" },
   ];
 
   return (
@@ -1085,49 +1078,32 @@ function HikvisionTab() {
         ))}
       </div>
 
-      {/* Step 1: Credentials */}
+      {/* Step 1: Test Connection */}
       {step === 1 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Cloud className="h-5 w-5" /> Hik-Partner Pro Cloud API</CardTitle>
-            <CardDescription>Enter your App Key and Secret Key from the Hik-Partner Pro developer portal. These are stored as backend secrets.</CardDescription>
+            <CardDescription>API keys are stored as backend secrets (HIK_PARTNER_APP_KEY, HIK_PARTNER_SECRET_KEY). Test the connection below.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>App Key</Label>
-                <div className="relative">
-                  <Input type={showAppKey ? "text" : "password"} value={appKey} onChange={e => setAppKey(e.target.value)} placeholder="Enter App Key" />
-                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowAppKey(!showAppKey)}>
-                    {showAppKey ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Secret Key</Label>
-                <div className="relative">
-                  <Input type={showSecretKey ? "text" : "password"} value={secretKey} onChange={e => setSecretKey(e.target.value)} placeholder="Enter Secret Key" />
-                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowSecretKey(!showSecretKey)}>
-                    {showSecretKey ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
+            <div className="p-3 rounded-lg bg-muted/50 border border-border text-sm space-y-1">
+              <p className="font-medium text-foreground">Backend Secrets Status</p>
+              <p className="text-muted-foreground text-xs">Keys are securely stored as backend secrets. To update them, contact your administrator or use the Lovable Cloud secrets manager.</p>
             </div>
             {credentialStatus !== "idle" && (
               <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${credentialStatus === "valid" ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
                 <span className={`h-2.5 w-2.5 rounded-full ${credentialStatus === "valid" ? "bg-success" : "bg-destructive"}`} />
-                {credentialStatus === "valid" ? `Credentials valid. Area Domain: ${credentialInfo?.areaDomain || "detected"}` : "Invalid credentials. Check your App Key and Secret Key."}
+                {credentialStatus === "valid" ? `Connected. Area Domain: ${credentialInfo?.areaDomain || "detected"}` : "Connection failed. Check your backend secrets."}
               </div>
             )}
             <div className="flex gap-2">
-              <Button onClick={saveAndTestCredentials} disabled={savingCredentials || !appKey || !secretKey}>
-                {savingCredentials ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}Validate & Continue
+              <Button onClick={testCredentials} disabled={testingCredentials}>
+                {testingCredentials ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}Test Connection
               </Button>
               {credentialStatus === "valid" && (
-                <Button variant="outline" onClick={() => setStep(2)}>Skip to Sites →</Button>
+                <Button variant="outline" onClick={() => setStep(2)}>Continue to Sites →</Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">Note: API keys are already stored as backend secrets (HIK_PARTNER_APP_KEY, HIK_PARTNER_SECRET_KEY). This validates them before proceeding.</p>
           </CardContent>
         </Card>
       )}
@@ -1144,7 +1120,6 @@ function HikvisionTab() {
               <Button onClick={discoverSites} disabled={loadingSites}>
                 {loadingSites ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Cloud className="h-4 w-4 mr-2" />}Discover Sites
               </Button>
-
               {sites.length > 0 && (
                 <Table>
                   <TableHeader><TableRow><TableHead>Site Name</TableHead><TableHead>Site ID</TableHead><TableHead>Action</TableHead></TableRow></TableHeader>
@@ -1165,18 +1140,14 @@ function HikvisionTab() {
                   </TableBody>
                 </Table>
               )}
-
               {selectedSiteId && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-success/10 text-success border border-success/20 text-sm">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Default site set: <span className="font-mono text-xs">{selectedSiteId}</span>
+                  <CheckCircle2 className="h-4 w-4" /> Default site set: <span className="font-mono text-xs">{selectedSiteId}</span>
                 </div>
               )}
             </CardContent>
           </Card>
-          {selectedSiteId && (
-            <Button onClick={() => setStep(3)}>Continue to Devices →</Button>
-          )}
+          {selectedSiteId && <Button onClick={() => setStep(3)}>Continue to Devices →</Button>}
         </div>
       )}
 
@@ -1199,7 +1170,6 @@ function HikvisionTab() {
                   </Button>
                 )}
               </div>
-
               {cloudDevices.length > 0 && (
                 <Table>
                   <TableHeader><TableRow><TableHead>Device Name</TableHead><TableHead>Serial</TableHead><TableHead>Model</TableHead><TableHead>Site</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
@@ -1222,8 +1192,6 @@ function HikvisionTab() {
               )}
             </CardContent>
           </Card>
-
-          {/* Saved Devices */}
           {savedDevices.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-base">Saved Devices ({savedDevices.length})</CardTitle></CardHeader>
@@ -1245,22 +1213,42 @@ function HikvisionTab() {
               </CardContent>
             </Card>
           )}
-
           <Button onClick={() => setStep(4)} disabled={savedDevices.length === 0}>Continue to Sync →</Button>
         </div>
       )}
 
-      {/* Step 4: Sync Actions */}
+      {/* Step 4: Sync & Monitor */}
       {step === 4 && (
         <div className="space-y-4">
+          {/* Webhook Config Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" /> Webhook Configuration</CardTitle>
+              <CardDescription>Configure this URL in your Hik-Partner Pro webhook settings for real-time event delivery.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success("URL copied!"); }}>
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                In Hik-Partner Pro → Webhook → Save Config, set this as your callback URL. Enable HMAC signing for security.
+                Once configured, attendance events will be received automatically without polling.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Sync Actions per device */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Sync Actions</CardTitle>
-              <CardDescription>Run sync operations per device. Select a device and choose the sync action.</CardDescription>
+              <CardDescription>Run sync operations per device.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {savedDevices.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No saved devices. Go back to Step 3 to import devices first.</p>
+                <p className="text-sm text-muted-foreground">No saved devices. Go back to Step 3.</p>
               ) : (
                 savedDevices.map(d => (
                   <div key={d.id} className="border border-border rounded-xl p-4 space-y-3">
@@ -1273,17 +1261,15 @@ function HikvisionTab() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {[
-                        { action: "sync-employees", label: "Sync Employees", icon: User },
-                        { action: "sync-attendance", label: "Sync Attendance", icon: Clock },
-                        { action: "sync-departments", label: "Sync Departments", icon: Building2 },
+                        { action: "sync-employees", label: "Sync Employees (ISAPI)", icon: User },
+                        { action: "sync-attendance", label: "Poll Attendance (MQ)", icon: Clock },
                         { action: "full-sync", label: "Full Sync", icon: RefreshCw },
                       ].map(btn => {
                         const isRunning = syncingAction === `${d.id}-${btn.action}`;
                         const result = syncResults[`${d.id}-${btn.action}`];
                         return (
                           <div key={btn.action} className="flex flex-col items-start">
-                            <Button
-                              size="sm" variant="outline"
+                            <Button size="sm" variant="outline"
                               onClick={() => runDeviceSync(d.id, d.device_serial || d.ip_address, btn.action)}
                               disabled={!!syncingAction}
                             >
@@ -1298,6 +1284,37 @@ function HikvisionTab() {
                           </div>
                         );
                       })}
+                    </div>
+
+                    {/* Backfill Section */}
+                    <div className="border-t border-border pt-3 space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Backfill Attendance (ISAPI)</p>
+                      <div className="flex items-end gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Start</Label>
+                          <Input type="datetime-local" value={backfillStart} onChange={e => setBackfillStart(e.target.value)} className="text-xs h-8 w-48" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">End</Label>
+                          <Input type="datetime-local" value={backfillEnd} onChange={e => setBackfillEnd(e.target.value)} className="text-xs h-8 w-48" />
+                        </div>
+                        <Button size="sm" variant="outline"
+                          disabled={!!syncingAction || !backfillStart || !backfillEnd}
+                          onClick={() => {
+                            const start = new Date(backfillStart).toISOString();
+                            const end = new Date(backfillEnd).toISOString();
+                            runDeviceSync(d.id, d.device_serial || d.ip_address, "backfill-attendance", { start_time: start, end_time: end });
+                          }}
+                        >
+                          {syncingAction === `${d.id}-backfill-attendance` ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Clock className="h-3.5 w-3.5 mr-1.5" />}
+                          Backfill
+                        </Button>
+                      </div>
+                      {syncResults[`${d.id}-backfill-attendance`] && (
+                        <span className={`text-[10px] ${syncResults[`${d.id}-backfill-attendance`].success ? "text-success" : "text-destructive"}`}>
+                          {syncResults[`${d.id}-backfill-attendance`].success ? `✓ ${syncResults[`${d.id}-backfill-attendance`].records_synced || 0} records` : `✗ ${syncResults[`${d.id}-backfill-attendance`].error?.substring(0, 40)}`}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
