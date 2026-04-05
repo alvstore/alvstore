@@ -149,10 +149,7 @@ export default function Leads() {
       const { error } = await supabase.from("leads").update(payload).eq("id", editId);
       if (error) toast.error(error.message); else toast.success("Lead updated");
     } else {
-      const { created_by, ...insertPayload } = { ...payload, created_by: user?.id };
-      const { error } = await supabase.from("leads").insert(insertPayload as any);
-      if (error) toast.error(error.message); else toast.success("Lead created");
-    }
+      const { error } = await supabase.from("leads").insert(payload as any);
       if (error) toast.error(error.message); else toast.success("Lead created");
     }
     setSheetOpen(false);
