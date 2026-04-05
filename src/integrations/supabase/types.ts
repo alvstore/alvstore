@@ -1762,6 +1762,44 @@ export type Database = {
           },
         ]
       }
+      lead_activities: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          lead_id: string
+          outcome: string | null
+          type: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          lead_id: string
+          outcome?: string | null
+          type: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          lead_id?: string
+          outcome?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           assigned_to: string | null
@@ -1769,10 +1807,15 @@ export type Database = {
           created_at: string
           created_by: string | null
           email: string | null
+          expected_value: number | null
           id: string
+          lost_reason: string | null
           name: string
+          next_follow_up: string | null
           notes: string | null
           phone: string | null
+          pipeline_stage: string | null
+          score: number | null
           source: string | null
           status: string | null
           updated_at: string
@@ -1783,10 +1826,15 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           email?: string | null
+          expected_value?: number | null
           id?: string
+          lost_reason?: string | null
           name: string
+          next_follow_up?: string | null
           notes?: string | null
           phone?: string | null
+          pipeline_stage?: string | null
+          score?: number | null
           source?: string | null
           status?: string | null
           updated_at?: string
@@ -1797,10 +1845,15 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           email?: string | null
+          expected_value?: number | null
           id?: string
+          lost_reason?: string | null
           name?: string
+          next_follow_up?: string | null
           notes?: string | null
           phone?: string | null
+          pipeline_stage?: string | null
+          score?: number | null
           source?: string | null
           status?: string | null
           updated_at?: string

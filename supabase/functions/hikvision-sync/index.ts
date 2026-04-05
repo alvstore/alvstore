@@ -61,9 +61,11 @@ async function transparentApi(
   areaDomain: string, accessToken: string, deviceSerial: string,
   isapiPath: string, isapiBody: unknown
 ): Promise<any> {
-  const encodedPath = encodeURIComponent(isapiPath);
-  const url = `${areaDomain}/api/hpcgw/v1/device/transparent/${encodedPath}`;
-  console.log(`[transparentApi] POST ${isapiPath} -> device ${deviceSerial}`);
+  // V2.15.0: DO NOT encodeURIComponent the path — gateway expects raw path segments
+  // Strip leading slash for URL concatenation
+  const cleanPath = isapiPath.startsWith("/") ? isapiPath.substring(1) : isapiPath;
+  const url = `${areaDomain}/api/hpcgw/v1/device/transparent/${cleanPath}`;
+  console.log(`[transparentApi] POST ${isapiPath} -> device ${deviceSerial} | URL: ${url}`);
 
   const resp = await fetch(url, {
     method: "POST",
@@ -75,9 +77,17 @@ async function transparentApi(
     body: JSON.stringify(isapiBody),
     signal: AbortSignal.timeout(30000),
   });
-  const result = await resp.json();
+
+  const respText = await resp.text();
+  console.log(`[transparentApi] Response status: ${resp.status}, body length: ${respText.length}`);
+
+  let result: any;
+  try { result = JSON.parse(respText); } catch {
+    throw new Error(`Transparent API returned non-JSON: ${respText.substring(0, 200)}`);
+  }
+
   if (result.errorCode && result.errorCode !== "0") {
-    throw new Error(`Transparent API failed: ${result.errorCode} - ${result.message || ""}`);
+    throw new Error(`Transparent API failed: ${result.errorCode} - ${result.errorMessage || result.message || ""}`);
   }
   // Response body may be nested
   let isapiResp = result.data?.body || result.data?.response || result.data || result;
