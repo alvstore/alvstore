@@ -1,143 +1,187 @@
 
 
-# Hikvision Hik-Partner Pro V2.15.0 — Full Redesign Plan
+# Comprehensive Enhancement Plan — 6 Areas
 
-## Audit Findings
+## 1. Public Website Enhancement (Home Theater)
 
-### Critical: Removed APIs Still in Use
-The current edge function calls these endpoints that were **removed in V2.15.0**:
-- `POST /api/hpcgw/v1/person/synchronize` (line 331)
-- `POST /api/hpcgw/v1/person/synchronize/progress` (line 347)
-- `POST /api/hpcgw/v1/person/synchronize/details` (line 368)
+### Current State
+- Pure black (#000000) + deep navy aesthetic with gold/amber accents
+- CinemaParticles.tsx renders 500-point starfield
+- 3D flip cards, masonry gallery, testimonial carousel exist
+- Page is functional but feels flat — no scrolling 3D elements, no depth beyond particles
 
-These are used in `cloudSyncEmployees()` and `sync-departments` action. They will fail at runtime.
+### Plan
+- Add scroll-triggered 3D floating elements: a speaker model, a projector, and sound wave rings using Three.js (rendered as simple geometric primitives, not heavy GLB models)
+- Add parallax depth layers — foreground gold dust particles, midground content, background starfield at different scroll speeds
+- Add a 3D room preview section: simple wireframe theater room that rotates/reveals as user scrolls (built with Three.js primitives — boxes for walls, screen plane, speaker cones)
+- Add subtle ambient glow orbs that float across sections (CSS animated radial gradients)
+- Lighten the palette slightly — keep cinematic dark but add more warm gold/amber gradients between sections instead of pure black-to-black
+- Add more visual breathing room with section dividers (gold line or gradient)
 
-### Critical: Transparent API Format Wrong
-Current code (line 153-227) sends a JSON body with `{ url, method, contentType, body }` to `/api/hpcgw/v2/device/transparent`. Per V2.15.0, the correct format is:
-- `POST /api/hpcgw/v1/device/transparent/{isapi_uri}` with header `X-Devserial: {serial}`
-- The ISAPI path goes in the URL, not the body
-
-### Critical: No Offline Backfill
-No ISAPI `AcsEvent` search for historical attendance recovery. The MQ queue only retains ~2 hours. If polling is missed, events are lost permanently.
-
-### Issue: Credentials Not Actually Saved
-`save-credentials` (line 637-652) only validates the token — it does NOT save the keys as secrets. The keys must already be pre-configured as `HIK_PARTNER_APP_KEY` / `HIK_PARTNER_SECRET_KEY`. The UI misleads users into thinking entering keys will persist them.
-
-### Issue: Weak Auth Gate
-Line 620-626: the auth check skips validation if the Authorization header contains the anon key. This is a security gap.
-
-### Issue: No Webhook Ingestion
-V2.15.0 recommends webhook delivery for production. Current code only uses MQ polling (3 attempts max). No webhook endpoint exists.
+### Files
+```
+EDIT: src/pages/public/HomeTheaterHome.tsx (add 3D scroll elements, parallax layers, section dividers)
+EDIT: src/components/home-theater/CinemaParticles.tsx (add floating 3D objects in scene)
+```
 
 ---
 
-## Redesign Plan
+## 2. Hikvision Deep Audit + Testing
 
-### 1. Rewrite Edge Function: `supabase/functions/hikvision-sync/index.ts`
+### Current State
+- Edge function has correct V2.15.0 transparent API format
+- Actions: test-credentials, test, site-search, list-devices, sync-employees, sync-attendance, backfill-attendance, full-sync, auto-map
+- Webhook endpoint exists at `hikvision-webhook`
+- No curl testing or demo data validation has been done
 
-**Remove:**
-- `cloudSyncEmployees()` — uses removed person/synchronize APIs
-- `sync-departments` action using person/synchronize
-- Incorrect v2/transparent body-wrapping logic
+### Issues Found
+- `transparentApi()` uses `encodeURIComponent` on the full ISAPI path — this is wrong. The Hik-Partner Pro gateway expects the ISAPI path as-is in the URL, not URL-encoded. `/ISAPI/AccessControl/UserInfo/Search?format=json` becomes `%2FISAPI%2F...` which will 404.
+- MQ polling `pollMqAttendance` subscribes then immediately polls — but V2.15.0 says subscription needs to complete before messages are available. No wait/retry.
+- No demo/test mode — cannot verify flow without live device
 
-**Fix transparent API:**
+### Plan
+- Fix `transparentApi()` — remove `encodeURIComponent`, pass ISAPI path segments directly
+- Add a `demo-test` action that inserts mock attendance events into `hikvision_attendance_logs` and processes them through the attendance pipeline — validates the full flow without real devices
+- Add curl test documentation as comments in the edge function
+- Add better error logging with request/response bodies for debugging
+- Fix MQ polling retry logic — add 2s delay after subscribe before first poll
+
+### Files
 ```
-// V2.15.0 correct format:
-POST {areaDomain}/api/hpcgw/v1/device/transparent/ISAPI/AccessControl/UserInfo/Search?format=json
-Header: X-Devserial: {deviceSerial}
-Body: { UserInfoSearchCond: { ... } }
+EDIT: supabase/functions/hikvision-sync/index.ts (fix URL encoding, add demo-test action, fix MQ timing)
+EDIT: supabase/functions/hikvision-webhook/index.ts (add request body logging)
 ```
 
-**Add new action: `backfill-attendance`**
-- Uses ISAPI transparent channel to call `/ISAPI/AccessControl/AcsEvent?format=json`
-- Accepts `start_time`, `end_time` parameters
-- Pages through results using `searchResultPosition` + `maxResults`
-- Deduplicates using `deviceSerial + serialNo` (primary) or `deviceSerial + employeeNoString + eventTime + attendanceStatus` (fallback)
-- Saves raw events to `hikvision_attendance_logs`
-- Converts to `attendance_records` for CRM
+---
 
-**Fix auth gate:**
-- Always validate JWT via `supabase.auth.getUser()` (no anon key bypass)
-- Check admin role
+## 3. SEO/AEO — Remove Lovable Branding
 
-**Fix `save-credentials`:**
-- Remove the misleading action entirely — keys are already stored as backend secrets
-- Replace with a `test-credentials` action that only validates
+### Current State
+- `index.html` has: `<meta name="author" content="Lovable" />`, `<meta name="twitter:site" content="@Lovable" />`, OG image points to Lovable CDN
+- Title is just "ALVStore", description is just "ERP" — terrible for SEO
+- No structured data (JSON-LD), no sitemap, no robots meta for public pages
 
-**Simplify `sync-employees`:**
-- Keep only ISAPI UserInfo/Search (working) + attendance logs fallback
-- Remove broken cloud person/synchronize path
+### Plan
+- Remove all Lovable references from meta tags
+- Add proper SEO meta: title "ALV Store — Premium Home Theater & Apple Products | Rajasthan", rich description
+- Add Open Graph tags with proper business description
+- Add JSON-LD structured data (LocalBusiness schema) in the home page
+- Add dynamic `<title>` per route using `react-helmet-async` or document.title
+- Update `public/robots.txt` with sitemap reference
+- Create a basic sitemap component or static sitemap
 
-**Simplify `sync-departments`:**
-- Extract from ISAPI UserInfo/Search `PersonInfoExtends` field
-- Fallback to attendance log extraction (keep existing)
+### Files
+```
+EDIT: index.html (fix meta tags, remove Lovable, add JSON-LD)
+EDIT: public/robots.txt (add sitemap)
+EDIT: src/pages/public/HomeTheaterHome.tsx (add document.title + meta description)
+INSTALL: (none needed — use useEffect for document.title)
+```
 
-### 2. Add Webhook Endpoint: `supabase/functions/hikvision-webhook/index.ts`
+---
 
-New edge function for Hik-Partner Pro webhook push delivery:
+## 4. Attendance System Redesign
 
-**GET handler:** Verification challenge response (if Hik uses one)
+### Current Problem
+- Employees can self-check-in even if absent — defeats the purpose
+- No admin-controlled attendance marking
+- No weekly view
+- No shift/late tracking
+- Calendar view shows only present percentage, not individual employee details
 
-**POST handler:**
-- Validate `X-Hook-Signature` using HMAC-SHA256: `HMAC(timestamp + "." + batchId, signSecret)`
-- Parse access control events from payload
-- Extract `employeeNoString`, `dateTime`, `attendanceStatus`, `currentVerifyMode`, `cardNo`
-- Deduplicate and insert into `hikvision_attendance_logs`
-- Map to `attendance_records` via employee mapping
-- Return 200 immediately
+### Plan
+- **Remove self-service Check In/Check Out buttons** — attendance should come from biometric (Hikvision) or admin manual entry only
+- **Admin Attendance Marking**: Add a new UI where admin sees all active employees for a date, with status toggles (Present/Absent/Half Day/Leave) and check-in/out time inputs
+- **Weekly View Tab**: Grid showing Mon-Sun for all employees with color-coded cells (green=present, red=absent, yellow=half day, gray=leave)
+- **Enhanced Monthly Report**: Add late count, half-day count, overtime hours, leave days alongside present/absent
+- **Payroll Integration**: Show calculated working days, deduction days in monthly report — directly feeds into payroll generation
+- **Source tracking**: Show whether attendance came from biometric, manual-admin, or system
 
-**Config:** Add `[functions.hikvision-webhook] verify_jwt = false` to `supabase/config.toml`
+### Files
+```
+EDIT: src/pages/Attendance.tsx (full rewrite — remove self-checkin, add admin marking, weekly view)
+```
 
-### 3. Database Migration
+---
 
+## 5. Advanced Lead Management CRM
+
+### Current State
+- Basic CRUD with status filter and table view
+- No pipeline visualization, no scoring, no activity timeline, no follow-up reminders, no analytics
+
+### Plan
+- **Kanban Pipeline View**: Drag-and-drop columns (New → Contacted → Qualified → Proposal → Negotiation → Converted / Lost)
+- **Lead Scoring**: Auto-score based on source (referral=high, ads=medium, walkin=low), budget range, response time
+- **Activity Timeline**: Per-lead interaction history — calls, emails, WhatsApp, meetings with timestamps
+- **Follow-up Reminders**: Schedule next action with date/time, show overdue follow-ups prominently
+- **KPI Dashboard**: Conversion rate, avg conversion time, leads by source chart, pipeline value
+- **Bulk Actions**: Assign multiple leads, change status in bulk
+- **Lead Detail Page**: Full-page view with timeline, notes, documents, linked quotations
+
+### Database
 ```sql
--- Add dedupe_key to prevent duplicate event insertion
-ALTER TABLE hikvision_attendance_logs
-  ADD COLUMN IF NOT EXISTS dedupe_key text,
-  ADD COLUMN IF NOT EXISTS source_mode text DEFAULT 'polling',
-  ADD COLUMN IF NOT EXISTS attendance_status text,
-  ADD COLUMN IF NOT EXISTS verify_mode text,
-  ADD COLUMN IF NOT EXISTS event_serial_no text;
+-- Add columns to leads table
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS score integer DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_follow_up timestamptz;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_value numeric DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS pipeline_stage text DEFAULT 'new';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost_reason text;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_hik_attendance_dedupe
-  ON hikvision_attendance_logs (dedupe_key)
-  WHERE dedupe_key IS NOT NULL;
+-- Lead activities table
+CREATE TABLE lead_activities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id uuid REFERENCES leads(id) ON DELETE CASCADE NOT NULL,
+  type text NOT NULL, -- call, email, whatsapp, meeting, note, status_change
+  description text,
+  outcome text,
+  created_by uuid,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE lead_activities ENABLE ROW LEVEL SECURITY;
 ```
 
-### 4. Settings UI Redesign: `HikvisionTab` in Settings.tsx
-
-**Step 1 — Credentials:**
-- Remove the App Key / Secret Key input fields (they're already backend secrets)
-- Show only a "Test Connection" button that calls `test-credentials`
-- Display connection status: connected/disconnected badge, area domain, token expiry
-- Add note: "API keys are configured as backend secrets. Contact admin to change."
-
-**Step 2 — Sites:** Keep as-is (works correctly)
-
-**Step 3 — Devices:** Keep as-is (works correctly)
-
-**Step 4 — Sync & Monitoring:**
-- Remove "Sync Departments" button (uses removed API)
-- Rename buttons: "Sync Employees (from Device)", "Poll Attendance (MQ)", "Backfill Attendance (ISAPI)"
-- Add date range picker for backfill action
-- Add webhook status card showing webhook URL and configuration instructions
-- Keep manual employee mapping and sync dashboard
+### Files
+```
+MIGRATE: Add lead_activities table + lead columns
+REWRITE: src/pages/Leads.tsx (Kanban + detail view + KPIs + activity timeline)
+```
 
 ---
 
-## Files Summary
+## 6. Hikvision OpenAPI Re-Audit & Testing
 
-```
-REWRITE:  supabase/functions/hikvision-sync/index.ts
-CREATE:   supabase/functions/hikvision-webhook/index.ts
-MIGRATE:  Add dedupe_key, source_mode, attendance_status columns to hikvision_attendance_logs
-EDIT:     src/pages/Settings.tsx (HikvisionTab section only)
-EDIT:     supabase/config.toml (add hikvision-webhook function config)
-```
+This overlaps with item 2 but focuses on end-to-end validation:
+
+### Plan
+- Create a `demo-test` edge function action that:
+  1. Inserts 5 mock attendance events with realistic Hikvision payloads
+  2. Runs them through the dedupe + attendance_records pipeline
+  3. Returns results showing what was created
+- Add a "Run Demo Test" button in Settings Hikvision tab
+- Add a "Curl Examples" info card showing exact curl commands for each action
+- Validate webhook endpoint with a mock POST simulating Hik-Partner Pro format
+
+---
 
 ## Implementation Order
-1. Database migration (new columns)
-2. Rewrite edge function (fix transparent API, remove dead code, add backfill)
-3. Create webhook endpoint
-4. Update Settings UI
+1. SEO fixes (quick, high impact)
+2. Hikvision URL encoding fix + demo test action
+3. Attendance system redesign
+4. Lead Management CRM upgrade (with migration)
+5. Public website 3D enhancements
+6. End-to-end Hikvision testing
+
+## Files Summary
+```
+EDIT:    index.html
+EDIT:    public/robots.txt
+EDIT:    src/pages/public/HomeTheaterHome.tsx
+EDIT:    src/components/home-theater/CinemaParticles.tsx
+REWRITE: src/pages/Attendance.tsx
+REWRITE: src/pages/Leads.tsx
+EDIT:    supabase/functions/hikvision-sync/index.ts
+EDIT:    supabase/functions/hikvision-webhook/index.ts
+MIGRATE: lead_activities table + leads columns
+```
 
