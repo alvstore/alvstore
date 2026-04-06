@@ -21,7 +21,7 @@ import {
 import {
   User, Shield, Building2, Receipt, Mail, MessageSquare, Phone,
   Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock,
-  Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench,
+  Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench, Code,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
