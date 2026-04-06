@@ -55,24 +55,33 @@ serve(async (req: Request) => {
     const batchId = req.headers.get("X-Hook-Batch-Id") || "";
     const signature = req.headers.get("X-Hook-Signature") || "";
 
+    // Log the raw request for debugging
+    console.log(`[webhook] Received POST | timestamp: ${timestamp} | batchId: ${batchId} | sig: ${signature ? "present" : "none"}`);
+    console.log(`[webhook] Headers: ${JSON.stringify(Object.fromEntries(req.headers.entries()))}`);
+    console.log(`[webhook] Body (first 2000 chars): ${bodyText.substring(0, 2000)}`);
+
     // Validate signature
     if (signature) {
       const valid = await verifyHmacSignature(bodyText, timestamp, batchId, signature);
       if (!valid) {
-        console.error("[webhook] Invalid signature");
+        console.error("[webhook] Invalid signature — rejecting");
         return new Response(JSON.stringify({ error: "Invalid signature" }), { status: 403 });
       }
+      console.log("[webhook] Signature valid");
     }
 
     let payload: any;
     try { payload = JSON.parse(bodyText); } catch {
+      console.error(`[webhook] Invalid JSON body: ${bodyText.substring(0, 500)}`);
       return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 });
     }
 
     // Payload can be a single event or a list
     const events = Array.isArray(payload) ? payload : (payload.params?.events || payload.events || [payload]);
+    console.log(`[webhook] Processing ${events.length} events`);
 
     let processed = 0;
+    let skipped = 0;
 
     for (const event of events) {
       try {
@@ -91,17 +100,19 @@ serve(async (req: Request) => {
         // Only process access control events
         const isAccessEvent = eventType.toLowerCase().includes("accesscontroller") ||
           eventType.toLowerCase().includes("acs") || acsEvent.employeeNoString || acsEvent.name;
-        if (!isAccessEvent) continue;
+        if (!isAccessEvent) { skipped++; continue; }
 
         const employeeCode = acsEvent.employeeNoString || acsEvent.employeeNo?.toString() || "";
         const employeeName = acsEvent.name || "";
         const eventTime = alarmData.dateTime || acsEvent.time || acsEvent.dateTime || event.alarmTime;
-        if (!eventTime || !employeeCode) continue;
+        if (!eventTime || !employeeCode) { skipped++; continue; }
 
         const attStatus = acsEvent.attendanceStatus || "";
         const verifyMode = acsEvent.currentVerifyMode || "";
         const serialNo = acsEvent.serialNo?.toString() || "";
         const dedupeKey = buildDedupeKey(deviceSerial, serialNo, employeeCode, eventTime, attStatus, verifyMode);
+
+        console.log(`[webhook] Event: emp=${employeeCode} time=${eventTime} status=${attStatus} device=${deviceSerial}`);
 
         // Resolve device
         const { data: deviceRec } = await supabase
@@ -132,6 +143,7 @@ serve(async (req: Request) => {
         }, { onConflict: "dedupe_key" });
 
         if (!error) processed++;
+        else console.warn(`[webhook] Insert error: ${error.message}`);
 
         // Auto-create attendance record if mapped
         if (mapping?.erp_employee_id && !error) {
@@ -153,6 +165,7 @@ serve(async (req: Request) => {
         }
       } catch (evtErr) {
         console.warn(`[webhook] Event error: ${evtErr instanceof Error ? evtErr.message : "unknown"}`);
+        skipped++;
       }
     }
 
@@ -162,12 +175,12 @@ serve(async (req: Request) => {
       sync_type: "attendance", records_synced: processed,
     });
 
-    console.log(`[webhook] Processed ${processed} events from batch ${batchId}`);
-    return new Response(JSON.stringify({ success: true, processed }), {
+    console.log(`[webhook] Done: ${processed} processed, ${skipped} skipped, batch ${batchId}`);
+    return new Response(JSON.stringify({ success: true, processed, skipped }), {
       status: 200, headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error(`[webhook] FATAL: ${e instanceof Error ? e.message : "Internal error"}`);
+    console.error(`[webhook] FATAL: ${e instanceof Error ? e.stack || e.message : "Internal error"}`);
     return new Response(JSON.stringify({ error: "Internal error" }), { status: 500 });
   }
 });
