@@ -40,13 +40,20 @@ function jsonResp(data: unknown, status = 200) {
 }
 
 async function cloudApi(areaDomain: string, accessToken: string, path: string, body: unknown): Promise<any> {
-  const resp = await fetch(`${areaDomain}${path}`, {
+  const url = `${areaDomain}${path}`;
+  console.log(`[cloudApi] POST ${path}`);
+  const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30000),
   });
-  const result = await resp.json();
+  const respText = await resp.text();
+  console.log(`[cloudApi] Response status: ${resp.status}, body: ${respText.substring(0, 500)}`);
+  let result: any;
+  try { result = JSON.parse(respText); } catch {
+    throw new Error(`Cloud API returned non-JSON: ${respText.substring(0, 200)}`);
+  }
   if (result.errorCode && result.errorCode !== "0") {
     throw new Error(`Cloud API error ${result.errorCode}: ${result.errorMessage || result.message || ""}`);
   }
@@ -62,10 +69,11 @@ async function transparentApi(
   isapiPath: string, isapiBody: unknown
 ): Promise<any> {
   // V2.15.0: DO NOT encodeURIComponent the path — gateway expects raw path segments
-  // Strip leading slash for URL concatenation
   const cleanPath = isapiPath.startsWith("/") ? isapiPath.substring(1) : isapiPath;
   const url = `${areaDomain}/api/hpcgw/v1/device/transparent/${cleanPath}`;
-  console.log(`[transparentApi] POST ${isapiPath} -> device ${deviceSerial} | URL: ${url}`);
+  console.log(`[transparentApi] POST ${isapiPath} -> device ${deviceSerial}`);
+  console.log(`[transparentApi] Full URL: ${url}`);
+  console.log(`[transparentApi] Request body: ${JSON.stringify(isapiBody).substring(0, 500)}`);
 
   const resp = await fetch(url, {
     method: "POST",
@@ -79,15 +87,15 @@ async function transparentApi(
   });
 
   const respText = await resp.text();
-  console.log(`[transparentApi] Response status: ${resp.status}, body length: ${respText.length}`);
+  console.log(`[transparentApi] Response status: ${resp.status}, body: ${respText.substring(0, 1000)}`);
 
   let result: any;
   try { result = JSON.parse(respText); } catch {
-    throw new Error(`Transparent API returned non-JSON: ${respText.substring(0, 200)}`);
+    throw new Error(`Transparent API returned non-JSON (HTTP ${resp.status}): ${respText.substring(0, 300)}`);
   }
 
   if (result.errorCode && result.errorCode !== "0") {
-    throw new Error(`Transparent API failed: ${result.errorCode} - ${result.errorMessage || result.message || ""}`);
+    throw new Error(`Transparent API failed: ${result.errorCode} - ${result.errorMessage || result.message || JSON.stringify(result).substring(0, 200)}`);
   }
   // Response body may be nested
   let isapiResp = result.data?.body || result.data?.response || result.data || result;
@@ -133,6 +141,29 @@ async function logSync(supabase: any, deviceId: string | null, action: string, s
 function buildDedupeKey(deviceSerial: string, serialNo?: string, employeeNo?: string, eventTime?: string, status?: string, verifyMode?: string): string {
   if (serialNo) return `${deviceSerial}:${serialNo}`;
   return `${deviceSerial}:${employeeNo || ""}:${eventTime || ""}:${status || ""}:${verifyMode || ""}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Convert raw attendance logs → attendance_records (CRM)
+// ═══════════════════════════════════════════════════════════════
+async function convertToAttendanceRecord(
+  supabase: any, employeeId: string, eventTime: string, deviceSerial: string, source: string
+): Promise<void> {
+  const eventDate = eventTime.substring(0, 10);
+  const { data: existing } = await supabase
+    .from("attendance_records").select("id, check_in, check_out")
+    .eq("employee_id", employeeId).eq("date", eventDate).maybeSingle();
+
+  if (!existing) {
+    await supabase.from("attendance_records").insert({
+      employee_id: employeeId, date: eventDate,
+      check_in: eventTime, source: "biometric",
+      device_id: deviceSerial, notes: `Auto via ${source}`,
+    });
+  } else if (!existing.check_out && eventTime > (existing.check_in || "")) {
+    await supabase.from("attendance_records")
+      .update({ check_out: eventTime }).eq("id", existing.id);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -205,27 +236,46 @@ async function isapiSyncEmployees(
 async function pollMqAttendance(
   areaDomain: string, accessToken: string, deviceSerial: string,
   deviceId: string, supabase: any
-): Promise<{ success: boolean; records_synced: number; method: string }> {
-  // Subscribe
+): Promise<{ success: boolean; records_synced: number; method: string; details: string[] }> {
+  const details: string[] = [];
+
+  // Subscribe first
   try {
     await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/subscribe", { subType: 1, subMode: "all" });
+    details.push("MQ subscription OK");
   } catch (e) {
-    console.warn(`[pollMq] Subscribe warning: ${e instanceof Error ? e.message : ""}`);
+    const msg = e instanceof Error ? e.message : "";
+    details.push(`MQ subscribe warning: ${msg}`);
+    console.warn(`[pollMq] Subscribe warning: ${msg}`);
   }
+
+  // V2.15.0: Wait 3s after subscribe before first poll — subscription needs to complete
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  details.push("Waited 3s after subscribe");
 
   const { data: mappings } = await supabase.from("hikvision_employee_mapping").select("*").eq("device_id", deviceId);
   const mappingMap = new Map((mappings || []).map((m: any) => [m.device_employee_code, m]));
   const { data: device } = await supabase.from("hikvision_devices").select("name").eq("id", deviceId).single();
 
   let totalSynced = 0;
+  let totalMessages = 0;
   let pollAttempts = 0;
 
-  while (pollAttempts < 3) {
+  while (pollAttempts < 5) {
     pollAttempts++;
     try {
       const msgResult = await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/messages", {});
       const messages = msgResult.data?.list || msgResult.data?.rows || [];
-      if (messages.length === 0) break;
+      details.push(`Poll #${pollAttempts}: ${messages.length} messages`);
+      if (messages.length === 0) {
+        if (pollAttempts < 3) {
+          // Wait 2s and try again — messages might not be ready yet
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        break;
+      }
+      totalMessages += messages.length;
 
       for (const msg of messages) {
         try {
@@ -268,20 +318,30 @@ async function pollMqAttendance(
             event_serial_no: serialNo || null,
           }, { onConflict: "dedupe_key" });
 
-          if (!insertError) totalSynced++;
+          if (!insertError) {
+            totalSynced++;
+            // Also create/update attendance_records for CRM
+            if (mapping?.erp_employee_id) {
+              await convertToAttendanceRecord(supabase, mapping.erp_employee_id, eventTime, msgDevSerial || deviceSerial, "mq_poll");
+            }
+          }
         } catch { /* skip event */ }
       }
 
       // Ack batch
       const batchId = msgResult.data?.batchId;
       if (batchId) {
-        try { await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId }); } catch { /* ignore */ }
+        try { await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId }); details.push(`Acked batch ${batchId}`); } catch { /* ignore */ }
       }
-    } catch { break; }
+    } catch (e) {
+      details.push(`Poll #${pollAttempts} error: ${e instanceof Error ? e.message : "unknown"}`);
+      break;
+    }
   }
 
   await supabase.from("hikvision_devices").update({ last_sync_at: new Date().toISOString() }).eq("id", deviceId);
-  return { success: true, records_synced: totalSynced, method: "cloud_mq" };
+  details.push(`Total: ${totalMessages} messages, ${totalSynced} synced`);
+  return { success: true, records_synced: totalSynced, method: "cloud_mq", details };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -290,7 +350,8 @@ async function pollMqAttendance(
 async function backfillAttendance(
   areaDomain: string, accessToken: string, deviceSerial: string,
   deviceId: string, supabase: any, startTime: string, endTime: string
-): Promise<{ success: boolean; records_synced: number; method: string }> {
+): Promise<{ success: boolean; records_synced: number; method: string; details: string[] }> {
+  const details: string[] = [];
   const { data: mappings } = await supabase.from("hikvision_employee_mapping").select("*").eq("device_id", deviceId);
   const mappingMap = new Map((mappings || []).map((m: any) => [m.device_employee_code, m]));
   const { data: device } = await supabase.from("hikvision_devices").select("name").eq("id", deviceId).single();
@@ -299,8 +360,12 @@ async function backfillAttendance(
   let searchPos = 0;
   const pageSize = 30;
   let hasMore = true;
+  let pageNum = 0;
 
   while (hasMore) {
+    pageNum++;
+    details.push(`Fetching page ${pageNum} (pos ${searchPos})...`);
+
     const result = await transparentApi(
       areaDomain, accessToken, deviceSerial,
       "/ISAPI/AccessControl/AcsEvent?format=json",
@@ -320,6 +385,7 @@ async function backfillAttendance(
     const totalMatches = parseInt(searchResult?.totalMatches || "0", 10);
     const events: any[] = searchResult?.InfoList || [];
     const responseStatus = searchResult?.responseStatusStrg || "";
+    details.push(`Page ${pageNum}: ${events.length} events, total matches: ${totalMatches}, status: ${responseStatus}`);
 
     if (events.length === 0) break;
 
@@ -353,7 +419,13 @@ async function backfillAttendance(
         event_serial_no: serialNo || null,
       }, { onConflict: "dedupe_key" });
 
-      if (!error) totalSynced++;
+      if (!error) {
+        totalSynced++;
+        // Also create/update attendance_records for CRM
+        if (mapping?.erp_employee_id) {
+          await convertToAttendanceRecord(supabase, mapping.erp_employee_id, eventTime, deviceSerial, "backfill");
+        }
+      }
     }
 
     searchPos += events.length;
@@ -361,7 +433,8 @@ async function backfillAttendance(
   }
 
   await supabase.from("hikvision_devices").update({ last_sync_at: new Date().toISOString() }).eq("id", deviceId);
-  return { success: true, records_synced: totalSynced, method: "isapi_backfill" };
+  details.push(`Complete: ${totalSynced} records synced`);
+  return { success: true, records_synced: totalSynced, method: "isapi_backfill", details };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -407,6 +480,123 @@ async function syncEmployeesFromLogs(deviceId: string, supabase: any): Promise<{
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Demo Test: End-to-end pipeline validation with mock data
+// ═══════════════════════════════════════════════════════════════
+async function runDemoTest(supabase: any, deviceId: string | null): Promise<any> {
+  const results: any = { steps: [], errors: [], attendance_logs_created: 0, attendance_records_created: 0 };
+
+  // Step 1: Get or create a test employee
+  let testEmployeeId: string | null = null;
+  const testEmployeeCode = "DEMO-001";
+  const testEmployeeName = "Demo Test Employee";
+
+  const { data: existingEmp } = await supabase
+    .from("employees").select("id").eq("device_employee_code", testEmployeeCode).maybeSingle();
+
+  if (existingEmp) {
+    testEmployeeId = existingEmp.id;
+    results.steps.push("Found existing demo employee");
+  } else {
+    const { data: newEmp, error: empErr } = await supabase.from("employees").insert({
+      name: testEmployeeName, device_employee_code: testEmployeeCode,
+      role: "staff", status: "active",
+    }).select("id").single();
+    if (empErr) {
+      results.errors.push(`Failed to create test employee: ${empErr.message}`);
+      return results;
+    }
+    testEmployeeId = newEmp.id;
+    results.steps.push("Created demo employee: " + testEmployeeId);
+  }
+
+  // Step 2: Create/update employee mapping
+  if (deviceId) {
+    await supabase.from("hikvision_employee_mapping").upsert({
+      device_employee_code: testEmployeeCode, device_employee_name: testEmployeeName,
+      device_id: deviceId, erp_employee_id: testEmployeeId,
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "device_employee_code,device_id" });
+    results.steps.push("Employee mapping upserted");
+  }
+
+  // Step 3: Insert 5 mock attendance events (today, simulating check-in at 9am, 9:01 dupe, 1pm, 5pm check-out, 5:01 dupe)
+  const today = new Date();
+  const dateStr = today.toISOString().substring(0, 10);
+  const mockEvents = [
+    { time: `${dateStr}T09:00:00+05:30`, status: "checkIn", serial: "100001" },
+    { time: `${dateStr}T09:01:00+05:30`, status: "checkIn", serial: "100002" }, // near-dupe
+    { time: `${dateStr}T13:00:00+05:30`, status: "breakOut", serial: "100003" },
+    { time: `${dateStr}T17:00:00+05:30`, status: "checkOut", serial: "100004" },
+    { time: `${dateStr}T17:01:00+05:30`, status: "checkOut", serial: "100005" }, // near-dupe
+  ];
+
+  const deviceSerial = "DEMO-DEVICE-001";
+  let logsCreated = 0;
+
+  for (const evt of mockEvents) {
+    const dedupeKey = buildDedupeKey(deviceSerial, evt.serial);
+    const { error } = await supabase.from("hikvision_attendance_logs").upsert({
+      device_id: deviceId, employee_code: testEmployeeCode, employee_name: testEmployeeName,
+      employee_id: testEmployeeId, device_ip: deviceSerial,
+      device_name: "Demo Device", event_time: evt.time, event_type: "attendance",
+      raw_data: { demo: true, AccessControllerEvent: { employeeNoString: testEmployeeCode, attendanceStatus: evt.status, serialNo: evt.serial } },
+      dedupe_key: dedupeKey, source_mode: "demo-test",
+      attendance_status: evt.status, verify_mode: "faceRecognition",
+      event_serial_no: evt.serial,
+    }, { onConflict: "dedupe_key" });
+
+    if (!error) logsCreated++;
+    else results.errors.push(`Log insert error: ${error.message}`);
+  }
+  results.attendance_logs_created = logsCreated;
+  results.steps.push(`Inserted ${logsCreated}/5 attendance logs (deduped)`);
+
+  // Step 4: Convert to attendance_records (first event = check_in, last event = check_out)
+  if (testEmployeeId) {
+    const { data: existing } = await supabase
+      .from("attendance_records").select("id").eq("employee_id", testEmployeeId).eq("date", dateStr).maybeSingle();
+
+    if (existing) {
+      // Update with check-out
+      await supabase.from("attendance_records").update({
+        check_out: `${dateStr}T17:00:00+05:30`,
+      }).eq("id", existing.id);
+      results.steps.push("Updated existing attendance record with check-out");
+      results.attendance_records_created = 1;
+    } else {
+      const { error: recErr } = await supabase.from("attendance_records").insert({
+        employee_id: testEmployeeId, date: dateStr,
+        check_in: `${dateStr}T09:00:00+05:30`, check_out: `${dateStr}T17:00:00+05:30`,
+        source: "biometric", device_id: deviceSerial,
+        notes: "Demo test — auto-created",
+      });
+      if (recErr) results.errors.push(`Attendance record error: ${recErr.message}`);
+      else results.attendance_records_created = 1;
+      results.steps.push("Created attendance record (check-in 9:00, check-out 17:00)");
+    }
+  }
+
+  // Step 5: Verify
+  const { data: verifyLogs } = await supabase
+    .from("hikvision_attendance_logs").select("id, event_time, attendance_status, dedupe_key")
+    .eq("employee_code", testEmployeeCode).eq("source_mode", "demo-test").order("event_time");
+  results.verification = {
+    logs_in_db: verifyLogs?.length || 0,
+    logs: verifyLogs || [],
+  };
+
+  const { data: verifyRecord } = await supabase
+    .from("attendance_records").select("id, date, check_in, check_out, source")
+    .eq("employee_id", testEmployeeId).eq("date", dateStr).maybeSingle();
+  results.verification.attendance_record = verifyRecord || null;
+
+  results.steps.push("Verification complete");
+  results.success = results.errors.length === 0;
+
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Main HTTP Handler
 // ═══════════════════════════════════════════════════════════════
 serve(async (req: Request) => {
@@ -434,6 +624,19 @@ serve(async (req: Request) => {
     const { action, device_id } = body;
     console.log(`\n========== ACTION: ${action} | device_id: ${device_id} ==========`);
     const device_serial = await getDeviceSerial(supabase, body);
+
+    // ═══════════════════════════════════════════════
+    // ACTION: demo-test — End-to-end pipeline test with mock data
+    // ═══════════════════════════════════════════════
+    if (action === "demo-test") {
+      try {
+        const result = await runDemoTest(supabase, device_id || null);
+        await logSync(supabase, device_id || null, "demo_test", result.success ? "success" : "error", "demo", result.attendance_logs_created);
+        return jsonResp(result);
+      } catch (e) {
+        return jsonResp({ success: false, error: e instanceof Error ? e.message : "Demo test failed" });
+      }
+    }
 
     // ═══════════════════════════════════════════════
     // ACTION: test-credentials — Validate backend secrets
@@ -597,27 +800,30 @@ serve(async (req: Request) => {
     }
 
     // ═══════════════════════════════════════════════
-    // ACTION: full-sync
+    // ACTION: full-sync — Direct calls (not recursive HTTP)
     // ═══════════════════════════════════════════════
     if (action === "full-sync") {
       const results: Record<string, any> = {};
-      const baseUrl = `${supabaseUrl}/functions/v1/hikvision-sync`;
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: authHeader,
-      };
+      const { accessToken, areaDomain } = await getHppToken();
 
-      for (const subAction of ["sync-employees", "sync-attendance"]) {
+      // Sync employees
+      try {
         try {
-          const resp = await fetch(baseUrl, {
-            method: "POST", headers,
-            body: JSON.stringify({ action: subAction, device_id, device_serial }),
-            signal: AbortSignal.timeout(120000),
-          });
-          results[subAction] = await resp.json();
-        } catch (e) {
-          results[subAction] = { success: false, error: e instanceof Error ? e.message : "Failed" };
+          results["sync-employees"] = await isapiSyncEmployees(areaDomain, accessToken, device_serial, device_id, supabase);
+        } catch {
+          results["sync-employees"] = await syncEmployeesFromLogs(device_id, supabase);
         }
+        await logSync(supabase, device_id, "full_sync_employees", "success", "employee", results["sync-employees"].records_synced);
+      } catch (e) {
+        results["sync-employees"] = { success: false, error: e instanceof Error ? e.message : "Failed" };
+      }
+
+      // Sync attendance via MQ
+      try {
+        results["sync-attendance"] = await pollMqAttendance(areaDomain, accessToken, device_serial, device_id, supabase);
+        await logSync(supabase, device_id, "full_sync_attendance", "success", "attendance", results["sync-attendance"].records_synced);
+      } catch (e) {
+        results["sync-attendance"] = { success: false, error: e instanceof Error ? e.message : "Failed" };
       }
 
       const allSuccess = Object.values(results).every((r: any) => r.success);

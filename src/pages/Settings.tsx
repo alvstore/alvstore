@@ -21,7 +21,7 @@ import {
 import {
   User, Shield, Building2, Receipt, Mail, MessageSquare, Phone,
   Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock,
-  Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench,
+  Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench, Code,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -1220,6 +1220,48 @@ function HikvisionTab() {
       {/* Step 4: Sync & Monitor */}
       {step === 4 && (
         <div className="space-y-4">
+          {/* Demo Test Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><TestTube className="h-4 w-4" /> End-to-End Pipeline Test</CardTitle>
+              <CardDescription>Insert mock attendance events, process them through dedup + attendance pipeline, and verify results — no real device needed.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                variant="outline"
+                onClick={() => runDeviceSync(savedDevices[0]?.id || "", savedDevices[0]?.device_serial || "", "demo-test")}
+                disabled={!!syncingAction}
+              >
+                {syncingAction?.includes("demo-test") ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5 mr-1.5" />}
+                Run Demo Test
+              </Button>
+              {syncResults[`${savedDevices[0]?.id || ""}-demo-test`] && (
+                <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1 overflow-auto max-h-60">
+                  <p className="font-semibold text-foreground">Test Results:</p>
+                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].steps?.map((s: string, i: number) => (
+                    <p key={i} className="text-muted-foreground">• {s}</p>
+                  ))}
+                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].errors?.length > 0 && (
+                    <div className="text-destructive mt-2">
+                      <p className="font-semibold">Errors:</p>
+                      {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].errors.map((e: string, i: number) => (
+                        <p key={i}>✗ {e}</p>
+                      ))}
+                    </div>
+                  )}
+                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification && (
+                    <div className="mt-2 border-t border-border pt-2">
+                      <p className="font-semibold text-foreground">Verification:</p>
+                      <p>Logs in DB: {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.logs_in_db}</p>
+                      <p>Attendance record: {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record ? 
+                        `✓ ${syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record.check_in} → ${syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record.check_out || "pending"}` : "✗ None"}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Webhook Config Card */}
           <Card>
             <CardHeader>
@@ -1237,6 +1279,45 @@ function HikvisionTab() {
                 In Hik-Partner Pro → Webhook → Save Config, set this as your callback URL. Enable HMAC signing for security.
                 Once configured, attendance events will be received automatically without polling.
               </p>
+            </CardContent>
+          </Card>
+
+          {/* Curl Examples Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><Code className="h-4 w-4" /> API & Curl Examples</CardTitle>
+              <CardDescription>Test each action directly via curl. Replace YOUR_JWT with your auth token.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="bg-muted/50 rounded-lg p-3 font-mono text-[10px] leading-relaxed overflow-x-auto space-y-3">
+                <div>
+                  <p className="text-foreground font-semibold text-xs mb-1"># Test credentials</p>
+                  <p className="text-muted-foreground break-all">curl -X POST https://hqdacqysfhzrpjktwrbm.supabase.co/functions/v1/hikvision-sync \</p>
+                  <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
+                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
+                  <p className="text-muted-foreground">  -d '{`{"action":"test-credentials"}`}'</p>
+                </div>
+                <div>
+                  <p className="text-foreground font-semibold text-xs mb-1"># Demo test (no device needed)</p>
+                  <p className="text-muted-foreground break-all">curl -X POST https://hqdacqysfhzrpjktwrbm.supabase.co/functions/v1/hikvision-sync \</p>
+                  <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
+                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
+                  <p className="text-muted-foreground">  -d '{`{"action":"demo-test"}`}'</p>
+                </div>
+                <div>
+                  <p className="text-foreground font-semibold text-xs mb-1"># Backfill attendance (ISAPI)</p>
+                  <p className="text-muted-foreground break-all">curl -X POST https://hqdacqysfhzrpjktwrbm.supabase.co/functions/v1/hikvision-sync \</p>
+                  <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
+                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
+                  <p className="text-muted-foreground">  -d '{`{"action":"backfill-attendance","device_id":"YOUR_DEVICE_ID","start_time":"2026-04-01T00:00:00","end_time":"2026-04-06T23:59:59"}`}'</p>
+                </div>
+                <div>
+                  <p className="text-foreground font-semibold text-xs mb-1"># Test webhook (simulate Hik push)</p>
+                  <p className="text-muted-foreground break-all">curl -X POST {webhookUrl} \</p>
+                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
+                  <p className="text-muted-foreground">  -d '{`{"events":[{"deviceSerial":"DS-K1T341AM","alarmData":{"eventType":"AccessControllerEvent","dateTime":"2026-04-06T09:00:00+05:30","AccessControllerEvent":{"employeeNoString":"1001","name":"Test","attendanceStatus":"checkIn","serialNo":"999999","currentVerifyMode":"faceRecognition"}}}]}`}'</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -1316,6 +1397,16 @@ function HikvisionTab() {
                         </span>
                       )}
                     </div>
+
+                    {/* MQ Poll Details */}
+                    {syncResults[`${d.id}-sync-attendance`]?.details && (
+                      <div className="border-t border-border pt-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">MQ Poll Details</p>
+                        <div className="bg-muted/50 rounded p-2 text-[10px] text-muted-foreground space-y-0.5">
+                          {syncResults[`${d.id}-sync-attendance`].details.map((d: string, i: number) => <p key={i}>• {d}</p>)}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
