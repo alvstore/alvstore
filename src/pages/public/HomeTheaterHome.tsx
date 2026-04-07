@@ -643,6 +643,8 @@ export default function HomeTheaterHome() {
         )}
       </AnimatePresence>
 
+      <GoldDivider />
+
       {/* ══════ TESTIMONIALS — Auto-Scroll Carousel ══════ */}
       <FadeSection className="py-24 overflow-hidden" style={{ background: CINEMA_COLORS.DEEP_NAVY }}>
         <div className="max-w-7xl mx-auto px-6">
