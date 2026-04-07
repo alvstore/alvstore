@@ -1938,6 +1938,7 @@ export type Database = {
         Row: {
           bank_charges: number
           bank_name: string | null
+          card_network: string | null
           card_type: string | null
           cheque_clearance_date: string | null
           cheque_deposit_date: string | null
@@ -1946,6 +1947,7 @@ export type Database = {
           created_by: string | null
           customer_id: string | null
           customer_name: string
+          deposit_bank_name: string | null
           difference_amount: number | null
           difference_type: string | null
           document_url: string | null
@@ -1953,11 +1955,14 @@ export type Database = {
           invoice_amount: number
           invoice_id: string | null
           invoice_number: string | null
+          mdr_percentage: number | null
           net_received_amount: number | null
           notes: string | null
           payment_mode: string
+          payment_sub_mode: string | null
           received_amount: number
           register_number: string
+          settlement_date: string | null
           status: string
           transaction_date: string
           transaction_reference: string | null
@@ -1965,6 +1970,7 @@ export type Database = {
         Insert: {
           bank_charges?: number
           bank_name?: string | null
+          card_network?: string | null
           card_type?: string | null
           cheque_clearance_date?: string | null
           cheque_deposit_date?: string | null
@@ -1973,6 +1979,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string | null
           customer_name: string
+          deposit_bank_name?: string | null
           difference_amount?: number | null
           difference_type?: string | null
           document_url?: string | null
@@ -1980,11 +1987,14 @@ export type Database = {
           invoice_amount?: number
           invoice_id?: string | null
           invoice_number?: string | null
+          mdr_percentage?: number | null
           net_received_amount?: number | null
           notes?: string | null
           payment_mode?: string
+          payment_sub_mode?: string | null
           received_amount?: number
           register_number?: string
+          settlement_date?: string | null
           status?: string
           transaction_date?: string
           transaction_reference?: string | null
@@ -1992,6 +2002,7 @@ export type Database = {
         Update: {
           bank_charges?: number
           bank_name?: string | null
+          card_network?: string | null
           card_type?: string | null
           cheque_clearance_date?: string | null
           cheque_deposit_date?: string | null
@@ -2000,6 +2011,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string | null
           customer_name?: string
+          deposit_bank_name?: string | null
           difference_amount?: number | null
           difference_type?: string | null
           document_url?: string | null
@@ -2007,11 +2019,14 @@ export type Database = {
           invoice_amount?: number
           invoice_id?: string | null
           invoice_number?: string | null
+          mdr_percentage?: number | null
           net_received_amount?: number | null
           notes?: string | null
           payment_mode?: string
+          payment_sub_mode?: string | null
           received_amount?: number
           register_number?: string
+          settlement_date?: string | null
           status?: string
           transaction_date?: string
           transaction_reference?: string | null
