@@ -20,6 +20,7 @@ import { motion, useInView, AnimatePresence } from "framer-motion";
 import { CINEMA_COLORS, TYPOGRAPHY, ANIMATION } from "@/lib/design-system";
 
 const CinemaParticles = lazy(() => import("@/components/home-theater/CinemaParticles"));
+const TheaterRoom3D = lazy(() => import("@/components/home-theater/TheaterRoom3D"));
 
 // ─── Data ────────────────────────────────────────
 const SERVICES = [
@@ -219,6 +220,25 @@ function FlipCard({ service, index }: { service: typeof SERVICES[0]; index: numb
   );
 }
 
+// ─── Section Divider ───
+function GoldDivider() {
+  return (
+    <div className="flex justify-center py-2">
+      <div className="w-32 h-[1px]" style={{ background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.GOLD}60, transparent)` }} />
+    </div>
+  );
+}
+
+// ─── Ambient Glow Orb ───
+function GlowOrb({ className }: { className?: string }) {
+  return (
+    <div
+      className={`absolute rounded-full blur-[120px] pointer-events-none ${className}`}
+      style={{ background: `radial-gradient(circle, ${CINEMA_COLORS.GOLD}12, transparent 70%)` }}
+    />
+  );
+}
+
 // ═══════════════════════════════════════════════
 // MAIN PAGE
 // ═══════════════════════════════════════════════
@@ -236,6 +256,23 @@ export default function HomeTheaterHome() {
     const handler = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", handler, { passive: true });
     return () => window.removeEventListener("scroll", handler);
+  }, []);
+
+  // SEO: Dynamic title & meta
+  useEffect(() => {
+    document.title = "ALV Store — Premium Home Theater & Dolby Atmos Installation | Udaipur, Rajasthan";
+    const setMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`);
+      if (!el) { el = document.createElement("meta"); el.setAttribute("name", name); document.head.appendChild(el); }
+      el.setAttribute("content", content);
+    };
+    setMeta("description", "Premium Dolby Atmos home theater installations, 4K laser projection, acoustic design & Apple products. Expert installations in Udaipur, Jaipur & across Rajasthan.");
+    setMeta("robots", "index, follow");
+
+    // Canonical
+    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement;
+    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
+    canonical.href = window.location.origin + "/";
   }, []);
 
   const handleLeadSubmit = async (e: React.FormEvent) => {
@@ -481,11 +518,45 @@ export default function HomeTheaterHome() {
         </div>
       </FadeSection>
 
+      <GoldDivider />
+
+      {/* ══════ 3D THEATER ROOM PREVIEW ══════ */}
+      <FadeSection className="py-16 relative">
+        <GlowOrb className="w-[400px] h-[400px] top-0 left-1/4" />
+        <div className="max-w-7xl mx-auto px-6 text-center mb-8">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>3D Room Preview</p>
+          <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE }}>
+            Your Cinema, Visualized
+          </h2>
+          <p className="text-sm mt-3 max-w-lg mx-auto" style={{ color: "rgba(255,255,255,0.4)" }}>
+            Scroll to explore a wireframe theater room — speakers, screen, and seating come alive as you move.
+          </p>
+        </div>
+        {!isMobile && (
+          <Suspense fallback={<div className="h-[500px]" />}>
+            <TheaterRoom3D />
+          </Suspense>
+        )}
+        {isMobile && (
+          <div className="h-[300px] flex items-center justify-center rounded-2xl mx-6" style={{ background: "rgba(255,215,0,0.03)", border: "1px solid rgba(255,215,0,0.08)" }}>
+            <div className="text-center">
+              <Monitor className="h-16 w-16 mx-auto mb-4" style={{ color: "rgba(255,215,0,0.15)" }} />
+              <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>View on desktop for 3D experience</p>
+            </div>
+          </div>
+        )}
+      </FadeSection>
+
+      <GoldDivider />
+
       {/* ══════ CONFIGURATOR ══════ */}
       <Configurator />
 
+      <GoldDivider />
+
       {/* ══════ PROJECT GALLERY — Masonry ══════ */}
-      <FadeSection id="projects" className="py-24">
+      <FadeSection id="projects" className="py-24 relative">
+        <GlowOrb className="w-[300px] h-[300px] top-20 right-10" />
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>Portfolio</p>
@@ -572,6 +643,8 @@ export default function HomeTheaterHome() {
         )}
       </AnimatePresence>
 
+      <GoldDivider />
+
       {/* ══════ TESTIMONIALS — Auto-Scroll Carousel ══════ */}
       <FadeSection className="py-24 overflow-hidden" style={{ background: CINEMA_COLORS.DEEP_NAVY }}>
         <div className="max-w-7xl mx-auto px-6">
@@ -625,8 +698,11 @@ export default function HomeTheaterHome() {
         </div>
       </FadeSection>
 
+      <GoldDivider />
+
       {/* ══════ CONSULTATION / CONTACT FORM ══════ */}
-      <FadeSection id="consultation" className="py-24">
+      <FadeSection id="consultation" className="py-24 relative">
+        <GlowOrb className="w-[350px] h-[350px] bottom-0 left-0" />
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
             <div>
