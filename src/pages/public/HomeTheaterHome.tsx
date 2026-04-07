@@ -698,8 +698,11 @@ export default function HomeTheaterHome() {
         </div>
       </FadeSection>
 
+      <GoldDivider />
+
       {/* ══════ CONSULTATION / CONTACT FORM ══════ */}
-      <FadeSection id="consultation" className="py-24">
+      <FadeSection id="consultation" className="py-24 relative">
+        <GlowOrb className="w-[350px] h-[350px] bottom-0 left-0" />
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
             <div>
