@@ -20,6 +20,7 @@ import { motion, useInView, AnimatePresence } from "framer-motion";
 import { CINEMA_COLORS, TYPOGRAPHY, ANIMATION } from "@/lib/design-system";
 
 const CinemaParticles = lazy(() => import("@/components/home-theater/CinemaParticles"));
+const TheaterRoom3D = lazy(() => import("@/components/home-theater/TheaterRoom3D"));
 
 // ─── Data ────────────────────────────────────────
 const SERVICES = [
