@@ -552,8 +552,10 @@ export default function HomeTheaterHome() {
       {/* ══════ CONFIGURATOR ══════ */}
       <Configurator />
 
+      <GoldDivider />
+
       {/* ══════ PROJECT GALLERY — Masonry ══════ */}
-      <FadeSection id="projects" className="py-24">
+      <FadeSection id="projects" className="py-24 relative">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>Portfolio</p>
