@@ -220,6 +220,25 @@ function FlipCard({ service, index }: { service: typeof SERVICES[0]; index: numb
   );
 }
 
+// ─── Section Divider ───
+function GoldDivider() {
+  return (
+    <div className="flex justify-center py-2">
+      <div className="w-32 h-[1px]" style={{ background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.GOLD}60, transparent)` }} />
+    </div>
+  );
+}
+
+// ─── Ambient Glow Orb ───
+function GlowOrb({ className }: { className?: string }) {
+  return (
+    <div
+      className={`absolute rounded-full blur-[120px] pointer-events-none ${className}`}
+      style={{ background: `radial-gradient(circle, ${CINEMA_COLORS.GOLD}12, transparent 70%)` }}
+    />
+  );
+}
+
 // ═══════════════════════════════════════════════
 // MAIN PAGE
 // ═══════════════════════════════════════════════
@@ -237,6 +256,23 @@ export default function HomeTheaterHome() {
     const handler = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", handler, { passive: true });
     return () => window.removeEventListener("scroll", handler);
+  }, []);
+
+  // SEO: Dynamic title & meta
+  useEffect(() => {
+    document.title = "ALV Store — Premium Home Theater & Dolby Atmos Installation | Udaipur, Rajasthan";
+    const setMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`);
+      if (!el) { el = document.createElement("meta"); el.setAttribute("name", name); document.head.appendChild(el); }
+      el.setAttribute("content", content);
+    };
+    setMeta("description", "Premium Dolby Atmos home theater installations, 4K laser projection, acoustic design & Apple products. Expert installations in Udaipur, Jaipur & across Rajasthan.");
+    setMeta("robots", "index, follow");
+
+    // Canonical
+    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement;
+    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
+    canonical.href = window.location.origin + "/";
   }, []);
 
   const handleLeadSubmit = async (e: React.FormEvent) => {
