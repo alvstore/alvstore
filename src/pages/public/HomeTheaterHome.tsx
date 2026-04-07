@@ -518,6 +518,37 @@ export default function HomeTheaterHome() {
         </div>
       </FadeSection>
 
+      <GoldDivider />
+
+      {/* ══════ 3D THEATER ROOM PREVIEW ══════ */}
+      <FadeSection className="py-16 relative">
+        <GlowOrb className="w-[400px] h-[400px] top-0 left-1/4" />
+        <div className="max-w-7xl mx-auto px-6 text-center mb-8">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>3D Room Preview</p>
+          <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE }}>
+            Your Cinema, Visualized
+          </h2>
+          <p className="text-sm mt-3 max-w-lg mx-auto" style={{ color: "rgba(255,255,255,0.4)" }}>
+            Scroll to explore a wireframe theater room — speakers, screen, and seating come alive as you move.
+          </p>
+        </div>
+        {!isMobile && (
+          <Suspense fallback={<div className="h-[500px]" />}>
+            <TheaterRoom3D />
+          </Suspense>
+        )}
+        {isMobile && (
+          <div className="h-[300px] flex items-center justify-center rounded-2xl mx-6" style={{ background: "rgba(255,215,0,0.03)", border: "1px solid rgba(255,215,0,0.08)" }}>
+            <div className="text-center">
+              <Monitor className="h-16 w-16 mx-auto mb-4" style={{ color: "rgba(255,215,0,0.15)" }} />
+              <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>View on desktop for 3D experience</p>
+            </div>
+          </div>
+        )}
+      </FadeSection>
+
+      <GoldDivider />
+
       {/* ══════ CONFIGURATOR ══════ */}
       <Configurator />
 
