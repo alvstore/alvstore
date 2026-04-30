@@ -21,6 +21,8 @@ import { CINEMA_COLORS, TYPOGRAPHY, ANIMATION } from "@/lib/design-system";
 
 const CinemaParticles = lazy(() => import("@/components/home-theater/CinemaParticles"));
 const TheaterRoom3D = lazy(() => import("@/components/home-theater/TheaterRoom3D"));
+const SpeakerEvolution = lazy(() => import("@/components/home-theater/SpeakerEvolution"));
+const SoundstageSection = lazy(() => import("@/components/home-theater/SoundstageSection"));
 
 // ─── Data ────────────────────────────────────────
 const SERVICES = [
