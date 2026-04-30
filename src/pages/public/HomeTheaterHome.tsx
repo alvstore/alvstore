@@ -408,37 +408,42 @@ export default function HomeTheaterHome() {
 
       <div className="curtain-divider" />
 
-      {/* ══════ SERVICES — 3D Flip Cards ══════ */}
-      <FadeSection id="services" className="py-24 relative" >
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>Our Signature Systems</p>
-            <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, lineHeight: TYPOGRAPHY.scale.h2.lineHeight, color: CINEMA_COLORS.WARM_WHITE }}>
-              Crafted For Perfection
-            </h2>
-            {/* Animated underline */}
-            <motion.div
-              className="h-[2px] mx-auto mt-4"
-              initial={{ width: 0 }}
-              whileInView={{ width: 80 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              style={{ background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.GOLD}, transparent)` }}
-            />
-          </div>
+      {/* ══════ SERVICES — Ivory lobby section ══════ */}
+      <div className="bg-lobby-warm relative">
+        <FadeSection id="services" className="py-24 relative">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="text-center mb-16">
+              <p className="text-xs font-medium uppercase tracking-[0.3em] mb-4 text-champagne-deep">
+                Our Signature Systems
+              </p>
+              <h2 className="text-stage-dark" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, lineHeight: TYPOGRAPHY.scale.h2.lineHeight }}>
+                Crafted For <span className="text-champagne-gradient">Perfection</span>
+              </h2>
+              <p className="text-sm mt-4 max-w-xl mx-auto text-stage-dark/60">
+                Four signature systems. Designed, installed, calibrated.
+              </p>
+              <motion.div
+                className="h-[2px] mx-auto mt-6"
+                initial={{ width: 0 }}
+                whileInView={{ width: 80 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+                style={{ background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.CHAMPAGNE}, transparent)` }}
+              />
+            </div>
 
-          {/* Horizontal scroll on mobile, grid on desktop */}
-          <div className="flex md:grid md:grid-cols-4 gap-6 overflow-x-auto md:overflow-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-hide">
-            {SERVICES.map((s, i) => (
-              <div key={s.title} className="snap-center">
-                <FlipCard service={s} index={i} />
-              </div>
-            ))}
+            <div className="flex md:grid md:grid-cols-4 gap-6 overflow-x-auto md:overflow-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-hide">
+              {SERVICES.map((s, i) => (
+                <div key={s.title} className="snap-center">
+                  <FlipCard service={s} index={i} />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </FadeSection>
+        </FadeSection>
+      </div>
 
-      <GoldDivider />
+      <div className="curtain-divider" />
 
       {/* ══════ 3D THEATER ROOM PREVIEW ══════ */}
       <FadeSection className="py-16 relative">
