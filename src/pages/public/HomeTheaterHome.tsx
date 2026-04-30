@@ -21,6 +21,8 @@ import { CINEMA_COLORS, TYPOGRAPHY, ANIMATION } from "@/lib/design-system";
 
 const CinemaParticles = lazy(() => import("@/components/home-theater/CinemaParticles"));
 const TheaterRoom3D = lazy(() => import("@/components/home-theater/TheaterRoom3D"));
+const SpeakerEvolution = lazy(() => import("@/components/home-theater/SpeakerEvolution"));
+const SoundstageSection = lazy(() => import("@/components/home-theater/SoundstageSection"));
 
 // ─── Data ────────────────────────────────────────
 const SERVICES = [
@@ -317,7 +319,7 @@ export default function HomeTheaterHome() {
   };
 
   return (
-    <div className="min-h-screen text-white overflow-hidden" style={{ background: CINEMA_COLORS.BLACK, fontFamily: TYPOGRAPHY.fontBody }}>
+    <div className="min-h-screen text-white overflow-hidden bg-stage" style={{ fontFamily: TYPOGRAPHY.fontBody }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       {/* ══════ FIXED NAV ══════ */}
@@ -326,8 +328,8 @@ export default function HomeTheaterHome() {
           scrolled ? "backdrop-blur-2xl border-b shadow-2xl" : "bg-transparent"
         }`}
         style={{
-          background: scrolled ? "rgba(0,0,0,0.9)" : "transparent",
-          borderColor: scrolled ? "rgba(255,255,255,0.05)" : "transparent",
+          background: scrolled ? "rgba(14,11,20,0.85)" : "transparent",
+          borderColor: scrolled ? "rgba(232,184,108,0.15)" : "transparent",
         }}
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
@@ -391,134 +393,57 @@ export default function HomeTheaterHome() {
         </AnimatePresence>
       </nav>
 
-      {/* ══════ HERO ══════ */}
-      <section className="relative min-h-screen flex items-center justify-center">
-        {/* Particle starfield — desktop only */}
-        {!isMobile && (
-          <div className="absolute inset-0 z-0">
-            <Suspense fallback={<div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${CINEMA_COLORS.DEEP_NAVY}, ${CINEMA_COLORS.BLACK})` }} />}>
-              <CinemaParticles />
-            </Suspense>
+      {/* ══════ HERO — Speaker Evolution (scroll-pinned) ══════ */}
+      <Suspense fallback={<div className="h-screen bg-stage-plum" />}>
+        <SpeakerEvolution />
+      </Suspense>
+
+      {/* Curtain divider */}
+      <div className="curtain-divider" />
+
+      {/* ══════ SOUNDSTAGE — 7.1.4 Atmos diagram ══════ */}
+      <Suspense fallback={<div className="h-[600px] bg-stage-deep" />}>
+        <SoundstageSection />
+      </Suspense>
+
+      <div className="curtain-divider" />
+
+      {/* ══════ SERVICES — Ivory lobby section ══════ */}
+      <div className="bg-lobby-warm relative">
+        <FadeSection id="services" className="py-24 relative">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="text-center mb-16">
+              <p className="text-xs font-medium uppercase tracking-[0.3em] mb-4 text-champagne-deep">
+                Our Signature Systems
+              </p>
+              <h2 className="text-stage-dark" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, lineHeight: TYPOGRAPHY.scale.h2.lineHeight }}>
+                Crafted For <span className="text-champagne-gradient">Perfection</span>
+              </h2>
+              <p className="text-sm mt-4 max-w-xl mx-auto text-stage-dark/60">
+                Four signature systems. Designed, installed, calibrated.
+              </p>
+              <motion.div
+                className="h-[2px] mx-auto mt-6"
+                initial={{ width: 0 }}
+                whileInView={{ width: 80 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+                style={{ background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.CHAMPAGNE}, transparent)` }}
+              />
+            </div>
+
+            <div className="flex md:grid md:grid-cols-4 gap-6 overflow-x-auto md:overflow-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-hide">
+              {SERVICES.map((s, i) => (
+                <div key={s.title} className="snap-center">
+                  <FlipCard service={s} index={i} />
+                </div>
+              ))}
+            </div>
           </div>
-        )}
+        </FadeSection>
+      </div>
 
-        {/* Mobile fallback */}
-        {isMobile && (
-          <div className="absolute inset-0 z-0" style={{ background: `linear-gradient(135deg, ${CINEMA_COLORS.DEEP_NAVY}, ${CINEMA_COLORS.BLACK} 60%)` }}>
-            <div className="absolute top-1/4 left-1/4 w-[250px] h-[250px] rounded-full blur-[100px]" style={{ background: `${CINEMA_COLORS.GOLD}15` }} />
-            <div className="absolute bottom-1/3 right-1/4 w-[180px] h-[180px] rounded-full blur-[80px]" style={{ background: `${CINEMA_COLORS.AMBER}10` }} />
-          </div>
-        )}
-
-        {/* Subtle overlay vignette */}
-        <div className="absolute inset-0 z-[1]" style={{ background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.6) 100%)" }} />
-
-        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium mb-8"
-            style={{
-              background: "rgba(255,215,0,0.08)",
-              border: "1px solid rgba(255,215,0,0.2)",
-              color: CINEMA_COLORS.GOLD,
-            }}
-          >
-            <div className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: CINEMA_COLORS.GOLD }} />
-            Premium Home Theater Experts
-          </motion.div>
-
-          <h1 className="mb-6" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.display.size, lineHeight: TYPOGRAPHY.scale.display.lineHeight, fontWeight: TYPOGRAPHY.scale.display.weight }}>
-            <AnimatedHeading text="EXPERIENCE" className="block" />
-            <AnimatedHeading text="CINEMA AT HOME" className="block" />
-          </h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.2 }}
-            className="text-lg md:text-xl max-w-2xl mx-auto mb-10"
-            style={{ color: "rgba(255,255,255,0.45)", fontFamily: TYPOGRAPHY.fontBody }}
-          >
-            Premium Dolby Atmos installations, 4K laser projection, and bespoke acoustic design — crafted for your space.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 1.6 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <button
-              className="px-8 py-3.5 rounded-lg text-base font-semibold transition-all"
-              style={{
-                border: `2px solid ${CINEMA_COLORS.GOLD}`,
-                color: CINEMA_COLORS.BLACK,
-                background: CINEMA_COLORS.GOLD,
-                boxShadow: `0 0 30px ${CINEMA_COLORS.GOLD}33, 0 0 60px ${CINEMA_COLORS.GOLD}11`,
-              }}
-              onClick={() => document.getElementById("services")?.scrollIntoView({ behavior: "smooth" })}
-            >
-              Explore Our Work
-            </button>
-            <button
-              className="px-8 py-3.5 rounded-lg text-base font-medium transition-colors"
-              style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", background: "transparent" }}
-              onClick={() => document.getElementById("configurator")?.scrollIntoView({ behavior: "smooth" })}
-            >
-              Design Your Theater
-            </button>
-          </motion.div>
-
-          {/* Scroll indicator */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 2.2 }}
-            className="absolute bottom-8 left-1/2 -translate-x-1/2"
-          >
-            <motion.div
-              animate={{ y: [0, 10, 0] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <ChevronDown className="h-6 w-6" style={{ color: "rgba(255,215,0,0.4)" }} />
-            </motion.div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════ SERVICES — 3D Flip Cards ══════ */}
-      <FadeSection id="services" className="py-24 relative" >
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>Our Signature Systems</p>
-            <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, lineHeight: TYPOGRAPHY.scale.h2.lineHeight, color: CINEMA_COLORS.WARM_WHITE }}>
-              Crafted For Perfection
-            </h2>
-            {/* Animated underline */}
-            <motion.div
-              className="h-[2px] mx-auto mt-4"
-              initial={{ width: 0 }}
-              whileInView={{ width: 80 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              style={{ background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.GOLD}, transparent)` }}
-            />
-          </div>
-
-          {/* Horizontal scroll on mobile, grid on desktop */}
-          <div className="flex md:grid md:grid-cols-4 gap-6 overflow-x-auto md:overflow-visible pb-4 md:pb-0 snap-x snap-mandatory scrollbar-hide">
-            {SERVICES.map((s, i) => (
-              <div key={s.title} className="snap-center">
-                <FlipCard service={s} index={i} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </FadeSection>
-
-      <GoldDivider />
+      <div className="curtain-divider" />
 
       {/* ══════ 3D THEATER ROOM PREVIEW ══════ */}
       <FadeSection className="py-16 relative">
@@ -554,50 +479,64 @@ export default function HomeTheaterHome() {
 
       <GoldDivider />
 
-      {/* ══════ PROJECT GALLERY — Masonry ══════ */}
-      <FadeSection id="projects" className="py-24 relative">
-        <GlowOrb className="w-[300px] h-[300px] top-20 right-10" />
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>Portfolio</p>
-            <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE }}>
-              Our Projects
-            </h2>
-          </div>
+      {/* ══════ PROJECT GALLERY — "Now Showing" on ivory ══════ */}
+      <div className="bg-lobby-warm relative">
+        <FadeSection id="projects" className="py-24 relative">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="text-center mb-12">
+              <p className="text-xs font-medium uppercase tracking-[0.3em] mb-4 text-champagne-deep">Portfolio</p>
+              <h2 className="text-stage-dark mb-4" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size }}>
+                Now <span className="text-champagne-gradient">Showing</span>
+              </h2>
+              <p className="text-sm text-stage-dark/60 max-w-md mx-auto">
+                Real installations across Rajasthan, Mumbai & Delhi.
+              </p>
+            </div>
 
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
-            {PROJECTS.map((p, i) => {
-              const heights = ["h-64", "h-80", "h-56", "h-72", "h-60", "h-80"];
-              return (
-                <motion.div
-                  key={p.title}
-                  initial={{ opacity: 0, y: 40 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className={`${heights[i]} break-inside-avoid rounded-2xl overflow-hidden relative group cursor-pointer`}
-                  style={{ background: `linear-gradient(135deg, rgba(255,215,0,0.06), rgba(5,10,24,0.8))` }}
-                  onClick={() => setLightbox(i)}
-                >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Monitor className="h-16 w-16" style={{ color: "rgba(255,215,0,0.08)" }} />
-                  </div>
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-2">
-                    <p className="text-lg font-bold" style={{ fontFamily: TYPOGRAPHY.fontDisplay, color: CINEMA_COLORS.GOLD }}>{p.title}</p>
-                    <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
-                      <MapPin className="h-3 w-3 inline mr-1" />{p.location}
-                    </p>
-                    <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{p.config}</p>
-                  </div>
-                  {/* Scale on hover */}
-                  <style>{`.group:hover > div:first-child { transform: scale(1.05); }`}</style>
-                </motion.div>
-              );
-            })}
+            {/* Marquee strip */}
+            <div className="overflow-hidden mb-12 py-4 border-y border-champagne-deep/20">
+              <div className="flex gap-12 whitespace-nowrap animate-marquee" style={{ width: "max-content" }}>
+                {[...PROJECTS, ...PROJECTS].map((p, i) => (
+                  <span key={i} className="text-champagne-deep text-xs uppercase tracking-[0.4em]" style={{ fontFamily: TYPOGRAPHY.fontDisplay }}>
+                    ★ {p.title} · {p.location}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
+              {PROJECTS.map((p, i) => {
+                const heights = ["h-64", "h-80", "h-56", "h-72", "h-60", "h-80"];
+                return (
+                  <motion.div
+                    key={p.title}
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: i * 0.1 }}
+                    className={`${heights[i]} break-inside-avoid rounded-2xl overflow-hidden relative group cursor-pointer shadow-xl`}
+                    style={{ background: `linear-gradient(135deg, #1A1228, #0E0B14)`, border: "1px solid rgba(232,184,108,0.2)" }}
+                    onClick={() => setLightbox(i)}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center transition-transform duration-500 group-hover:scale-110">
+                      <Monitor className="h-16 w-16" style={{ color: "rgba(232,184,108,0.18)" }} />
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-end pb-6 gap-1">
+                      <p className="text-lg font-bold text-champagne" style={{ fontFamily: TYPOGRAPHY.fontDisplay }}>{p.title}</p>
+                      <p className="text-sm text-warm/70">
+                        <MapPin className="h-3 w-3 inline mr-1" />{p.location}
+                      </p>
+                      <p className="text-xs text-warm/50">{p.config}</p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </FadeSection>
+        </FadeSection>
+      </div>
+
+      <div className="curtain-divider" />
 
       {/* Lightbox modal */}
       <AnimatePresence>
@@ -807,37 +746,44 @@ export default function HomeTheaterHome() {
         </div>
       </FadeSection>
 
-      {/* ══════ FAQ ══════ */}
-      <FadeSection className="py-24" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <div className="max-w-3xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h3.size, color: CINEMA_COLORS.WARM_WHITE }}>
-              Frequently Asked Questions
-            </h2>
+      {/* ══════ FAQ — Ivory ══════ */}
+      <div className="bg-lobby-warm">
+        <FadeSection className="py-24">
+          <div className="max-w-3xl mx-auto px-6">
+            <div className="text-center mb-12">
+              <p className="text-xs font-medium uppercase tracking-[0.3em] mb-4 text-champagne-deep">FAQ</p>
+              <h2 className="text-stage-dark" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size }}>
+                Questions, <span className="text-champagne-gradient">Answered</span>
+              </h2>
+            </div>
+            <div className="space-y-3">
+              {FAQS.map((faq, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl overflow-hidden transition-all border"
+                  style={{
+                    background: expandedFaq === i ? "rgba(232,184,108,0.08)" : "rgba(255,255,255,0.6)",
+                    borderColor: expandedFaq === i ? "rgba(232,184,108,0.4)" : "rgba(184,134,46,0.15)",
+                    boxShadow: expandedFaq === i ? "0 8px 24px rgba(232,184,108,0.12)" : "0 2px 8px rgba(43,31,18,0.04)",
+                  }}
+                >
+                  <button className="w-full text-left px-6 py-5 flex items-center justify-between" onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}>
+                    <span className="text-sm font-semibold text-stage-dark">{faq.q}</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform text-champagne-deep ${expandedFaq === i ? "rotate-180" : ""}`} />
+                  </button>
+                  <AnimatePresence>
+                    {expandedFaq === i && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }}>
+                        <p className="px-6 pb-5 text-sm text-stage-dark/70 leading-relaxed">{faq.a}</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-3">
-            {FAQS.map((faq, i) => (
-              <div
-                key={i}
-                className="rounded-xl overflow-hidden transition-colors"
-                style={{ background: expandedFaq === i ? "rgba(255,215,0,0.03)" : "rgba(255,255,255,0.02)", border: `1px solid ${expandedFaq === i ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.05)"}` }}
-              >
-                <button className="w-full text-left px-6 py-4 flex items-center justify-between" onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}>
-                  <span className="text-sm font-medium" style={{ color: CINEMA_COLORS.WARM_WHITE }}>{faq.q}</span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${expandedFaq === i ? "rotate-180" : ""}`} style={{ color: CINEMA_COLORS.GOLD }} />
-                </button>
-                <AnimatePresence>
-                  {expandedFaq === i && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }}>
-                      <p className="px-6 pb-4 text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>{faq.a}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ))}
-          </div>
-        </div>
-      </FadeSection>
+        </FadeSection>
+      </div>
 
       {/* ══════ FOOTER ══════ */}
       <footer className="py-12" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>

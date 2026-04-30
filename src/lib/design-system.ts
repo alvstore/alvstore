@@ -3,15 +3,28 @@
 // ═══════════════════════════════════════════
 
 export const CINEMA_COLORS = {
-  BLACK: "#000000",
-  DEEP_NAVY: "#050A18",
-  GOLD: "#FFD700",
-  AMBER: "#FF8C00",
-  WARM_WHITE: "#F5F0E8",
-  SOFT_WHITE: "rgba(255,255,255,0.85)",
-  MUTED: "rgba(255,255,255,0.4)",
-  GLASS_BG: "rgba(255,255,255,0.05)",
-  GLASS_BORDER: "rgba(255,255,255,0.08)",
+  // Legacy (kept for compatibility — now mapped to warm palette)
+  BLACK: "#0E0B14",
+  DEEP_NAVY: "#1A1228",
+  GOLD: "#E8B86C",
+  AMBER: "#C97B6E",
+  WARM_WHITE: "#F5EFE3",
+  SOFT_WHITE: "rgba(245,239,227,0.88)",
+  MUTED: "rgba(245,239,227,0.45)",
+  GLASS_BG: "rgba(255,255,255,0.04)",
+  GLASS_BORDER: "rgba(232,184,108,0.12)",
+
+  // New "Theater Lobby at Golden Hour" palette
+  STAGE: "#0E0B14",
+  STAGE_DEEP: "#1A1228",
+  STAGE_PLUM: "#2A1B3D",
+  LOBBY: "#F7F3EC",
+  LOBBY_WARM: "#EFE7D8",
+  CHAMPAGNE: "#E8B86C",
+  CHAMPAGNE_DEEP: "#B8862E",
+  ROSE: "#C97B6E",
+  TEXT_WARM: "#F5EFE3",
+  TEXT_DARK: "#2B1F12",
 } as const;
 
 // HSL tokens for Tailwind / CSS vars

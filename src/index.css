@@ -145,6 +145,92 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
+  /* ─── ALV Cinema: Theater Lobby palette ─── */
+  .bg-stage { background: #0E0B14; }
+  .bg-stage-deep { background: linear-gradient(180deg, #1A1228 0%, #0E0B14 100%); }
+  .bg-stage-plum { background: linear-gradient(135deg, #2A1B3D 0%, #1A1228 60%, #0E0B14 100%); }
+  .bg-lobby { background: #F7F3EC; }
+  .bg-lobby-warm { background: linear-gradient(180deg, #F7F3EC 0%, #EFE7D8 100%); }
+
+  .text-champagne { color: #E8B86C; }
+  .text-champagne-deep { color: #B8862E; }
+  .text-warm { color: #F5EFE3; }
+  .text-stage-dark { color: #2B1F12; }
+
+  /* Film grain — applied as ::before on dark sections */
+  .film-grain::before {
+    content: '';
+    position: absolute; inset: 0;
+    pointer-events: none;
+    opacity: 0.04;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
+  }
+
+  /* Stage curtain divider — angled gold gradient sweep */
+  .curtain-divider {
+    position: relative;
+    height: 80px;
+    background: linear-gradient(180deg, transparent 0%, rgba(232,184,108,0.05) 50%, transparent 100%);
+    overflow: hidden;
+  }
+  .curtain-divider::before,
+  .curtain-divider::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    height: 1px;
+    width: 200px;
+    background: linear-gradient(90deg, transparent, #E8B86C, transparent);
+  }
+  .curtain-divider::after {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #E8B86C;
+    box-shadow: 0 0 20px rgba(232,184,108,0.6);
+  }
+
+  /* Film frame — sprocket holes */
+  .film-frame {
+    position: relative;
+    border: 2px solid rgba(232,184,108,0.4);
+    border-radius: 8px;
+    box-shadow:
+      0 0 60px rgba(232,184,108,0.15),
+      inset 0 0 80px rgba(232,184,108,0.04);
+  }
+  .film-frame::before,
+  .film-frame::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 14px;
+    background-image: radial-gradient(circle, #0E0B14 4px, transparent 5px);
+    background-size: 24px 14px;
+    background-repeat: repeat-x;
+    background-position: center;
+  }
+  .film-frame::before { top: -16px; }
+  .film-frame::after { bottom: -16px; }
+
+  /* Scrolling marquee */
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .animate-marquee { animation: marquee 40s linear infinite; }
+  .animate-marquee:hover { animation-play-state: paused; }
+
+  /* Champagne gold gradient text */
+  .text-champagne-gradient {
+    background: linear-gradient(135deg, #F4D9A8 0%, #E8B86C 50%, #B8862E 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
   /* Pulse dot */
   .pulse-dot { position: relative; }
   .pulse-dot::after {
