@@ -746,37 +746,44 @@ export default function HomeTheaterHome() {
         </div>
       </FadeSection>
 
-      {/* ══════ FAQ ══════ */}
-      <FadeSection className="py-24" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <div className="max-w-3xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h3.size, color: CINEMA_COLORS.WARM_WHITE }}>
-              Frequently Asked Questions
-            </h2>
+      {/* ══════ FAQ — Ivory ══════ */}
+      <div className="bg-lobby-warm">
+        <FadeSection className="py-24">
+          <div className="max-w-3xl mx-auto px-6">
+            <div className="text-center mb-12">
+              <p className="text-xs font-medium uppercase tracking-[0.3em] mb-4 text-champagne-deep">FAQ</p>
+              <h2 className="text-stage-dark" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size }}>
+                Questions, <span className="text-champagne-gradient">Answered</span>
+              </h2>
+            </div>
+            <div className="space-y-3">
+              {FAQS.map((faq, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl overflow-hidden transition-all border"
+                  style={{
+                    background: expandedFaq === i ? "rgba(232,184,108,0.08)" : "rgba(255,255,255,0.6)",
+                    borderColor: expandedFaq === i ? "rgba(232,184,108,0.4)" : "rgba(184,134,46,0.15)",
+                    boxShadow: expandedFaq === i ? "0 8px 24px rgba(232,184,108,0.12)" : "0 2px 8px rgba(43,31,18,0.04)",
+                  }}
+                >
+                  <button className="w-full text-left px-6 py-5 flex items-center justify-between" onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}>
+                    <span className="text-sm font-semibold text-stage-dark">{faq.q}</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform text-champagne-deep ${expandedFaq === i ? "rotate-180" : ""}`} />
+                  </button>
+                  <AnimatePresence>
+                    {expandedFaq === i && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }}>
+                        <p className="px-6 pb-5 text-sm text-stage-dark/70 leading-relaxed">{faq.a}</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-3">
-            {FAQS.map((faq, i) => (
-              <div
-                key={i}
-                className="rounded-xl overflow-hidden transition-colors"
-                style={{ background: expandedFaq === i ? "rgba(255,215,0,0.03)" : "rgba(255,255,255,0.02)", border: `1px solid ${expandedFaq === i ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.05)"}` }}
-              >
-                <button className="w-full text-left px-6 py-4 flex items-center justify-between" onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}>
-                  <span className="text-sm font-medium" style={{ color: CINEMA_COLORS.WARM_WHITE }}>{faq.q}</span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${expandedFaq === i ? "rotate-180" : ""}`} style={{ color: CINEMA_COLORS.GOLD }} />
-                </button>
-                <AnimatePresence>
-                  {expandedFaq === i && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }}>
-                      <p className="px-6 pb-4 text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>{faq.a}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ))}
-          </div>
-        </div>
-      </FadeSection>
+        </FadeSection>
+      </div>
 
       {/* ══════ FOOTER ══════ */}
       <footer className="py-12" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
