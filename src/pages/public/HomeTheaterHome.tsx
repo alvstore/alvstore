@@ -479,50 +479,64 @@ export default function HomeTheaterHome() {
 
       <GoldDivider />
 
-      {/* ══════ PROJECT GALLERY — Masonry ══════ */}
-      <FadeSection id="projects" className="py-24 relative">
-        <GlowOrb className="w-[300px] h-[300px] top-20 right-10" />
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>Portfolio</p>
-            <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE }}>
-              Our Projects
-            </h2>
-          </div>
+      {/* ══════ PROJECT GALLERY — "Now Showing" on ivory ══════ */}
+      <div className="bg-lobby-warm relative">
+        <FadeSection id="projects" className="py-24 relative">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="text-center mb-12">
+              <p className="text-xs font-medium uppercase tracking-[0.3em] mb-4 text-champagne-deep">Portfolio</p>
+              <h2 className="text-stage-dark mb-4" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size }}>
+                Now <span className="text-champagne-gradient">Showing</span>
+              </h2>
+              <p className="text-sm text-stage-dark/60 max-w-md mx-auto">
+                Real installations across Rajasthan, Mumbai & Delhi.
+              </p>
+            </div>
 
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
-            {PROJECTS.map((p, i) => {
-              const heights = ["h-64", "h-80", "h-56", "h-72", "h-60", "h-80"];
-              return (
-                <motion.div
-                  key={p.title}
-                  initial={{ opacity: 0, y: 40 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className={`${heights[i]} break-inside-avoid rounded-2xl overflow-hidden relative group cursor-pointer`}
-                  style={{ background: `linear-gradient(135deg, rgba(255,215,0,0.06), rgba(5,10,24,0.8))` }}
-                  onClick={() => setLightbox(i)}
-                >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Monitor className="h-16 w-16" style={{ color: "rgba(255,215,0,0.08)" }} />
-                  </div>
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-2">
-                    <p className="text-lg font-bold" style={{ fontFamily: TYPOGRAPHY.fontDisplay, color: CINEMA_COLORS.GOLD }}>{p.title}</p>
-                    <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
-                      <MapPin className="h-3 w-3 inline mr-1" />{p.location}
-                    </p>
-                    <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{p.config}</p>
-                  </div>
-                  {/* Scale on hover */}
-                  <style>{`.group:hover > div:first-child { transform: scale(1.05); }`}</style>
-                </motion.div>
-              );
-            })}
+            {/* Marquee strip */}
+            <div className="overflow-hidden mb-12 py-4 border-y border-champagne-deep/20">
+              <div className="flex gap-12 whitespace-nowrap animate-marquee" style={{ width: "max-content" }}>
+                {[...PROJECTS, ...PROJECTS].map((p, i) => (
+                  <span key={i} className="text-champagne-deep text-xs uppercase tracking-[0.4em]" style={{ fontFamily: TYPOGRAPHY.fontDisplay }}>
+                    ★ {p.title} · {p.location}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
+              {PROJECTS.map((p, i) => {
+                const heights = ["h-64", "h-80", "h-56", "h-72", "h-60", "h-80"];
+                return (
+                  <motion.div
+                    key={p.title}
+                    initial={{ opacity: 0, y: 40 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: i * 0.1 }}
+                    className={`${heights[i]} break-inside-avoid rounded-2xl overflow-hidden relative group cursor-pointer shadow-xl`}
+                    style={{ background: `linear-gradient(135deg, #1A1228, #0E0B14)`, border: "1px solid rgba(232,184,108,0.2)" }}
+                    onClick={() => setLightbox(i)}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center transition-transform duration-500 group-hover:scale-110">
+                      <Monitor className="h-16 w-16" style={{ color: "rgba(232,184,108,0.18)" }} />
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-end pb-6 gap-1">
+                      <p className="text-lg font-bold text-champagne" style={{ fontFamily: TYPOGRAPHY.fontDisplay }}>{p.title}</p>
+                      <p className="text-sm text-warm/70">
+                        <MapPin className="h-3 w-3 inline mr-1" />{p.location}
+                      </p>
+                      <p className="text-xs text-warm/50">{p.config}</p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </FadeSection>
+        </FadeSection>
+      </div>
+
+      <div className="curtain-divider" />
 
       {/* Lightbox modal */}
       <AnimatePresence>
