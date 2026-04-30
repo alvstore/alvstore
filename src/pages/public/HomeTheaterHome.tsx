@@ -319,7 +319,7 @@ export default function HomeTheaterHome() {
   };
 
   return (
-    <div className="min-h-screen text-white overflow-hidden" style={{ background: CINEMA_COLORS.BLACK, fontFamily: TYPOGRAPHY.fontBody }}>
+    <div className="min-h-screen text-white overflow-hidden bg-stage" style={{ fontFamily: TYPOGRAPHY.fontBody }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       {/* ══════ FIXED NAV ══════ */}
@@ -328,8 +328,8 @@ export default function HomeTheaterHome() {
           scrolled ? "backdrop-blur-2xl border-b shadow-2xl" : "bg-transparent"
         }`}
         style={{
-          background: scrolled ? "rgba(0,0,0,0.9)" : "transparent",
-          borderColor: scrolled ? "rgba(255,255,255,0.05)" : "transparent",
+          background: scrolled ? "rgba(14,11,20,0.85)" : "transparent",
+          borderColor: scrolled ? "rgba(232,184,108,0.15)" : "transparent",
         }}
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
