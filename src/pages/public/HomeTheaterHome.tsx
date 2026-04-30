@@ -393,102 +393,20 @@ export default function HomeTheaterHome() {
         </AnimatePresence>
       </nav>
 
-      {/* ══════ HERO ══════ */}
-      <section className="relative min-h-screen flex items-center justify-center">
-        {/* Particle starfield — desktop only */}
-        {!isMobile && (
-          <div className="absolute inset-0 z-0">
-            <Suspense fallback={<div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${CINEMA_COLORS.DEEP_NAVY}, ${CINEMA_COLORS.BLACK})` }} />}>
-              <CinemaParticles />
-            </Suspense>
-          </div>
-        )}
+      {/* ══════ HERO — Speaker Evolution (scroll-pinned) ══════ */}
+      <Suspense fallback={<div className="h-screen bg-stage-plum" />}>
+        <SpeakerEvolution />
+      </Suspense>
 
-        {/* Mobile fallback */}
-        {isMobile && (
-          <div className="absolute inset-0 z-0" style={{ background: `linear-gradient(135deg, ${CINEMA_COLORS.DEEP_NAVY}, ${CINEMA_COLORS.BLACK} 60%)` }}>
-            <div className="absolute top-1/4 left-1/4 w-[250px] h-[250px] rounded-full blur-[100px]" style={{ background: `${CINEMA_COLORS.GOLD}15` }} />
-            <div className="absolute bottom-1/3 right-1/4 w-[180px] h-[180px] rounded-full blur-[80px]" style={{ background: `${CINEMA_COLORS.AMBER}10` }} />
-          </div>
-        )}
+      {/* Curtain divider */}
+      <div className="curtain-divider" />
 
-        {/* Subtle overlay vignette */}
-        <div className="absolute inset-0 z-[1]" style={{ background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.6) 100%)" }} />
+      {/* ══════ SOUNDSTAGE — 7.1.4 Atmos diagram ══════ */}
+      <Suspense fallback={<div className="h-[600px] bg-stage-deep" />}>
+        <SoundstageSection />
+      </Suspense>
 
-        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium mb-8"
-            style={{
-              background: "rgba(255,215,0,0.08)",
-              border: "1px solid rgba(255,215,0,0.2)",
-              color: CINEMA_COLORS.GOLD,
-            }}
-          >
-            <div className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: CINEMA_COLORS.GOLD }} />
-            Premium Home Theater Experts
-          </motion.div>
-
-          <h1 className="mb-6" style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.display.size, lineHeight: TYPOGRAPHY.scale.display.lineHeight, fontWeight: TYPOGRAPHY.scale.display.weight }}>
-            <AnimatedHeading text="EXPERIENCE" className="block" />
-            <AnimatedHeading text="CINEMA AT HOME" className="block" />
-          </h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.2 }}
-            className="text-lg md:text-xl max-w-2xl mx-auto mb-10"
-            style={{ color: "rgba(255,255,255,0.45)", fontFamily: TYPOGRAPHY.fontBody }}
-          >
-            Premium Dolby Atmos installations, 4K laser projection, and bespoke acoustic design — crafted for your space.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 1.6 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <button
-              className="px-8 py-3.5 rounded-lg text-base font-semibold transition-all"
-              style={{
-                border: `2px solid ${CINEMA_COLORS.GOLD}`,
-                color: CINEMA_COLORS.BLACK,
-                background: CINEMA_COLORS.GOLD,
-                boxShadow: `0 0 30px ${CINEMA_COLORS.GOLD}33, 0 0 60px ${CINEMA_COLORS.GOLD}11`,
-              }}
-              onClick={() => document.getElementById("services")?.scrollIntoView({ behavior: "smooth" })}
-            >
-              Explore Our Work
-            </button>
-            <button
-              className="px-8 py-3.5 rounded-lg text-base font-medium transition-colors"
-              style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", background: "transparent" }}
-              onClick={() => document.getElementById("configurator")?.scrollIntoView({ behavior: "smooth" })}
-            >
-              Design Your Theater
-            </button>
-          </motion.div>
-
-          {/* Scroll indicator */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 2.2 }}
-            className="absolute bottom-8 left-1/2 -translate-x-1/2"
-          >
-            <motion.div
-              animate={{ y: [0, 10, 0] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <ChevronDown className="h-6 w-6" style={{ color: "rgba(255,215,0,0.4)" }} />
-            </motion.div>
-          </motion.div>
-        </div>
-      </section>
+      <div className="curtain-divider" />
 
       {/* ══════ SERVICES — 3D Flip Cards ══════ */}
       <FadeSection id="services" className="py-24 relative" >
