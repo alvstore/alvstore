@@ -12,11 +12,12 @@ Premium home-theater installer ERP: CRM, repairs (job sheets), POS, inventory, i
 | Backend   | **Express + TypeScript** (`server/`) — replaces Supabase |
 | Database  | **PostgreSQL** via **Prisma** (embedded PGlite for local dev; any Postgres in prod) |
 
-No Supabase dependency remains at runtime: the original SQL migrations in
-`supabase/migrations/` are applied to a plain PostgreSQL database, auth lives
+No Supabase dependency remains at runtime: the original SQL migrations (now in
+`server/migrations/`) are applied to a plain PostgreSQL database, auth lives
 in `auth.users` (bcrypt password hashes), file storage is served from disk by
 the API, and the former edge functions are Express routes under
-`/api/functions/*`.
+`/api/functions/*`. There is no `supabase/` directory, no Supabase package, and
+no Supabase service in the running system.
 
 ## Quick start
 
@@ -60,7 +61,7 @@ repo root                 Next.js app (src/app, src/screens, src/components)
     ├── src/routes/storage.ts    file uploads served from server/uploads
     ├── src/routes/functions.ts  edge-function ports (WhatsApp/Razorpay/…)
     ├── src/auth/                signup/login/password-reset, JWT middleware
-    ├── tools/bootstrap-db.ts    applies supabase/migrations to plain Postgres
+    ├── tools/bootstrap-db.ts    applies server/migrations to plain Postgres
     ├── tools/introspect.ts      generates prisma/schema.prisma + relation meta
     └── tools/seed.ts            creates the admin user
 ```
@@ -95,7 +96,7 @@ shape, so the UI layer is unchanged.
 1. Provision PostgreSQL 14+.
 2. Apply the schema: run the bootstrap against your DB —
    set `DATABASE_URL` and use `psql "$DATABASE_URL"` with
-   `server/sql/bootstrap.sql`, then every file in `supabase/migrations/` in
+   `server/sql/bootstrap.sql`, then every file in `server/migrations/` in
    filename order, then `server/sql/own-auth.sql`
    (or point `PGDATA` tooling at it; the bootstrap tool currently targets the
    embedded dev database).
@@ -132,5 +133,6 @@ WhatsApp credentials (see `server/.env.example`).
   is configured; Hikvision endpoints return 501 until configured.
 - **Password reset**: without SMTP the reset link is printed in the API logs
   and shown inline on the forgot-password page (dev convenience).
-- `supabase/` is kept only as the migration source + function reference; the
-  running system never contacts Supabase.
+- The legacy `supabase/` directory has been removed entirely — its SQL
+  migrations now live in `server/migrations/`, and the old edge functions are
+  Express routes. No Supabase package or service is used anywhere.

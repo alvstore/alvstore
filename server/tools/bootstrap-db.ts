@@ -1,7 +1,7 @@
 /**
  * Bootstraps the local PostgreSQL database (PGlite) for development:
  *  1. Creates Supabase-compat stubs (auth/storage schemas, roles)
- *  2. Applies every migration from ../supabase/migrations in order
+ *  2. Applies every migration from ../migrations in order
  *  3. Applies our own auth additions (password credentials)
  *
  * Idempotent — applied migrations are recorded in `public._alv_migrations`.
@@ -15,9 +15,8 @@ import url from "node:url";
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(here, "..");
-const repoRoot = path.resolve(serverRoot, "..");
 const dataDir = process.env.PGLITE_DATA_DIR ?? path.join(serverRoot, ".pgdata");
-const migrationsDir = path.join(repoRoot, "supabase", "migrations");
+const migrationsDir = path.join(serverRoot, "migrations");
 
 if (process.argv.includes("--reset") && fs.existsSync(dataDir)) {
   fs.rmSync(dataDir, { recursive: true, force: true });
@@ -61,7 +60,7 @@ async function main() {
   const appliedRows = await db.query<{ name: string }>("SELECT name FROM public._alv_migrations");
   const applied = new Set(appliedRows.rows.map((r) => r.name));
 
-  // 3. supabase migrations, in filename order
+  // 3. schema migrations, in filename order
   const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
   let ran = 0;
   for (const file of files) {
