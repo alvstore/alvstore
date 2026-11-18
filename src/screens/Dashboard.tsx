@@ -1,25 +1,29 @@
-import { useState } from "react";
+"use client";
+
+import { useEffect, useRef } from "react";
 import { useNavigate } from "@/lib/router-compat";
+import { gsap } from "gsap";
+import { motion, type Variants } from "framer-motion";
 import {
-  TrendingUp, CreditCard, Wallet,
-  Package, Wrench, Users, RefreshCw,
-  ArrowUpRight, ShoppingCart, Clock,
-  Plus, FileText, Receipt,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+  Box, Card, CardContent, Typography, Chip, Avatar, Stack, IconButton,
+  LinearProgress, Tooltip, Divider, Button, Skeleton,
+} from "@mui/material";
+import { alpha } from "@mui/material/styles";
+import {
+  ShoppingCart, TrendingUp, AccountBalanceWallet, PendingActions,
+  People, Build, Receipt, Inventory2, Refresh, NorthEast,
+  Payments, PointOfSale, RequestQuote, Savings, CheckCircle, QueryBuilder,
+} from "@mui/icons-material";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfDay, startOfMonth } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 
-// --- Data fetchers ---
+// --- Data fetchers (unchanged) ---
 async function fetchKpis() {
   const today = startOfDay(new Date()).toISOString();
   const monthStart = startOfMonth(new Date()).toISOString();
@@ -79,38 +83,121 @@ async function fetchRecentInvoices() {
   return data || [];
 }
 
+// --- Formatters ---
 function fmt(n: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
+function fmtInt(n: number) {
+  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.round(n));
+}
 
-function KpiCard({ label, value, trend, icon: Icon, accentClass, isLoading, onClick }: {
-  label: string; value: string; trend?: string; icon: React.ComponentType<{ className?: string }>;
-  accentClass: string; isLoading: boolean; onClick?: () => void;
+// --- GSAP-driven count-up number ---
+function CountUp({ value, formatter = fmtInt, duration = 1.4 }: {
+  value: number; formatter?: (n: number) => string; duration?: number;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const displayed = useRef(0);
+
+  useEffect(() => {
+    const from = displayed.current;
+    const obj = { v: from };
+    const tween = gsap.to(obj, {
+      v: value,
+      duration,
+      ease: "power3.out",
+      onUpdate: () => { if (ref.current) ref.current.textContent = formatter(obj.v); },
+      onComplete: () => { displayed.current = value; },
+    });
+    return () => { tween.kill(); };
+  }, [value, formatter, duration]);
+
+  return <span ref={ref}>{formatter(0)}</span>;
+}
+
+// --- framer-motion variants ---
+const containerVariants: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 26, scale: 0.98 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
+};
+
+type AccentKey = "success" | "primary" | "info" | "warning" | "error" | "secondary";
+
+function KpiCard({ label, value, isCurrency, trend, trendUp, icon, accent, isLoading, onClick, index }: {
+  label: string; value: number; isCurrency?: boolean; trend?: string; trendUp?: boolean;
+  icon: React.ReactNode; accent: AccentKey; isLoading: boolean; onClick?: () => void; index: number;
 }) {
   return (
-    <Card className="group hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 transition-all duration-300 cursor-pointer" onClick={onClick}>
-      <CardContent className="p-5">
-        {isLoading ? (
-          <div className="space-y-3"><Skeleton className="h-10 w-10 rounded-xl" /><Skeleton className="h-4 w-20" /><Skeleton className="h-7 w-28" /></div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-start justify-between">
-              <div className={`h-11 w-11 rounded-xl ${accentClass} flex items-center justify-center`}><Icon className="h-5 w-5" /></div>
-              <button className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground group-hover:text-foreground transition-colors">
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
-            <div className="flex items-end justify-between">
-              <p className="text-2xl font-bold text-foreground">{value}</p>
-              {trend && <div className="flex items-center gap-1 text-success"><ArrowUpRight className="h-3.5 w-3.5" /><span className="text-[11px] font-medium">{trend}</span></div>}
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <motion.div variants={cardVariants} whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300, damping: 22 }} style={{ height: "100%" }}>
+      <Card
+        onClick={onClick}
+        sx={{
+          height: "100%", cursor: "pointer", position: "relative", overflow: "hidden",
+          transition: "border-color .25s, box-shadow .25s",
+          "&:hover": (t) => ({
+            borderColor: alpha(t.palette[accent].main, 0.5),
+            boxShadow: `0 12px 32px -12px ${alpha(t.palette[accent].main, 0.35)}`,
+          }),
+        }}
+      >
+        {/* corner glow */}
+        <Box sx={{
+          position: "absolute", top: -30, right: -30, width: 90, height: 90, borderRadius: "50%",
+          background: (t) => `radial-gradient(circle, ${alpha(t.palette[accent].main, 0.16)}, transparent 70%)`,
+        }} />
+        <CardContent sx={{ p: 2.5, position: "relative" }}>
+          {isLoading ? (
+            <Stack spacing={1.5}>
+              <Skeleton variant="rounded" width={44} height={44} sx={{ borderRadius: 3 }} />
+              <Skeleton variant="text" width="55%" />
+              <Skeleton variant="text" width="75%" height={32} />
+            </Stack>
+          ) : (
+            <Stack spacing={1.5}>
+              <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <Box sx={(t) => ({
+                  height: 44, width: 44, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center",
+                  bgcolor: alpha(t.palette[accent].main, 0.14), color: t.palette[accent].main,
+                })}>
+                  {icon}
+                </Box>
+                <IconButton size="small" sx={{ color: "text.secondary", "&:hover": { color: "text.primary" } }}>
+                  <NorthEast sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Box>
+              <Typography variant="caption" sx={{ color: "text.secondary", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>
+                {label}
+              </Typography>
+              <Box sx={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 1 }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+                  <CountUp value={value} formatter={isCurrency ? fmt : fmtInt} duration={1.2 + index * 0.08} />
+                </Typography>
+                {trend && (
+                  <Chip
+                    size="small"
+                    label={trend}
+                    icon={trendUp === false ? undefined : <NorthEast sx={{ fontSize: 12 }} />}
+                    sx={{
+                      height: 22, fontSize: 11, fontWeight: 600,
+                      bgcolor: (t) => alpha(t.palette[accent].main, 0.12),
+                      color: `${accent}.main`,
+                      "& .MuiChip-icon": { color: "inherit" },
+                    }}
+                  />
+                )}
+              </Box>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }
+
+const paymentColor: Record<string, "success" | "error" | "warning"> = { paid: "success", unpaid: "error", partial: "warning" };
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -128,111 +215,246 @@ export default function Dashboard() {
     queryClient.invalidateQueries({ queryKey: ["dashboard-recent-invoices"] });
   };
 
-  const paymentBadge = (status: string) => {
-    const styles: Record<string, string> = { paid: "bg-success/10 text-success", unpaid: "bg-destructive/10 text-destructive", partial: "bg-warning/10 text-warning" };
-    return <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full capitalize ${styles[status] || "bg-muted text-muted-foreground"}`}>{status}</span>;
-  };
+  const firstName = (user as { user_metadata?: { full_name?: string }; email?: string })?.user_metadata?.full_name?.split(" ")[0]
+    || (user as { email?: string })?.email?.split("@")[0]
+    || "there";
+
+  const net = (kpis?.revenue ?? 0) - (kpis?.expenses ?? 0);
+  const margin = kpis && kpis.revenue > 0 ? Math.max(0, Math.min(100, (net / kpis.revenue) * 100)) : 0;
+  const repairThroughput = kpis && kpis.totalRepairJobs > 0 ? Math.round(((kpis.totalRepairJobs - kpis.pendingRepairs) / kpis.totalRepairJobs) * 100) : 0;
+  const collectionRate = kpis && (kpis.invoicesMonth + kpis.pendingPayments) > 0
+    ? Math.round((kpis.invoicesMonth / (kpis.invoicesMonth + kpis.pendingPayments)) * 100) : 0;
+
+  const kpisList = [
+    { label: "Today's Sales", value: kpis?.salesToday ?? 0, isCurrency: true, trend: "POS today", icon: <ShoppingCart fontSize="small" />, accent: "success" as AccentKey, onClick: () => navigate("/pos") },
+    { label: "Monthly Revenue", value: kpis?.revenue ?? 0, isCurrency: true, trend: "This month", icon: <TrendingUp fontSize="small" />, accent: "primary" as AccentKey, onClick: () => navigate("/finance") },
+    { label: "Cash Balance", value: kpis?.totalBalance ?? 0, isCurrency: true, icon: <AccountBalanceWallet fontSize="small" />, accent: "info" as AccentKey, onClick: () => navigate("/finance") },
+    { label: "Pending Payments", value: kpis?.pendingPayments ?? 0, isCurrency: true, trend: "Due", trendUp: false, icon: <PendingActions fontSize="small" />, accent: "warning" as AccentKey, onClick: () => navigate("/payments") },
+    { label: "Customers", value: kpis?.totalCustomers ?? 0, icon: <People fontSize="small" />, accent: "primary" as AccentKey, onClick: () => navigate("/customers") },
+    { label: "Active Repairs", value: kpis?.activeRepairs ?? 0, trend: kpis ? `${kpis.completedToday} done today` : undefined, icon: <Build fontSize="small" />, accent: "secondary" as AccentKey, onClick: () => navigate("/repairs") },
+    { label: "Invoices (Month)", value: kpis?.invoicesMonth ?? 0, isCurrency: true, trend: "This month", icon: <Receipt fontSize="small" />, accent: "success" as AccentKey, onClick: () => navigate("/invoices") },
+    { label: "Low Stock Items", value: kpis?.lowStock ?? 0, icon: <Inventory2 fontSize="small" />, accent: "error" as AccentKey, onClick: () => navigate("/inventory") },
+  ];
+
+  const quickActions = [
+    { label: "New Sale", icon: <PointOfSale fontSize="small" />, to: "/pos" },
+    { label: "Quotation", icon: <RequestQuote fontSize="small" />, to: "/sales/new" },
+    { label: "Invoice", icon: <Receipt fontSize="small" />, to: "/invoices/new" },
+    { label: "Repair", icon: <Build fontSize="small" />, to: "/repairs/new" },
+    { label: "Payment", icon: <Payments fontSize="small" />, to: "/finance" },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header + Quick Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">Welcome back — here's your business overview</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" variant="outline" onClick={() => navigate("/pos")}><ShoppingCart className="h-3.5 w-3.5 mr-1.5" />New Sale</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/sales/new")}><FileText className="h-3.5 w-3.5 mr-1.5" />Quotation</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/invoices/new")}><Receipt className="h-3.5 w-3.5 mr-1.5" />Invoice</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/repairs/new")}><Wrench className="h-3.5 w-3.5 mr-1.5" />Repair</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/finance")}><Wallet className="h-3.5 w-3.5 mr-1.5" />Payment</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/finance")}><CreditCard className="h-3.5 w-3.5 mr-1.5" />Expense</Button>
-          <button onClick={refresh} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted border border-border text-sm font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* 8 KPI Cards — 2 rows of 4 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Today's Sales" value={kpis ? fmt(kpis.salesToday) : "—"} trend="POS today" icon={ShoppingCart} accentClass="bg-success/10 text-success" isLoading={kpiLoading} onClick={() => navigate("/pos")} />
-        <KpiCard label="Monthly Revenue" value={kpis ? fmt(kpis.revenue) : "—"} trend="This month" icon={TrendingUp} accentClass="bg-primary/10 text-primary" isLoading={kpiLoading} onClick={() => navigate("/finance")} />
-        <KpiCard label="Cash Balance" value={kpis ? fmt(kpis.totalBalance) : "—"} icon={Wallet} accentClass="bg-info/10 text-info" isLoading={kpiLoading} onClick={() => navigate("/finance")} />
-        <KpiCard label="Pending Payments" value={kpis ? fmt(kpis.pendingPayments) : "—"} trend="Due" icon={Clock} accentClass="bg-warning/10 text-warning" isLoading={kpiLoading} onClick={() => navigate("/payments")} />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Customers" value={kpis ? String(kpis.totalCustomers) : "—"} icon={Users} accentClass="bg-primary/10 text-primary" isLoading={kpiLoading} onClick={() => navigate("/customers")} />
-        <KpiCard label="Active Repairs" value={kpis ? String(kpis.activeRepairs) : "—"} trend={kpis ? `${kpis.completedToday} done today` : undefined} icon={Wrench} accentClass="bg-accent/10 text-accent-foreground" isLoading={kpiLoading} onClick={() => navigate("/repairs")} />
-        <KpiCard label="Invoices (Month)" value={kpis ? fmt(kpis.invoicesMonth) : "—"} trend="This month" icon={Receipt} accentClass="bg-success/10 text-success" isLoading={kpiLoading} onClick={() => navigate("/invoices")} />
-        <KpiCard label="Low Stock Items" value={kpis ? String(kpis.lowStock) : "—"} icon={Package} accentClass="bg-destructive/10 text-destructive" isLoading={kpiLoading} onClick={() => navigate("/inventory")} />
-      </div>
-
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <div><CardTitle className="text-base font-semibold">Sales Analytics</CardTitle><p className="text-xs text-muted-foreground mt-0.5">Last 7 days</p></div>
-              <div className="text-right"><p className="text-lg font-bold text-foreground">{kpis ? fmt(kpis.salesMonth) : "—"}</p><p className="text-[11px] text-muted-foreground">This Month</p></div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {salesLoading ? <Skeleton className="h-[240px] w-full rounded-xl" /> : (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={weeklySales}>
-                  <defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.9} /><stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.3} /></linearGradient></defs>
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "12px", color: "hsl(var(--foreground))" }} formatter={(value: number) => [fmt(value), "Sales"]} cursor={{ fill: "hsl(var(--muted) / 0.3)" }} />
-                  <Bar dataKey="sales" fill="url(#barGrad)" radius={[8, 8, 0, 0]} barSize={32} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base font-semibold">Repair Progress</CardTitle><p className="text-xs text-muted-foreground">Current status breakdown</p></CardHeader>
-          <CardContent className="pt-0">
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie data={repairBreakdown || []} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={3} dataKey="value" strokeWidth={0}>
-                  {(repairBreakdown || []).map((entry, index) => <Cell key={index} fill={entry.color} />)}
-                </Pie>
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "12px", color: "hsl(var(--foreground))" }} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", color: "hsl(var(--muted-foreground))" }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Invoices */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div><CardTitle className="text-base font-semibold">Recent Invoices</CardTitle><p className="text-xs text-muted-foreground">Latest transactions</p></div>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="space-y-0">
-            {(recentInvoices || []).map((inv: any) => (
-              <div key={inv.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-9 w-9"><AvatarFallback className="text-[11px] bg-primary/10 text-primary font-semibold">{(inv.customers?.name || "?").slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
-                  <div><p className="text-sm font-medium text-foreground">{inv.customers?.name || "Unknown"}</p><p className="text-[11px] text-muted-foreground">{inv.invoice_number}</p></div>
-                </div>
-                <div className="text-right flex items-center gap-3">
-                  <p className="text-sm font-semibold text-foreground">{fmt(inv.total || 0)}</p>
-                  {paymentBadge(inv.payment_status || "unpaid")}
-                </div>
-              </div>
+    <Box component={motion.div} initial="hidden" animate="show" variants={containerVariants} sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      {/* ─── Header ─── */}
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { sm: "center" }, justifyContent: "space-between", gap: 2 }}>
+        <motion.div variants={cardVariants}>
+          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: -0.5 }}>Dashboard</Typography>
+          <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
+            Welcome back, <Box component="span" sx={{ color: "primary.main", fontWeight: 600 }}>{firstName}</Box> — here's your business overview
+          </Typography>
+        </motion.div>
+        <motion.div variants={cardVariants}>
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+            {quickActions.map(a => (
+              <Button key={a.label} size="small" variant="outlined" startIcon={a.icon} onClick={() => navigate(a.to)}
+                sx={{ borderRadius: 3, borderColor: "divider" }}>
+                {a.label}
+              </Button>
             ))}
-            {(!recentInvoices || recentInvoices.length === 0) && <p className="text-sm text-muted-foreground text-center py-8">No recent invoices</p>}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            <Tooltip title="Refresh">
+              <IconButton onClick={refresh} size="small" sx={{ border: 1, borderColor: "divider", borderRadius: 3 }}>
+                <Refresh fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </motion.div>
+      </Box>
+
+      {/* ─── KPI grid ─── */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2,1fr)", lg: "repeat(4,1fr)" }, gap: 2 }}>
+        {kpisList.map((k, i) => (
+          <KpiCard key={k.label} index={i} label={k.label} value={k.value} isCurrency={k.isCurrency}
+            trend={k.trend} trendUp={k.trendUp} icon={k.icon} accent={k.accent} isLoading={kpiLoading} onClick={k.onClick} />
+        ))}
+      </Box>
+
+      {/* ─── Charts row ─── */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "3fr 2fr" }, gap: 3 }}>
+        <motion.div variants={cardVariants}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Sales Analytics</Typography>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Last 7 days</Typography>
+                </Box>
+                <Box sx={{ textAlign: "right" }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    <CountUp value={kpis?.salesMonth ?? 0} formatter={fmt} />
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>This Month</Typography>
+                </Box>
+              </Box>
+              {salesLoading ? (
+                <Skeleton variant="rounded" height={240} sx={{ borderRadius: 3 }} />
+              ) : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={weeklySales} barCategoryGap="28%">
+                    <defs>
+                      <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#22c55e" stopOpacity={0.95} />
+                        <stop offset="100%" stopColor="#22c55e" stopOpacity={0.25} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="name" stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} style={{ fill: "currentColor", opacity: 0.6 }} />
+                    <YAxis stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} style={{ fill: "currentColor", opacity: 0.6 }} />
+                    <RTooltip
+                      contentStyle={{ background: "var(--mui-palette-background-paper, #141416)", border: "1px solid rgba(128,128,128,0.25)", borderRadius: 12, fontSize: 12 }}
+                      formatter={(value: number) => [fmt(value), "Sales"]}
+                      cursor={{ fill: "rgba(128,128,128,0.12)" }}
+                    />
+                    <Bar dataKey="sales" fill="url(#barGrad)" radius={[8, 8, 0, 0]} barSize={32} isAnimationActive animationDuration={900} animationEasing="ease-out" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={cardVariants}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Repair Progress</Typography>
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>Current status breakdown</Typography>
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie data={repairBreakdown || []} cx="50%" cy="50%" innerRadius={58} outerRadius={88} paddingAngle={3}
+                    dataKey="value" strokeWidth={0} isAnimationActive animationDuration={900} animationEasing="ease-out">
+                    {(repairBreakdown || []).map((entry, index) => <Cell key={index} fill={entry.color} />)}
+                  </Pie>
+                  <RTooltip contentStyle={{ background: "var(--mui-palette-background-paper, #141416)", border: "1px solid rgba(128,128,128,0.25)", borderRadius: 12, fontSize: 12 }} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </Box>
+
+      {/* ─── Financial overview + recent invoices ─── */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "2fr 3fr" }, gap: 3 }}>
+        {/* Financial overview */}
+        <motion.div variants={cardVariants}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                <Savings fontSize="small" sx={{ color: "primary.main" }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Financial Overview</Typography>
+              </Box>
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>This month</Typography>
+
+              <Stack direction="row" spacing={2} sx={{ mt: 2.5, mb: 3 }}>
+                <Box sx={{ flex: 1, p: 1.5, borderRadius: 3, bgcolor: (t) => alpha(t.palette.success.main, 0.08) }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Revenue</Typography>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "success.main" }}>
+                    <CountUp value={kpis?.revenue ?? 0} formatter={fmt} />
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: 1, p: 1.5, borderRadius: 3, bgcolor: (t) => alpha(t.palette.error.main, 0.08) }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Expenses</Typography>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "error.main" }}>
+                    <CountUp value={kpis?.expenses ?? 0} formatter={fmt} />
+                  </Typography>
+                </Box>
+              </Stack>
+
+              {/* Animated metric bars */}
+              {[
+                { label: "Net margin", value: margin, display: `${margin.toFixed(0)}%`, color: "primary" as const, icon: <TrendingUp sx={{ fontSize: 14 }} /> },
+                { label: "Collection rate", value: collectionRate, display: `${collectionRate}%`, color: "success" as const, icon: <CheckCircle sx={{ fontSize: 14 }} /> },
+                { label: "Repair throughput", value: repairThroughput, display: `${repairThroughput}%`, color: "warning" as const, icon: <QueryBuilder sx={{ fontSize: 14 }} /> },
+              ].map((m, i) => (
+                <Box key={m.label} sx={{ mb: 2 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
+                    <Typography variant="caption" sx={{ color: "text.secondary", display: "flex", alignItems: "center", gap: 0.5 }}>
+                      {m.icon}{m.label}
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: `${m.color}.main` }}>{m.display}</Typography>
+                  </Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={kpiLoading ? 0 : m.value}
+                    color={m.color}
+                    sx={{
+                      height: 8, borderRadius: 4,
+                      bgcolor: (t) => alpha(t.palette[m.color].main, 0.12),
+                      "& .MuiLinearProgress-bar": { borderRadius: 4, transition: "transform 1.2s cubic-bezier(0.16,1,0.3,1)" },
+                    }}
+                  />
+                </Box>
+              ))}
+
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Typography variant="body2" sx={{ color: "text.secondary" }}>Net profit</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: net >= 0 ? "success.main" : "error.main" }}>
+                  <CountUp value={net} formatter={fmt} />
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Recent invoices */}
+        <motion.div variants={cardVariants}>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Recent Invoices</Typography>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Latest transactions</Typography>
+                </Box>
+                <Button size="small" endIcon={<NorthEast sx={{ fontSize: 14 }} />} onClick={() => navigate("/invoices")}>View all</Button>
+              </Box>
+              <Box component={motion.div} variants={containerVariants} initial="hidden" animate="show">
+                {(recentInvoices || []).map((inv: { id: string; invoice_number?: string; total?: number; payment_status?: string; customers?: { name?: string } }, idx: number) => (
+                  <Box
+                    component={motion.div}
+                    variants={cardVariants}
+                    key={inv.id}
+                    onClick={() => navigate("/invoices")}
+                    sx={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      py: 1.5, px: 1, borderRadius: 2, cursor: "pointer",
+                      borderBottom: 1, borderColor: "divider", "&:last-child": { borderBottom: 0 },
+                      "&:hover": { bgcolor: (t) => alpha(t.palette.primary.main, 0.04) },
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                      <Avatar sx={{ width: 36, height: 36, fontSize: 12, fontWeight: 700, bgcolor: (t) => alpha(t.palette.primary.main, 0.12), color: "primary.main" }}>
+                        {(inv.customers?.name || "?").slice(0, 2).toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{inv.customers?.name || "Unknown"}</Typography>
+                        <Typography variant="caption" sx={{ color: "text.secondary" }}>{inv.invoice_number}</Typography>
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{fmt(inv.total || 0)}</Typography>
+                      <Chip size="small" label={inv.payment_status || "unpaid"} color={paymentColor[inv.payment_status || "unpaid"] || "default"}
+                        variant="outlined" sx={{ textTransform: "capitalize", height: 22, fontSize: 11 }} />
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+              {(!recentInvoices || recentInvoices.length === 0) && (
+                <Typography variant="body2" sx={{ color: "text.secondary", textAlign: "center", py: 6 }}>No recent invoices</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </Box>
+    </Box>
   );
 }

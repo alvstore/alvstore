@@ -448,7 +448,11 @@ export default function HomeTheaterHome() {
       {/* ══════ 3D THEATER ROOM PREVIEW ══════ */}
       <FadeSection className="py-16 relative">
         <GlowOrb className="w-[400px] h-[400px] top-0 left-1/4" />
-        <div className="max-w-7xl mx-auto px-6 text-center mb-8">
+        {/* Ambient particle field (canvas + framer-motion, no WebGL) */}
+        <Suspense fallback={null}>
+          <CinemaParticles />
+        </Suspense>
+        <div className="max-w-7xl mx-auto px-6 text-center mb-8 relative z-10">
           <p className="text-xs font-medium uppercase tracking-[0.25em] mb-4" style={{ color: CINEMA_COLORS.GOLD }}>3D Room Preview</p>
           <h2 style={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE }}>
             Your Cinema, Visualized

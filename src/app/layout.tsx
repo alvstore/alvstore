@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import "@/index.css";
 import { Providers } from "./providers";
 
@@ -38,7 +39,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        {/* Emotion cache for MUI SSR. enableCssLayer puts MUI styles in a CSS
+            cascade layer so Tailwind utilities keep winning specificity. */}
+        <AppRouterCacheProvider options={{ enableCssLayer: true }}>
+          <Providers>{children}</Providers>
+        </AppRouterCacheProvider>
       </body>
     </html>
   );
