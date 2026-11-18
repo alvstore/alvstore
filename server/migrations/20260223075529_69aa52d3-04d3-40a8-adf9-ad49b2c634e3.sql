@@ -1,0 +1,1 @@
+ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS job_sheet_id uuid REFERENCES public.job_sheets(id);

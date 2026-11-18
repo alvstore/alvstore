@@ -1,0 +1,150 @@
+# ALV Store — ERP & Storefront
+
+Premium home-theater installer ERP: CRM, repairs (job sheets), POS, inventory, invoicing/quotations, finance, HR/payroll, procurement, chat, and a public marketing site.
+
+## Stack
+
+| Layer     | Technology |
+|-----------|------------|
+| Frontend  | **Next.js 15** (App Router, React 19, TypeScript), Tailwind + shadcn/ui, **Material UI v9** (Emotion), TanStack Query |
+| Motion    | **GSAP** (ScrollTrigger scrubs, count-up tweens) + **Framer Motion** (entrances, layout, SVG) — *no three.js/WebGL* |
+| Auth      | **Auth.js (NextAuth v5)** credentials provider → own API (bcrypt + JWT sessions) |
+| Backend   | **Express + TypeScript** (`server/`) — replaces Supabase |
+| Database  | **PostgreSQL** via **Prisma** (embedded PGlite for local dev; any Postgres in prod) |
+
+No Supabase dependency remains at runtime: the original SQL migrations (now in
+`server/migrations/`) are applied to a plain PostgreSQL database, auth lives
+in `auth.users` (bcrypt password hashes), file storage is served from disk by
+the API, and the former edge functions are Express routes under
+`/api/functions/*`. There is no `supabase/` directory, no Supabase package, and
+no Supabase service in the running system.
+
+## Quick start
+
+```sh
+# 1. install dependencies
+npm install
+npm --prefix server install
+
+# 2. create + migrate + seed the database (one command)
+npm run db:setup        # admin login: admin@alvstore.in / admin123
+
+# 3. run everything (db socket :5433, API :4000, web :3000)
+npm run dev:all
+```
+
+Open http://localhost:3000 — sign in with `admin@alvstore.in` / `admin123`
+(override via `ADMIN_EMAIL` / `ADMIN_PASSWORD` before `db:setup`).
+
+Runtimes can also be started individually:
+
+```sh
+npm run dev:db          # embedded PostgreSQL socket (dev only)
+npm run dev:backend     # Express API on :4000
+npm run dev             # Next.js on :3000
+```
+
+## Architecture
+
+```
+repo root                 Next.js app (src/app, src/screens, src/components)
+├── src/app/              App Router: route wrappers + Auth.js handler
+│   ├── (app)/            protected section — guarded by <ProtectedRoute>
+│   ├── page.tsx…         public pages (marketing site, login, public share links)
+│   └── api/auth/         Auth.js route handler
+├── src/integrations/
+│   └── supabase/client.ts   ← drop-in replacement client: same API surface
+│                              (from()/auth/storage/functions), talks to our API
+├── src/lib/router-compat.tsx  react-router-dom → next/navigation shim
+└── server/               Express + Prisma backend (own package.json)
+    ├── src/routes/data.ts       PostgREST-style data API over Prisma
+    ├── src/routes/storage.ts    file uploads served from server/uploads
+    ├── src/routes/functions.ts  edge-function ports (WhatsApp/Razorpay/…)
+    ├── src/auth/                signup/login/password-reset, JWT middleware
+    ├── tools/bootstrap-db.ts    applies server/migrations to plain Postgres
+    ├── tools/introspect.ts      generates prisma/schema.prisma + relation meta
+    └── tools/seed.ts            creates the admin user
+```
+
+### How data flows
+
+Pages keep their original query-builder calls:
+
+```ts
+const { data } = await supabase
+  .from("job_sheets")
+  .select("id, status, customers(name)")
+  .eq("status", "in_progress");
+```
+
+The client (`src/integrations/supabase/client.ts`) serializes the chain to a
+compact JSON payload → `POST /api/backend/data/query` → the Express data router
+translates it into a Prisma query (filters, embedded relations, ordering,
+pagination, counts) → PostgreSQL. Responses keep the `{ data, error, count }`
+shape, so the UI layer is unchanged.
+
+### Authentication
+
+- Email+password verified by the API against `auth.users.password_hash` (bcrypt).
+- The API issues a JWT access token; Auth.js stores it in the session JWT.
+- Client calls carry `Authorization: Bearer <token>`; the API enforces auth and
+  anonymous-access rules per table (mirrors the old RLS public-token policies).
+- `user_roles` (admin / staff / technician / customer) loads with the session.
+
+### Production database
+
+1. Provision PostgreSQL 14+.
+2. Apply the schema: run the bootstrap against your DB —
+   set `DATABASE_URL` and use `psql "$DATABASE_URL"` with
+   `server/sql/bootstrap.sql`, then every file in `server/migrations/` in
+   filename order, then `server/sql/own-auth.sql`
+   (or point `PGDATA` tooling at it; the bootstrap tool currently targets the
+   embedded dev database).
+3. `server/.env`: `DATABASE_URL=postgres://user:pass@host:5432/alvstore`.
+4. `npm --prefix server run prisma:generate && npm --prefix server run db:seed`.
+5. Run the API (`npm --prefix server run dev` or build + start) and set
+   `API_SERVER_URL` for the Next.js app to its address.
+
+### Environment variables
+
+Web (`.env`): `AUTH_SECRET`, `API_SERVER_URL` (see `.env.example`).
+API (`server/.env`): `DATABASE_URL`, `JWT_SECRET`, optional Razorpay / SMTP /
+WhatsApp credentials (see `server/.env.example`).
+
+### Notes & known deltas
+
+- **Realtime**: Supabase Realtime subscriptions were replaced with short
+  polling (chat: 4 s, notifications: 10–15 s).
+- **Client error reporting**: uncaught browser errors and React boundary
+  errors are POSTed to `/api/backend/log` and printed in the API server logs
+  (tagged `[client:…]`).
+- The root `<html>` is marked `translate="no"` so browser auto-translate can't
+  mutate React-managed DOM (a common cause of `removeChild` crashes). GSAP
+  scroll "pinning" is done with CSS `position: sticky` rather than
+  ScrollTrigger's `pin: true`, because GSAP pinning reparents the element into
+  a `.pin-spacer` and collides with React 19 reconciliation (`removeChild`).
+- **UI kits**: shadcn/ui + Tailwind power the ERP screens; **Material UI** is
+  also available app-wide (theme bridged from `useTheme` by
+  `src/components/MuiThemeBridge.tsx`, Emotion SSR cache in `src/app/layout.tsx`)
+  and drives the animated Dashboard. Home-theater visuals are SVG/canvas +
+  GSAP/Framer Motion (three.js was removed).
+- **Edge functions**: all eleven former Supabase functions are full Express
+  ports under `/api/backend/functions/*` — `manage-staff`, `send-whatsapp`
+  (with Meta webhook verification on GET), `send-email` (template support +
+  SMTP), `send-sms` (template support + generic provider),
+  `whatsapp-automation` (WhatsApp → SMS fallback), `whatsapp-webhook`
+  (inbound messages, lead creation, admin notifications, status updates),
+  `create-payment-link`, `razorpay-webhook` (HMAC-verified, updates invoice
+  paid amounts), `parse-offer-pdf` (AI gateway when `AI_GATEWAY_URL` is set,
+  heuristic parser otherwise), and the complete Hik-Partner integration
+  `hikvision-sync` (test-credentials, site-search, list/import devices,
+  ISAPI employee sync, MQ attendance polling, backfill, full-sync, auto-map,
+  manual-add-employee, demo-test) + `hikvision-webhook` (HMAC signature check,
+  deduped event ingestion, auto check-in/out records). Provider credentials
+  live in `server/.env` (see `server/.env.example`); unconfigured providers
+  return a clear JSON error, exactly like the original functions.
+- **Password reset**: without SMTP the reset link is printed in the API logs
+  and shown inline on the forgot-password page (dev convenience).
+- The legacy `supabase/` directory has been removed entirely — its SQL
+  migrations now live in `server/migrations/`, and the old edge functions are
+  Express routes. No Supabase package or service is used anywhere.

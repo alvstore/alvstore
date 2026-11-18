@@ -1,0 +1,1 @@
+ALTER TABLE public.job_sheets ADD COLUMN IF NOT EXISTS service_items jsonb DEFAULT '[]'::jsonb;
