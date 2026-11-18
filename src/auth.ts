@@ -11,6 +11,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
+  /**
+   * The app runs behind a TLS-terminating preview proxy (https://*.e2b.app →
+   * http://localhost:3000). Auth.js auto-enables `__Host-`/`__Secure-` Secure
+   * cookies when it detects HTTPS (via X-Forwarded-Proto), but those Secure,
+   * prefix-locked cookies do not reliably round-trip through the proxy, which
+   * breaks the credentials sign-in with `MissingCSRF`. Forcing stable, plain,
+   * non-Secure cookie names keeps the CSRF + session cookies identical over
+   * both HTTP and HTTPS, so login works locally and through the preview proxy.
+   */
+  cookies: {
+    sessionToken: {
+      name: "authjs.session-token",
+      options: { httpOnly: true, sameSite: "lax", path: "/", secure: false },
+    },
+    csrfToken: {
+      name: "authjs.csrf-token",
+      options: { httpOnly: true, sameSite: "lax", path: "/", secure: false },
+    },
+    callbackUrl: {
+      name: "authjs.callback-url",
+      options: { httpOnly: false, sameSite: "lax", path: "/", secure: false },
+    },
+  },
   providers: [
     Credentials({
       credentials: { email: {}, password: {} },
