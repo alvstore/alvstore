@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useLocation } from "@/lib/router-compat";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { cn } from "@/lib/utils";
 
-export function AppLayout() {
+export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => {
@@ -52,7 +52,7 @@ export function AppLayout() {
       <div className={cn("flex flex-col min-h-screen transition-all duration-300", collapsed ? "md:ml-[60px]" : "md:ml-[260px]")}>
         <AppHeader onMobileMenuToggle={() => setMobileOpen(!mobileOpen)} />
         <main className="flex-1 p-4 md:p-6 md:pl-8 md:pr-8">
-          <Outlet />
+          {children}
         </main>
       </div>
     </div>

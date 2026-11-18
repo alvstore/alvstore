@@ -136,8 +136,8 @@ export default function SoundstageSection() {
                   stroke="rgba(232,184,108,0.12)"
                   strokeWidth="0.5"
                   strokeDasharray="2 3"
-                  initial={{ pathLength: 0 }}
-                  whileInView={{ pathLength: 1 }}
+                  initial={{ pathLength: 0 } as never}
+                  whileInView={{ pathLength: 1 } as never}
                   viewport={{ once: true }}
                   transition={{ duration: 1, delay: 0.8 + i * 0.05 }}
                 />

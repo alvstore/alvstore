@@ -1,12 +1,27 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+"use client";
+
+import { createContext, useContext, type ReactNode } from "react";
+import { useSession, signOut as nextAuthSignOut } from "next-auth/react";
+import { __setBackendSession } from "@/integrations/supabase/client";
 
 type AppRole = "admin" | "staff" | "technician" | "customer";
 
+interface SessionUser {
+  id: string;
+  email: string;
+  aud: string;
+  role: string;
+  user_metadata: Record<string, unknown>;
+}
+
+interface SessionLike {
+  access_token: string;
+  user: SessionUser;
+}
+
 interface AuthContextType {
-  session: Session | null;
-  user: User | null;
+  session: SessionLike | null;
+  user: SessionUser | null;
   roles: AppRole[];
   loading: boolean;
   signOut: () => Promise<void>;
@@ -16,56 +31,38 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [roles, setRoles] = useState<AppRole[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: nextSession, status } = useSession();
+  const loading = status === "loading";
 
-  const fetchRoles = async (userId: string) => {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId);
-    if (data) {
-      setRoles(data.map((r) => r.role as AppRole));
-    }
-  };
+  // keep the backend client's token in sync (also covers first paint)
+  __setBackendSession(nextSession);
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          setTimeout(() => fetchRoles(session.user.id), 0);
-        } else {
-          setRoles([]);
-        }
-        setLoading(false);
-      }
-    );
+  const roles = ((nextSession?.user as { roles?: string[] } | undefined)?.roles ?? []) as AppRole[];
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchRoles(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  let session: SessionLike | null = null;
+  if (nextSession?.user?.id) {
+    const u = nextSession.user as { id: string; email?: string | null; user_metadata?: Record<string, unknown> };
+    session = {
+      access_token: (nextSession as { accessToken?: string }).accessToken ?? "",
+      user: {
+        id: u.id,
+        email: u.email ?? "",
+        aud: "authenticated",
+        role: "authenticated",
+        user_metadata: u.user_metadata ?? {},
+      },
+    };
+  }
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setRoles([]);
+    __setBackendSession(null);
+    await nextAuthSignOut({ redirect: false });
   };
 
   const hasRole = (role: AppRole) => roles.includes(role);
 
   return (
-    <AuthContext.Provider value={{ session, user, roles, loading, signOut, hasRole }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, roles, loading, signOut, hasRole }}>
       {children}
     </AuthContext.Provider>
   );

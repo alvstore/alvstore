@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@/lib/router-compat";
 import { Bell, LogOut, Menu, Search, Palette, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,14 +37,12 @@ export function AppHeader({ onMobileMenuToggle }: AppHeaderProps) {
 
   useEffect(() => { fetchUnread(); }, [user]);
 
+  // Poll for new notifications (replaces Supabase realtime subscription)
   useEffect(() => {
     if (!user) return;
-    const channel = supabase
-      .channel("header-notif-count")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notification_feed", filter: `user_id=eq.${user.id}` },
-        () => setUnreadCount(prev => prev + 1))
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const interval = setInterval(fetchUnread, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Reset count when drawer closes

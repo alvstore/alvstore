@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Bell, X, CheckCheck, MessageCircle, CreditCard, Clock, Radio, UserCheck, AlertTriangle } from "lucide-react";
@@ -66,15 +66,13 @@ export function NotificationDrawer({ open, onOpenChange }: { open: boolean; onOp
     if (open) fetchNotifications();
   }, [open, user]);
 
+  // Poll for new notifications (replaces Supabase realtime subscription)
   useEffect(() => {
-    if (!user) return;
-    const channel = supabase
-      .channel("notif-feed-rt")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notification_feed", filter: `user_id=eq.${user.id}` },
-        (payload) => setNotifications(prev => [payload.new as any, ...prev]))
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
+    if (!user || !open) return;
+    const interval = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, user]);
 
   const unreadCount = notifications.filter(n => !n.read_at).length;
 

@@ -1,0 +1,6317 @@
+{
+  "tables": {
+    "apple_offers": {
+      "model": "AppleOffers",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "offer_type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "bank_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "applicable_category",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "applicable_product",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "discount_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "start_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "end_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "apple_pricing_rules": {
+      "model": "ApplePricingRules",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "category",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "discount_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "rule_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "cash_discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "cash_discount_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "cash_discount_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "apple_products": {
+      "model": "AppleProducts",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "part_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "sap_description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "category",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "subcategory",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "mrp",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "alp_ex_vat",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "is_new",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "attendance_records": {
+      "model": "AttendanceRecords",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "employee_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "check_in",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "check_out",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "date",
+          "udt": "date",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "device_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "source",
+          "udt": "attendance_source",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "business_settings": {
+      "model": "BusinessSettings",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "company_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "company_address",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "company_phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "company_email",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "gst_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "logo_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "invoice_prefix",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "quotation_prefix",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "integrations",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "timezone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_state_code",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "gst_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "default_cgst_rate",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "default_sgst_rate",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "default_igst_rate",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "hsn_default",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "whatsapp_api_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "whatsapp_api_key",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "whatsapp_phone_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "bank_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "bank_account_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "bank_ifsc",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "bank_branch",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "bank_upi_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": []
+    },
+    "calendar_events": {
+      "model": "CalendarEvents",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "title",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "start_date",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "end_date",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "all_day",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "category",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "color",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "chat_conversations": {
+      "model": "ChatConversations",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "title",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "participant_ids",
+          "udt": "_uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "last_message",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "last_message_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "channel",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "whatsapp_phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_chat_messages",
+          "kind": "one-to-many",
+          "targetTable": "chat_messages",
+          "targetModel": "ChatMessages",
+          "fkColumns": [
+            "conversation_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "chat_messages": {
+      "model": "ChatMessages",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "conversation_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "sender_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "content",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "read_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "channel",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "whatsapp_message_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "delivery_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "file_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "file_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "file_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "delivered_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_chat_conversations",
+          "kind": "many-to-one",
+          "targetTable": "chat_conversations",
+          "targetModel": "ChatConversations",
+          "fkColumns": [
+            "conversation_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "checklist_templates": {
+      "model": "ChecklistTemplates",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "issue_category_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "stage",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "title",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "is_required",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "sort_order",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "options",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_issue_categories",
+          "kind": "many-to-one",
+          "targetTable": "issue_categories",
+          "targetModel": "IssueCategories",
+          "fkColumns": [
+            "issue_category_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "customers": {
+      "model": "Customers",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "email",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "gst_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "address",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "city",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "state",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "pincode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "shipping_address",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "shipping_city",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "shipping_state",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "shipping_pincode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_delivery_challans_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "delivery_challans",
+          "targetModel": "DeliveryChallans",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_finance_transactions_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "finance_transactions",
+          "targetModel": "FinanceTransactions",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_invoices_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "invoices",
+          "targetModel": "Invoices",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_job_sheets_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_leads",
+          "kind": "one-to-many",
+          "targetTable": "leads",
+          "targetModel": "Leads",
+          "fkColumns": [
+            "converted_customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payment_register_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "payment_register",
+          "targetModel": "PaymentRegister",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payments_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "payments",
+          "targetModel": "Payments",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_pos_transactions_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "pos_transactions",
+          "targetModel": "PosTransactions",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_quotations_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "quotations",
+          "targetModel": "Quotations",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_repair_tickets_customer_id",
+          "kind": "one-to-many",
+          "targetTable": "repair_tickets",
+          "targetModel": "RepairTickets",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "daily_cash_control": {
+      "model": "DailyCashControl",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "date",
+          "udt": "date",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "opening_cash",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "closing_cash",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "difference",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "staff_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "denominations",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "pos_total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "manual_income",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "manual_expense",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "expected_closing",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "closed_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "closed_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": []
+    },
+    "delivery_challan_items": {
+      "model": "DeliveryChallanItems",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "challan_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "product_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "product_name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "unit_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "hsn_code",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_delivery_challans",
+          "kind": "many-to-one",
+          "targetTable": "delivery_challans",
+          "targetModel": "DeliveryChallans",
+          "fkColumns": [
+            "challan_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "delivery_challans": {
+      "model": "DeliveryChallans",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "challan_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "invoice_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "delivery_person",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "vehicle_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "receiver_signature",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "gst_inclusive",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "subtotal",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_delivery_challan_items",
+          "kind": "one-to-many",
+          "targetTable": "delivery_challan_items",
+          "targetModel": "DeliveryChallanItems",
+          "fkColumns": [
+            "challan_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "departments": {
+      "model": "Departments",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "device_department_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "parent_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_hikvision_devices",
+          "kind": "many-to-one",
+          "targetTable": "hikvision_devices",
+          "targetModel": "HikvisionDevices",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_departments",
+          "kind": "many-to-one",
+          "targetTable": "departments",
+          "targetModel": "Departments",
+          "fkColumns": [
+            "parent_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_departments",
+          "kind": "one-to-many",
+          "targetTable": "departments",
+          "targetModel": "Departments",
+          "fkColumns": [
+            "parent_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_employees",
+          "kind": "one-to-many",
+          "targetTable": "employees",
+          "targetModel": "Employees",
+          "fkColumns": [
+            "department_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "device_brands": {
+      "model": "DeviceBrands",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "device_types": {
+      "model": "DeviceTypes",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "employees": {
+      "model": "Employees",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "email",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "role",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "department",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "designation",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "salary",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "joining_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "avatar_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "department_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_employee_code",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "employee_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_departments",
+          "kind": "many-to-one",
+          "targetTable": "departments",
+          "targetModel": "Departments",
+          "fkColumns": [
+            "department_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_hikvision_attendance_logs_employee_id",
+          "kind": "one-to-many",
+          "targetTable": "hikvision_attendance_logs",
+          "targetModel": "HikvisionAttendanceLogs",
+          "fkColumns": [
+            "employee_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_hikvision_employee_mapping",
+          "kind": "one-to-many",
+          "targetTable": "hikvision_employee_mapping",
+          "targetModel": "HikvisionEmployeeMapping",
+          "fkColumns": [
+            "erp_employee_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payroll_employee_id",
+          "kind": "one-to-many",
+          "targetTable": "payroll",
+          "targetModel": "Payroll",
+          "fkColumns": [
+            "employee_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "finance_accounts": {
+      "model": "FinanceAccounts",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "account_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "bank_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "opening_balance",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "current_balance",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_finance_transactions_account_id",
+          "kind": "one-to-many",
+          "targetTable": "finance_transactions",
+          "targetModel": "FinanceTransactions",
+          "fkColumns": [
+            "account_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_finance_transactions_to_account_id",
+          "kind": "one-to-many",
+          "targetTable": "finance_transactions",
+          "targetModel": "FinanceTransactions",
+          "fkColumns": [
+            "to_account_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "finance_audit_log": {
+      "model": "FinanceAuditLog",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "action",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "entity_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "entity_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "details",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "staff_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "user_role",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "ip_address",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "finance_categories": {
+      "model": "FinanceCategories",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_finance_transactions",
+          "kind": "one-to-many",
+          "targetTable": "finance_transactions",
+          "targetModel": "FinanceTransactions",
+          "fkColumns": [
+            "category_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "finance_transactions": {
+      "model": "FinanceTransactions",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "transaction_id",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "date",
+          "udt": "date",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "payment_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "account_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "to_account_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "category_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "reference",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "attachment_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "balance_after",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "staff_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_finance_accounts_account_id",
+          "kind": "many-to-one",
+          "targetTable": "finance_accounts",
+          "targetModel": "FinanceAccounts",
+          "fkColumns": [
+            "account_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_finance_categories",
+          "kind": "many-to-one",
+          "targetTable": "finance_categories",
+          "targetModel": "FinanceCategories",
+          "fkColumns": [
+            "category_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_finance_accounts_to_account_id",
+          "kind": "many-to-one",
+          "targetTable": "finance_accounts",
+          "targetModel": "FinanceAccounts",
+          "fkColumns": [
+            "to_account_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "follow_up_notes": {
+      "model": "FollowUpNotes",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "entity_type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "entity_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "note",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "outcome",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "next_follow_up_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "hikvision_attendance_logs": {
+      "model": "HikvisionAttendanceLogs",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "device_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "employee_code",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "employee_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "employee_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_ip",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "event_time",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "event_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "raw_data",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "dedupe_key",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "source_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "attendance_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "verify_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "event_serial_no",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_hikvision_devices",
+          "kind": "many-to-one",
+          "targetTable": "hikvision_devices",
+          "targetModel": "HikvisionDevices",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_employees",
+          "kind": "many-to-one",
+          "targetTable": "employees",
+          "targetModel": "Employees",
+          "fkColumns": [
+            "employee_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "hikvision_devices": {
+      "model": "HikvisionDevices",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "ip_address",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "port",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "username",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "password",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "last_sync_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "device_model",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_version",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_serial",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "site_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "site_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "zone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_departments_device_id",
+          "kind": "one-to-many",
+          "targetTable": "departments",
+          "targetModel": "Departments",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_hikvision_attendance_logs_device_id",
+          "kind": "one-to-many",
+          "targetTable": "hikvision_attendance_logs",
+          "targetModel": "HikvisionAttendanceLogs",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_hikvision_employee_mapping_device_id",
+          "kind": "one-to-many",
+          "targetTable": "hikvision_employee_mapping",
+          "targetModel": "HikvisionEmployeeMapping",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_hikvision_sync_log_device_id",
+          "kind": "one-to-many",
+          "targetTable": "hikvision_sync_log",
+          "targetModel": "HikvisionSyncLog",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "hikvision_employee_mapping": {
+      "model": "HikvisionEmployeeMapping",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "device_employee_code",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "device_employee_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "erp_employee_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "card_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "department_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "synced_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "avatar_synced",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_hikvision_devices",
+          "kind": "many-to-one",
+          "targetTable": "hikvision_devices",
+          "targetModel": "HikvisionDevices",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_employees",
+          "kind": "many-to-one",
+          "targetTable": "employees",
+          "targetModel": "Employees",
+          "fkColumns": [
+            "erp_employee_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "hikvision_sync_log": {
+      "model": "HikvisionSyncLog",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "device_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "action",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "records_synced",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "error_message",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "sync_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_hikvision_devices",
+          "kind": "many-to-one",
+          "targetTable": "hikvision_devices",
+          "targetModel": "HikvisionDevices",
+          "fkColumns": [
+            "device_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "invoice_items": {
+      "model": "InvoiceItems",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "invoice_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "product_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "product_name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "unit_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "hsn_code",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_invoices",
+          "kind": "many-to-one",
+          "targetTable": "invoices",
+          "targetModel": "Invoices",
+          "fkColumns": [
+            "invoice_id"
+          ],
+          "optional": false
+        },
+        {
+          "field": "r_products",
+          "kind": "many-to-one",
+          "targetTable": "products",
+          "targetModel": "Products",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "invoices": {
+      "model": "Invoices",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "invoice_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "quotation_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "job_sheet_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "subtotal",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "paid_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "due_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_inclusive",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "public_token",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "signature_data",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "signature_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "signed_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "salesperson_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "payment_terms",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_invoice_items_invoice_id",
+          "kind": "one-to-many",
+          "targetTable": "invoice_items",
+          "targetModel": "InvoiceItems",
+          "fkColumns": [
+            "invoice_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_job_sheets",
+          "kind": "many-to-one",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_quotations",
+          "kind": "many-to-one",
+          "targetTable": "quotations",
+          "targetModel": "Quotations",
+          "fkColumns": [
+            "quotation_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_job_sheets_invoice_id",
+          "kind": "one-to-many",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "invoice_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payment_register_invoice_id",
+          "kind": "one-to-many",
+          "targetTable": "payment_register",
+          "targetModel": "PaymentRegister",
+          "fkColumns": [
+            "invoice_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "issue_categories": {
+      "model": "IssueCategories",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_checklist_templates_issue_category_id",
+          "kind": "one-to-many",
+          "targetTable": "checklist_templates",
+          "targetModel": "ChecklistTemplates",
+          "fkColumns": [
+            "issue_category_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_job_sheets_issue_category_id",
+          "kind": "one-to-many",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "issue_category_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "job_sheet_audit_log": {
+      "model": "JobSheetAuditLog",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "job_sheet_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "action",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "details",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "user_role",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "ip_address",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_job_sheets",
+          "kind": "many-to-one",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "job_sheet_images": {
+      "model": "JobSheetImages",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "job_sheet_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "image_url",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "image_type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "caption",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "uploaded_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "stage",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_job_sheets",
+          "kind": "many-to-one",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "job_sheets": {
+      "model": "JobSheets",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "job_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "device_brand",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "device_type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "device_model",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "serial_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "imei_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_color",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "storage_capacity",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "problem_description",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "issue_tags",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "pre_repair_checklist",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "post_repair_checklist",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "staff_notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "estimated_cost",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "estimated_completion",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "repair_notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "final_cost",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "assigned_technician_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "job_sheet_status",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "priority",
+          "udt": "repair_priority",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "approval_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "approval_timestamp",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "approval_ip",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "public_token",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "apple_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "apple_id_password",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "google_account",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "google_account_password",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_lock_code",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "actual_cost",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "technician_payment",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "technician_payment_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "technician_payment_date",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_received_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_sent_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_received_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_sent_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "service_charge",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "parts_total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "invoice_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "payment_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "service_items",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "warranty_days",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "warranty_terms",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "warranty_start_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "delivery_signature_data",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "delivery_signature_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "delivery_approved_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "issue_category_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_invoices_job_sheet_id",
+          "kind": "one-to-many",
+          "targetTable": "invoices",
+          "targetModel": "Invoices",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_job_sheet_audit_log_job_sheet_id",
+          "kind": "one-to-many",
+          "targetTable": "job_sheet_audit_log",
+          "targetModel": "JobSheetAuditLog",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_job_sheet_images_job_sheet_id",
+          "kind": "one-to-many",
+          "targetTable": "job_sheet_images",
+          "targetModel": "JobSheetImages",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": false
+        },
+        {
+          "field": "r_invoices",
+          "kind": "many-to-one",
+          "targetTable": "invoices",
+          "targetModel": "Invoices",
+          "fkColumns": [
+            "invoice_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_issue_categories",
+          "kind": "many-to-one",
+          "targetTable": "issue_categories",
+          "targetModel": "IssueCategories",
+          "fkColumns": [
+            "issue_category_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payments_job_sheet_id",
+          "kind": "one-to-many",
+          "targetTable": "payments",
+          "targetModel": "Payments",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_repair_parts_job_sheet_id",
+          "kind": "one-to-many",
+          "targetTable": "repair_parts",
+          "targetModel": "RepairParts",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_technician_payments_job_sheet_id",
+          "kind": "one-to-many",
+          "targetTable": "technician_payments",
+          "targetModel": "TechnicianPayments",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "lead_activities": {
+      "model": "LeadActivities",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "lead_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "outcome",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_leads",
+          "kind": "many-to-one",
+          "targetTable": "leads",
+          "targetModel": "Leads",
+          "fkColumns": [
+            "lead_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "leads": {
+      "model": "Leads",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "email",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "source",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "assigned_to",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "converted_customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "score",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "next_follow_up",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "expected_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "pipeline_stage",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "lost_reason",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_lead_activities_lead_id",
+          "kind": "one-to-many",
+          "targetTable": "lead_activities",
+          "targetModel": "LeadActivities",
+          "fkColumns": [
+            "lead_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "converted_customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_whatsapp_conversations_lead_id",
+          "kind": "one-to-many",
+          "targetTable": "whatsapp_conversations",
+          "targetModel": "WhatsappConversations",
+          "fkColumns": [
+            "lead_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_whatsapp_messages_lead_id",
+          "kind": "one-to-many",
+          "targetTable": "whatsapp_messages",
+          "targetModel": "WhatsappMessages",
+          "fkColumns": [
+            "lead_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "notification_feed": {
+      "model": "NotificationFeed",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "title",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "body",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "metadata",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "read_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "notifications": {
+      "model": "Notifications",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "title",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "message",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "read",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "link",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "payment_register": {
+      "model": "PaymentRegister",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "register_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "transaction_date",
+          "udt": "date",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "customer_name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "invoice_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "invoice_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "invoice_amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_mode",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "bank_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "card_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "transaction_reference",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "cheque_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "cheque_deposit_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "cheque_clearance_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "received_amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "bank_charges",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "net_received_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "difference_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "difference_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "document_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "card_network",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "mdr_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "deposit_bank_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "settlement_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "payment_sub_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_invoices",
+          "kind": "many-to-one",
+          "targetTable": "invoices",
+          "targetModel": "Invoices",
+          "fkColumns": [
+            "invoice_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "payments": {
+      "model": "Payments",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "type",
+          "udt": "payment_type",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_method",
+          "udt": "payment_method_type",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "reference_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "quotation_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "pos_transaction_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "payment_status",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "job_sheet_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_job_sheets",
+          "kind": "many-to-one",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_pos_transactions",
+          "kind": "many-to-one",
+          "targetTable": "pos_transactions",
+          "targetModel": "PosTransactions",
+          "fkColumns": [
+            "pos_transaction_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_quotations",
+          "kind": "many-to-one",
+          "targetTable": "quotations",
+          "targetModel": "Quotations",
+          "fkColumns": [
+            "quotation_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "payroll": {
+      "model": "Payroll",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "employee_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "month",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "basic_salary",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "deductions",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "bonus",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "net_salary",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "paid_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_employees",
+          "kind": "many-to-one",
+          "targetTable": "employees",
+          "targetModel": "Employees",
+          "fkColumns": [
+            "employee_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "pos_transactions": {
+      "model": "PosTransactions",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "transaction_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "items",
+          "udt": "jsonb",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "subtotal",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_method",
+          "udt": "payment_method_type",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_payments",
+          "kind": "one-to-many",
+          "targetTable": "payments",
+          "targetModel": "Payments",
+          "fkColumns": [
+            "pos_transaction_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "products": {
+      "model": "Products",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "sku",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "barcode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "image_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "category",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "purchase_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "selling_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "stock_quantity",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "low_stock_threshold",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "unit",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_invoice_items_product_id",
+          "kind": "one-to-many",
+          "targetTable": "invoice_items",
+          "targetModel": "InvoiceItems",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_purchase_bill_items_product_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_bill_items",
+          "targetModel": "PurchaseBillItems",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_purchase_order_items_product_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_order_items",
+          "targetModel": "PurchaseOrderItems",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_purchase_return_items_product_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_return_items",
+          "targetModel": "PurchaseReturnItems",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_quotation_items_product_id",
+          "kind": "one-to-many",
+          "targetTable": "quotation_items",
+          "targetModel": "QuotationItems",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_stock_movements_product_id",
+          "kind": "one-to-many",
+          "targetTable": "stock_movements",
+          "targetModel": "StockMovements",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "profiles": {
+      "model": "Profiles",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "full_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "avatar_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "purchase_bill_items": {
+      "model": "PurchaseBillItems",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "bill_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "product_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "product_name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "unit_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "serial_numbers",
+          "udt": "_text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "batch_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "expiry_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_purchase_bills",
+          "kind": "many-to-one",
+          "targetTable": "purchase_bills",
+          "targetModel": "PurchaseBills",
+          "fkColumns": [
+            "bill_id"
+          ],
+          "optional": false
+        },
+        {
+          "field": "r_products",
+          "kind": "many-to-one",
+          "targetTable": "products",
+          "targetModel": "Products",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "purchase_bills": {
+      "model": "PurchaseBills",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "bill_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "po_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "supplier_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "subtotal",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "paid_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "bill_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "due_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_purchase_bill_items_bill_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_bill_items",
+          "targetModel": "PurchaseBillItems",
+          "fkColumns": [
+            "bill_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_purchase_orders",
+          "kind": "many-to-one",
+          "targetTable": "purchase_orders",
+          "targetModel": "PurchaseOrders",
+          "fkColumns": [
+            "po_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_suppliers",
+          "kind": "many-to-one",
+          "targetTable": "suppliers",
+          "targetModel": "Suppliers",
+          "fkColumns": [
+            "supplier_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_purchase_returns_bill_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_returns",
+          "targetModel": "PurchaseReturns",
+          "fkColumns": [
+            "bill_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "purchase_order_items": {
+      "model": "PurchaseOrderItems",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "po_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "product_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "product_name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "received_quantity",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "unit_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_purchase_orders",
+          "kind": "many-to-one",
+          "targetTable": "purchase_orders",
+          "targetModel": "PurchaseOrders",
+          "fkColumns": [
+            "po_id"
+          ],
+          "optional": false
+        },
+        {
+          "field": "r_products",
+          "kind": "many-to-one",
+          "targetTable": "products",
+          "targetModel": "Products",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "purchase_orders": {
+      "model": "PurchaseOrders",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "po_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "supplier_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "subtotal",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "expected_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_purchase_bills_po_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_bills",
+          "targetModel": "PurchaseBills",
+          "fkColumns": [
+            "po_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_purchase_order_items_po_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_order_items",
+          "targetModel": "PurchaseOrderItems",
+          "fkColumns": [
+            "po_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_suppliers",
+          "kind": "many-to-one",
+          "targetTable": "suppliers",
+          "targetModel": "Suppliers",
+          "fkColumns": [
+            "supplier_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "purchase_return_items": {
+      "model": "PurchaseReturnItems",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "return_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "product_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "product_name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "unit_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_products",
+          "kind": "many-to-one",
+          "targetTable": "products",
+          "targetModel": "Products",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_purchase_returns",
+          "kind": "many-to-one",
+          "targetTable": "purchase_returns",
+          "targetModel": "PurchaseReturns",
+          "fkColumns": [
+            "return_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "purchase_returns": {
+      "model": "PurchaseReturns",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "return_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "supplier_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "bill_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "subtotal",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "reason",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_purchase_return_items",
+          "kind": "one-to-many",
+          "targetTable": "purchase_return_items",
+          "targetModel": "PurchaseReturnItems",
+          "fkColumns": [
+            "return_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_purchase_bills",
+          "kind": "many-to-one",
+          "targetTable": "purchase_bills",
+          "targetModel": "PurchaseBills",
+          "fkColumns": [
+            "bill_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_suppliers",
+          "kind": "many-to-one",
+          "targetTable": "suppliers",
+          "targetModel": "Suppliers",
+          "fkColumns": [
+            "supplier_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "quotation_items": {
+      "model": "QuotationItems",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "quotation_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "product_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "product_name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "unit_price",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "image_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "hsn_code",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_products",
+          "kind": "many-to-one",
+          "targetTable": "products",
+          "targetModel": "Products",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_quotations",
+          "kind": "many-to-one",
+          "targetTable": "quotations",
+          "targetModel": "Quotations",
+          "fkColumns": [
+            "quotation_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "quotations": {
+      "model": "Quotations",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "quotation_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "quotation_status",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "subtotal",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_amount",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "terms",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "valid_until",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "public_token",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_inclusive",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "signature_data",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "signature_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "signed_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "signed_ip",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "view_count",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "last_viewed_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "reminder_sent_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "converted_invoice_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "salesperson_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "payment_terms",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_invoices_quotation_id",
+          "kind": "one-to-many",
+          "targetTable": "invoices",
+          "targetModel": "Invoices",
+          "fkColumns": [
+            "quotation_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payments_quotation_id",
+          "kind": "one-to-many",
+          "targetTable": "payments",
+          "targetModel": "Payments",
+          "fkColumns": [
+            "quotation_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_quotation_items_quotation_id",
+          "kind": "one-to-many",
+          "targetTable": "quotation_items",
+          "targetModel": "QuotationItems",
+          "fkColumns": [
+            "quotation_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "repair_images": {
+      "model": "RepairImages",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "ticket_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "image_url",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "caption",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "uploaded_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_repair_tickets",
+          "kind": "many-to-one",
+          "targetTable": "repair_tickets",
+          "targetModel": "RepairTickets",
+          "fkColumns": [
+            "ticket_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "repair_parts": {
+      "model": "RepairParts",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "job_sheet_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "cost",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "gst_percentage",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "total",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_job_sheets",
+          "kind": "many-to-one",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "repair_status_history": {
+      "model": "RepairStatusHistory",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "ticket_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "old_status",
+          "udt": "repair_status",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "new_status",
+          "udt": "repair_status",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "changed_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_repair_tickets",
+          "kind": "many-to-one",
+          "targetTable": "repair_tickets",
+          "targetModel": "RepairTickets",
+          "fkColumns": [
+            "ticket_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "repair_tickets": {
+      "model": "RepairTickets",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "ticket_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "customer_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_brand",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "device_model",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "serial_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "issue_description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "repair_status",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "priority",
+          "udt": "repair_priority",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "assigned_technician_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "estimated_cost",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "final_cost",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "diagnosis_notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "repair_notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_repair_images_ticket_id",
+          "kind": "one-to-many",
+          "targetTable": "repair_images",
+          "targetModel": "RepairImages",
+          "fkColumns": [
+            "ticket_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_repair_status_history_ticket_id",
+          "kind": "one-to-many",
+          "targetTable": "repair_status_history",
+          "targetModel": "RepairStatusHistory",
+          "fkColumns": [
+            "ticket_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_customers",
+          "kind": "many-to-one",
+          "targetTable": "customers",
+          "targetModel": "Customers",
+          "fkColumns": [
+            "customer_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "service_charge_categories": {
+      "model": "ServiceChargeCategories",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "default_charge",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "stock_movements": {
+      "model": "StockMovements",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "product_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "stock_movement_type",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "quantity",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "reference",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_products",
+          "kind": "many-to-one",
+          "targetTable": "products",
+          "targetModel": "Products",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": false
+        }
+      ]
+    },
+    "suppliers": {
+      "model": "Suppliers",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "gst_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "email",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "address",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "outstanding_balance",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "rl_purchase_bills_supplier_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_bills",
+          "targetModel": "PurchaseBills",
+          "fkColumns": [
+            "supplier_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_purchase_orders_supplier_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_orders",
+          "targetModel": "PurchaseOrders",
+          "fkColumns": [
+            "supplier_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_purchase_returns_supplier_id",
+          "kind": "one-to-many",
+          "targetTable": "purchase_returns",
+          "targetModel": "PurchaseReturns",
+          "fkColumns": [
+            "supplier_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "system_audit_log": {
+      "model": "SystemAuditLog",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "user_role",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "staff_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "action",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "module",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "entity_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "entity_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "details",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "ip_address",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "tasks": {
+      "model": "Tasks",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "title",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "assigned_to",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "assigned_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "priority",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "due_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "related_entity_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "related_entity_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
+    "technician_payments": {
+      "model": "TechnicianPayments",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "technician_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "job_sheet_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "payment_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "finance_transaction_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_job_sheets",
+          "kind": "many-to-one",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "templates": {
+      "model": "Templates",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "type",
+          "udt": "template_type",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "subject",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "body",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "variables",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "is_default",
+          "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "updated_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "event_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        }
+      ],
+      "relations": []
+    },
+    "user_roles": {
+      "model": "UserRoles",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "user_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "role",
+          "udt": "app_role",
+          "nullable": false,
+          "hasDefault": false
+        }
+      ],
+      "relations": []
+    },
+    "whatsapp_conversations": {
+      "model": "WhatsappConversations",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "lead_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "phone_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "last_message_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_leads",
+          "kind": "many-to-one",
+          "targetTable": "leads",
+          "targetModel": "Leads",
+          "fkColumns": [
+            "lead_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_whatsapp_messages",
+          "kind": "one-to-many",
+          "targetTable": "whatsapp_messages",
+          "targetModel": "WhatsappMessages",
+          "fkColumns": [
+            "conversation_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "whatsapp_messages": {
+      "model": "WhatsappMessages",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "wa_message_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "conversation_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "lead_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "direction",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "body",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "media_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "timestamp",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_whatsapp_conversations",
+          "kind": "many-to-one",
+          "targetTable": "whatsapp_conversations",
+          "targetModel": "WhatsappConversations",
+          "fkColumns": [
+            "conversation_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_leads",
+          "kind": "many-to-one",
+          "targetTable": "leads",
+          "targetModel": "Leads",
+          "fkColumns": [
+            "lead_id"
+          ],
+          "optional": true
+        }
+      ]
+    }
+  }
+}
