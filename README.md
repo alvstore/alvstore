@@ -6,7 +6,8 @@ Premium home-theater installer ERP: CRM, repairs (job sheets), POS, inventory, i
 
 | Layer     | Technology |
 |-----------|------------|
-| Frontend  | **Next.js 15** (App Router, React 19, TypeScript), Tailwind + shadcn/ui, TanStack Query |
+| Frontend  | **Next.js 15** (App Router, React 19, TypeScript), Tailwind + shadcn/ui, **Material UI v9** (Emotion), TanStack Query |
+| Motion    | **GSAP** (ScrollTrigger scrubs, count-up tweens) + **Framer Motion** (entrances, layout, SVG) — *no three.js/WebGL* |
 | Auth      | **Auth.js (NextAuth v5)** credentials provider → own API (bcrypt + JWT sessions) |
 | Backend   | **Express + TypeScript** (`server/`) — replaces Supabase |
 | Database  | **PostgreSQL** via **Prisma** (embedded PGlite for local dev; any Postgres in prod) |
@@ -117,7 +118,15 @@ WhatsApp credentials (see `server/.env.example`).
   errors are POSTed to `/api/backend/log` and printed in the API server logs
   (tagged `[client:…]`).
 - The root `<html>` is marked `translate="no"` so browser auto-translate can't
-  mutate React-managed DOM (a common cause of `removeChild` crashes).
+  mutate React-managed DOM (a common cause of `removeChild` crashes). GSAP
+  scroll "pinning" is done with CSS `position: sticky` rather than
+  ScrollTrigger's `pin: true`, because GSAP pinning reparents the element into
+  a `.pin-spacer` and collides with React 19 reconciliation (`removeChild`).
+- **UI kits**: shadcn/ui + Tailwind power the ERP screens; **Material UI** is
+  also available app-wide (theme bridged from `useTheme` by
+  `src/components/MuiThemeBridge.tsx`, Emotion SSR cache in `src/app/layout.tsx`)
+  and drives the animated Dashboard. Home-theater visuals are SVG/canvas +
+  GSAP/Framer Motion (three.js was removed).
 - **Edge functions**: WhatsApp/Razorpay ports are fully wired to provider APIs
   when credentials exist; email/SMS log to the server console until a provider
   is configured; Hikvision endpoints return 501 until configured.
