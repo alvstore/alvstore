@@ -23,6 +23,7 @@ export default function BarcodeManager() {
   const [labelQty, setLabelQty] = useState(1);
   const [format, setFormat] = useState("CODE128");
   const [generating, setGenerating] = useState(false);
+  const [hasPreview, setHasPreview] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
   const fetchProducts = useCallback(async () => {
@@ -60,6 +61,7 @@ export default function BarcodeManager() {
     const container = previewRef.current;
     if (!container) { setGenerating(false); return; }
     container.innerHTML = "";
+    setHasPreview(false);
 
     for (const id of selected) {
       const product = products.find(p => p.id === id);
@@ -95,6 +97,7 @@ export default function BarcodeManager() {
     }
 
     setGenerating(false);
+    setHasPreview(container.childElementCount > 0);
     fetchProducts();
     toast.success("Barcodes generated");
   };
@@ -206,9 +209,13 @@ export default function BarcodeManager() {
               <CardDescription>Generated barcode labels will appear here</CardDescription>
             </CardHeader>
             <CardContent>
-              <div ref={previewRef} className="min-h-[300px] bg-muted/20 rounded-lg p-4 flex flex-wrap items-start content-start">
-                {!previewRef.current?.innerHTML && (
-                  <div className="w-full text-center py-16 text-muted-foreground">
+              {/* The preview container is mutated imperatively (innerHTML),
+                  so the placeholder is rendered as a sibling overlay — never
+                  as a React child of the container (avoids DOM conflicts). */}
+              <div className="relative min-h-[300px] bg-muted/20 rounded-lg">
+                <div ref={previewRef} className="min-h-[300px] p-4 flex flex-wrap items-start content-start" />
+                {!hasPreview && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground pointer-events-none">
                     <Barcode className="h-12 w-12 mx-auto mb-3 opacity-20" />
                     <p className="text-sm">Select products and click Generate</p>
                   </div>

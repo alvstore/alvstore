@@ -6,7 +6,7 @@ Premium home-theater installer ERP: CRM, repairs (job sheets), POS, inventory, i
 
 | Layer     | Technology |
 |-----------|------------|
-| Frontend  | **Next.js 14** (App Router, React 18, TypeScript), Tailwind + shadcn/ui, TanStack Query |
+| Frontend  | **Next.js 15** (App Router, React 19, TypeScript), Tailwind + shadcn/ui, TanStack Query |
 | Auth      | **Auth.js (NextAuth v5)** credentials provider → own API (bcrypt + JWT sessions) |
 | Backend   | **Express + TypeScript** (`server/`) — replaces Supabase |
 | Database  | **PostgreSQL** via **Prisma** (embedded PGlite for local dev; any Postgres in prod) |
@@ -113,6 +113,11 @@ WhatsApp credentials (see `server/.env.example`).
 
 - **Realtime**: Supabase Realtime subscriptions were replaced with short
   polling (chat: 4 s, notifications: 10–15 s).
+- **Client error reporting**: uncaught browser errors and React boundary
+  errors are POSTed to `/api/backend/log` and printed in the API server logs
+  (tagged `[client:…]`).
+- The root `<html>` is marked `translate="no"` so browser auto-translate can't
+  mutate React-managed DOM (a common cause of `removeChild` crashes).
 - **Edge functions**: WhatsApp/Razorpay ports are fully wired to provider APIs
   when credentials exist; email/SMS log to the server console until a provider
   is configured; Hikvision endpoints return 501 until configured.

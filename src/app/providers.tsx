@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "next-auth/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ErrorReporter } from "@/components/ErrorReporter";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/hooks/useTheme";
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <ThemeProvider>
           <AuthProvider>
             <TooltipProvider>
+              <ErrorReporter />
               <Toaster />
               <Sonner />
               {children}

@@ -5,6 +5,7 @@ import { authRouter } from "./auth/routes.js";
 import { dataRouter } from "./routes/data.js";
 import { storageRouter } from "./routes/storage.js";
 import { functionsRouter } from "./routes/functions.js";
+import { logRouter } from "./routes/log.js";
 
 export function createApp() {
   const app = express();
@@ -19,6 +20,7 @@ export function createApp() {
   app.use("/api/data", dataRouter);
   app.use("/api/storage", storageRouter);
   app.use("/api/functions", functionsRouter);
+  app.use("/api/log", logRouter);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

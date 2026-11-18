@@ -26,7 +26,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    // translate="no" prevents browser auto-translate from mutating React's
+    // DOM (a common source of "removeChild" crashes in React apps).
+    <html lang="en" translate="no" className="notranslate" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

@@ -6,6 +6,8 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },
   images: { unoptimized: true },
+  // Allow the sandbox live-preview host to load dev assets/HMR
+  allowedDevOrigins: ["*.e2b.app", "localhost", "127.0.0.1"],
   async rewrites() {
     return [
       // Browser → Next.js → Express backend (keeps the sandbox preview working
