@@ -128,9 +128,21 @@ WhatsApp credentials (see `server/.env.example`).
   `src/components/MuiThemeBridge.tsx`, Emotion SSR cache in `src/app/layout.tsx`)
   and drives the animated Dashboard. Home-theater visuals are SVG/canvas +
   GSAP/Framer Motion (three.js was removed).
-- **Edge functions**: WhatsApp/Razorpay ports are fully wired to provider APIs
-  when credentials exist; email/SMS log to the server console until a provider
-  is configured; Hikvision endpoints return 501 until configured.
+- **Edge functions**: all eleven former Supabase functions are full Express
+  ports under `/api/backend/functions/*` — `manage-staff`, `send-whatsapp`
+  (with Meta webhook verification on GET), `send-email` (template support +
+  SMTP), `send-sms` (template support + generic provider),
+  `whatsapp-automation` (WhatsApp → SMS fallback), `whatsapp-webhook`
+  (inbound messages, lead creation, admin notifications, status updates),
+  `create-payment-link`, `razorpay-webhook` (HMAC-verified, updates invoice
+  paid amounts), `parse-offer-pdf` (AI gateway when `AI_GATEWAY_URL` is set,
+  heuristic parser otherwise), and the complete Hik-Partner integration
+  `hikvision-sync` (test-credentials, site-search, list/import devices,
+  ISAPI employee sync, MQ attendance polling, backfill, full-sync, auto-map,
+  manual-add-employee, demo-test) + `hikvision-webhook` (HMAC signature check,
+  deduped event ingestion, auto check-in/out records). Provider credentials
+  live in `server/.env` (see `server/.env.example`); unconfigured providers
+  return a clear JSON error, exactly like the original functions.
 - **Password reset**: without SMTP the reset link is printed in the API logs
   and shown inline on the forgot-password page (dev convenience).
 - The legacy `supabase/` directory has been removed entirely — its SQL

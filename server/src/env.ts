@@ -24,6 +24,25 @@ export const env = {
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? "",
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? "",
   smtpUrl: process.env.SMTP_URL ?? "",
+  // Email (send-email function) — generic HTTP mail API pattern
+  smtpHost: process.env.SMTP_HOST ?? "",
+  smtpPort: process.env.SMTP_PORT ?? "587",
+  smtpUser: process.env.SMTP_USER ?? "",
+  smtpPass: process.env.SMTP_PASS ?? "",
+  smtpFrom: process.env.SMTP_FROM ?? "",
+  // SMS (send-sms function + WhatsApp automation fallback) — generic provider
+  smsApiUrl: process.env.SMS_API_URL ?? "",
+  smsApiKey: process.env.SMS_API_KEY ?? "",
+  smsSenderId: process.env.SMS_SENDER_ID ?? "",
+  smsDltEntityId: process.env.SMS_DLT_ENTITY_ID ?? "",
+  // Hik-Partner Cloud (hikvision-sync / hikvision-webhook functions)
+  hikPartnerAppKey: process.env.HIK_PARTNER_APP_KEY ?? "",
+  hikPartnerSecretKey: process.env.HIK_PARTNER_SECRET_KEY ?? "",
+  hikWebhookSignSecret: process.env.HIK_WEBHOOK_SIGN_SECRET ?? "",
+  // AI gateway for parse-offer-pdf (OpenAI-compatible; heuristic fallback when unset)
+  aiGatewayUrl: process.env.AI_GATEWAY_URL ?? "",
+  aiGatewayKey: process.env.AI_GATEWAY_KEY ?? "",
+  aiModel: process.env.AI_MODEL ?? "gpt-4o-mini",
   whatsappToken: process.env.WHATSAPP_TOKEN ?? "",
   whatsappPhoneId: process.env.WHATSAPP_PHONE_ID ?? "",
   appOrigin: process.env.APP_ORIGIN ?? "http://localhost:3000",

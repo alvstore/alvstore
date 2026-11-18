@@ -11,7 +11,16 @@ export function createApp() {
   const app = express();
   app.set("trust proxy", true);
   app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json({ limit: "25mb" }));
+  // Capture the raw body alongside parsed JSON — webhook signature checks
+  // (Razorpay, Hik-Partner) must HMAC the exact payload bytes.
+  app.use(
+    express.json({
+      limit: "25mb",
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    })
+  );
   app.use(attachUser);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true, service: "alvstore-server" }));

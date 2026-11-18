@@ -1047,7 +1047,8 @@ function HikvisionTab() {
     setSyncingAction(null);
   };
 
-  const webhookUrl = `${window.location.origin.replace("://", "://").includes("localhost") ? "https://hqdacqysfhzrpjktwrbm.supabase.co" : `https://hqdacqysfhzrpjktwrbm.supabase.co`}/functions/v1/hikvision-webhook`;
+  const functionsUrl = `${window.location.origin}/api/backend/functions`;
+  const webhookUrl = `${functionsUrl}/hikvision-webhook`;
 
   const STEPS = [
     { num: 1, label: "Connection" },
@@ -1292,21 +1293,21 @@ function HikvisionTab() {
               <div className="bg-muted/50 rounded-lg p-3 font-mono text-[10px] leading-relaxed overflow-x-auto space-y-3">
                 <div>
                   <p className="text-foreground font-semibold text-xs mb-1"># Test credentials</p>
-                  <p className="text-muted-foreground break-all">curl -X POST https://hqdacqysfhzrpjktwrbm.supabase.co/functions/v1/hikvision-sync \</p>
+                  <p className="text-muted-foreground break-all">curl -X POST {functionsUrl}/hikvision-sync \</p>
                   <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
                   <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
                   <p className="text-muted-foreground">  -d '{`{"action":"test-credentials"}`}'</p>
                 </div>
                 <div>
                   <p className="text-foreground font-semibold text-xs mb-1"># Demo test (no device needed)</p>
-                  <p className="text-muted-foreground break-all">curl -X POST https://hqdacqysfhzrpjktwrbm.supabase.co/functions/v1/hikvision-sync \</p>
+                  <p className="text-muted-foreground break-all">curl -X POST {functionsUrl}/hikvision-sync \</p>
                   <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
                   <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
                   <p className="text-muted-foreground">  -d '{`{"action":"demo-test"}`}'</p>
                 </div>
                 <div>
                   <p className="text-foreground font-semibold text-xs mb-1"># Backfill attendance (ISAPI)</p>
-                  <p className="text-muted-foreground break-all">curl -X POST https://hqdacqysfhzrpjktwrbm.supabase.co/functions/v1/hikvision-sync \</p>
+                  <p className="text-muted-foreground break-all">curl -X POST {functionsUrl}/hikvision-sync \</p>
                   <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
                   <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
                   <p className="text-muted-foreground">  -d '{`{"action":"backfill-attendance","device_id":"YOUR_DEVICE_ID","start_time":"2026-04-01T00:00:00","end_time":"2026-04-06T23:59:59"}`}'</p>
