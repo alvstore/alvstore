@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type Ref } from "react";
 import { AppBar, Avatar, Badge, Box, Divider, IconButton, ListItemIcon, Menu, MenuItem, Toolbar, Tooltip, Typography } from "@mui/material";
 import { Check, Logout, Menu as MenuIcon, NotificationsOutlined, PaletteOutlined } from "@mui/icons-material";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,9 +8,17 @@ import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationDrawer } from "@/components/notifications/NotificationDrawer";
 import { StatusChip } from "@/components/mui";
-import { CommandPalette } from "./CommandPalette";
+import { CommandPalette, type CommandPaletteProps } from "./CommandPalette";
 
-export function AppHeader({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void }) {
+interface AppHeaderProps {
+  onMobileMenuToggle: () => void;
+  mobileNavigationOpen: boolean;
+  mobileMenuRef: Ref<HTMLButtonElement>;
+  searchOpen: boolean;
+  onSearchOpenChange: CommandPaletteProps["onOpenChange"];
+}
+
+export function AppHeader({ onMobileMenuToggle, mobileNavigationOpen, mobileMenuRef, searchOpen, onSearchOpenChange }: AppHeaderProps) {
   const { user, signOut, roles } = useAuth();
   const { theme, setTheme, themes } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -33,8 +41,8 @@ export function AppHeader({ onMobileMenuToggle }: { onMobileMenuToggle?: () => v
   return <>
     <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: 1, borderColor: "divider", backdropFilter: "blur(20px)" }}>
       <Toolbar sx={{ gap: 1.5, minHeight: "64px !important" }}>
-        <IconButton aria-label="Open navigation" onClick={onMobileMenuToggle} sx={{ display: { md: "none" } }}><MenuIcon /></IconButton>
-        <CommandPalette />
+        <IconButton ref={mobileMenuRef} aria-label="Open navigation" aria-expanded={mobileNavigationOpen} aria-controls="mobile-workspace-navigation" onClick={onMobileMenuToggle} sx={{ display: { md: "none" } }}><MenuIcon /></IconButton>
+        <CommandPalette open={searchOpen} onOpenChange={onSearchOpenChange} />
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Change theme"><IconButton aria-label="Change theme" aria-haspopup="menu" aria-expanded={!!themeAnchor} onClick={event => setThemeAnchor(event.currentTarget)}><PaletteOutlined fontSize="small" /></IconButton></Tooltip>
         <Tooltip title="Notifications"><IconButton aria-label={`Notifications, ${unreadCount} unread`} onClick={() => setDrawerOpen(true)}><Badge badgeContent={unreadCount} color="primary" max={9}><NotificationsOutlined fontSize="small" /></Badge></IconButton></Tooltip>

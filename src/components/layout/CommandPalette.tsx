@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Autocomplete, Box, Button, IconButton, InputAdornment, TextField, Typography } from "@mui/material";
 import { Add, ArrowForward, Search } from "@mui/icons-material";
 import { FormDialog } from "@/components/mui/FormDialog";
@@ -9,11 +9,12 @@ import { useNavigate } from "@/lib/router-compat";
 import { navigationCommands } from "@/lib/navigation-commands";
 import { navigationFor } from "./AppSidebar";
 
-/** The shared shell owns one shortcut listener; MUI owns focus, list keys and dismissal. */
-export function CommandPalette() {
+export interface CommandPaletteProps { open: boolean; onOpenChange: Dispatch<SetStateAction<boolean>>; }
+
+/** The shared shell owns one dialog/listener, opened by header, sidebar or keyboard. */
+export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { hasRole } = useAuth();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [shortcut, setShortcut] = useState("Ctrl K");
   const categories = navigationFor(hasRole);
@@ -24,13 +25,14 @@ export function CommandPalette() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && !event.altKey && !event.defaultPrevented) {
         event.preventDefault();
         setQuery("");
-        setOpen(current => !current);
+        onOpenChange(current => !current);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  const show = () => { setQuery(""); setOpen(true); };
+  }, [onOpenChange]);
+  useEffect(() => { if (open) setQuery(""); }, [open]);
+  const show = () => onOpenChange(true);
   return <>
     <Button variant="outlined" aria-label="Search pages and actions" aria-haspopup="dialog" onClick={show} startIcon={<Search fontSize="small" />}
       sx={{ display: { xs: "none", md: "inline-flex" }, width: 320, minWidth: 0, justifyContent: "flex-start", borderColor: "divider", color: "text.secondary", bgcolor: "action.hover", fontWeight: 400 }}>
@@ -38,12 +40,12 @@ export function CommandPalette() {
       <Box component="kbd" sx={{ fontFamily: "inherit", fontSize: 10, px: .75, py: .25, border: 1, borderColor: "divider", borderRadius: 1, whiteSpace: "nowrap" }}>{shortcut}</Box>
     </Button>
     <IconButton aria-label="Search pages and actions" aria-haspopup="dialog" onClick={show} sx={{ display: { md: "none" } }}><Search fontSize="small" /></IconButton>
-    <FormDialog open={open} onClose={() => setOpen(false)} title="Quick navigation" description="Find a page or start a new workflow." maxWidth="sm">
+    <FormDialog open={open} onClose={() => onOpenChange(false)} title="Quick navigation" description="Find a page or start a new workflow." maxWidth="sm">
       <Autocomplete open disablePortal autoHighlight value={null} options={options} groupBy={option => option.section}
         getOptionLabel={option => option.title} isOptionEqualToValue={(a, b) => a.id === b.id}
         inputValue={query} onInputChange={(_event, value) => setQuery(value)}
-        onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); } }}
-        onChange={(_event, option) => { if (option) { setOpen(false); navigate(option.url); } }}
+        onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onOpenChange(false); } }}
+        onChange={(_event, option) => { if (option) { onOpenChange(false); navigate(option.url); } }}
         noOptionsText="No matching pages or actions"
         slotProps={{
           popper: { sx: { position: "static !important", transform: "none !important", width: "100% !important" } },
