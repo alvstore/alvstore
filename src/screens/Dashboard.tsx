@@ -1,241 +1,127 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useNavigate } from "@/lib/router-compat";
-import { gsap } from "gsap";
-import { motion, type Variants } from "framer-motion";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Box, Card, CardContent, Typography, Chip, Avatar, Stack, IconButton,
-  LinearProgress, Tooltip, Divider, Button, Skeleton,
+  Alert, Avatar, Box, Button, ButtonBase, Chip, Divider, IconButton,
+  LinearProgress, Skeleton, Tooltip, Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import {
-  ShoppingCart, TrendingUp, AccountBalanceWallet, PendingActions,
-  People, Build, Receipt, Inventory2, Refresh, NorthEast,
-  Payments, PointOfSale, RequestQuote, Savings, CheckCircle, QueryBuilder,
+  AccountBalanceWallet, Build, CheckCircleOutlined, Inventory2, NorthEast,
+  Payments, PendingActions, People, PointOfSale, Receipt, Refresh, RequestQuote,
+  ShoppingCart, TrendingUp,
 } from "@mui/icons-material";
+import { addDays, endOfWeek, format, startOfDay, startOfMonth, startOfWeek, subDays } from "date-fns";
 import {
-  BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, Legend,
-} from "recharts";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { format, subDays, startOfDay, startOfMonth } from "date-fns";
+  AgendaWidget, AnimatedPage, ChecklistWidget, CountUp, DistributionWidget, EmptyState,
+  PageHeader, ProgressRing, StatCard, TrendChart, WidgetCard, WorkloadCalendar, money, type AgendaItem, type StatAccent,
+} from "@/components/mui";
 import { useAuth } from "@/hooks/useAuth";
+import { useTaskBoard } from "@/hooks/useTaskBoard";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "@/lib/router-compat";
+import { completionPercent, dailySeries, localDateKey } from "@/lib/widget-data";
+import { taskSummary } from "@/lib/task-summary";
 
-// --- Data fetchers (unchanged) ---
+const integer = (value: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value);
+const sum = (rows: any[] | null, column: string) => (rows ?? []).reduce((total, row) => total + Number(row[column] ?? 0), 0);
+const assertResults = (results: { error: { message: string } | null }[]) => { for (const result of results) if (result.error) throw new Error(result.error.message); };
+
 async function fetchKpis() {
-  const today = startOfDay(new Date()).toISOString();
-  const monthStart = startOfMonth(new Date()).toISOString();
-  const monthDate = format(startOfMonth(new Date()), "yyyy-MM-dd");
-
-  const [salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers,
-    quotationsMonth, invoicesMonth, repairRevenueMonth, totalRepairJobs, pendingRepairs] = await Promise.all([
-    supabase.from("pos_transactions").select("total").gte("created_at", today).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
-    supabase.from("pos_transactions").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total), 0) ?? 0),
-    supabase.from("payments").select("amount").eq("status", "pending").then(r => r.data?.reduce((s, p) => s + Number(p.amount), 0) ?? 0),
-    supabase.from("finance_accounts").select("current_balance").eq("status", "active").then(r => r.data?.reduce((s, a) => s + Number(a.current_balance), 0) ?? 0),
-    supabase.from("finance_transactions").select("amount").eq("type", "income").gte("date", monthDate).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
-    supabase.from("finance_transactions").select("amount").eq("type", "expense").gte("date", monthDate).then(r => r.data?.reduce((s, t) => s + Number(t.amount), 0) ?? 0),
-    supabase.from("products").select("id", { count: "exact", head: true }).or("stock_quantity.lte.low_stock_threshold").then(r => r.count ?? 0),
-    supabase.from("job_sheets").select("id", { count: "exact", head: true }).not("status", "in", '("delivered","invoice_generated")').then(r => r.count ?? 0),
-    supabase.from("job_sheets").select("id", { count: "exact", head: true }).eq("status", "repair_completed").gte("created_at", today).then(r => r.count ?? 0),
-    supabase.from("customers").select("id", { count: "exact", head: true }).then(r => r.count ?? 0),
-    supabase.from("quotations").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
-    supabase.from("invoices").select("total").gte("created_at", monthStart).then(r => r.data?.reduce((s, t) => s + Number(t.total || 0), 0) ?? 0),
-    supabase.from("job_sheets").select("total_amount").eq("payment_status", "paid").gte("created_at", monthStart).then(r => r.data?.reduce((s, j) => s + Number(j.total_amount || 0), 0) ?? 0),
-    supabase.from("job_sheets").select("id", { count: "exact", head: true }).then(r => r.count ?? 0),
-    supabase.from("job_sheets").select("id", { count: "exact", head: true }).in("status", ["created","pending_approval","assigned","in_progress","waiting_parts"]).then(r => r.count ?? 0),
+  const today = startOfDay(new Date());
+  const tomorrow = addDays(today, 1).toISOString();
+  const monthStart = startOfMonth(today);
+  const results = await Promise.all([
+    supabase.from("pos_transactions").select("total").gte("created_at", today.toISOString()).lt("created_at", tomorrow),
+    supabase.from("payments").select("amount").eq("status", "pending"),
+    supabase.from("finance_accounts").select("current_balance").eq("status", "active"),
+    supabase.from("finance_transactions").select("amount, type").gte("date", localDateKey(monthStart)).lte("date", localDateKey(today)),
+    supabase.from("products").select("id", { count: "exact", head: true }).or("stock_quantity.lte.low_stock_threshold"),
+    supabase.from("customers").select("id", { count: "exact", head: true }),
+    supabase.from("invoices").select("total, paid_amount").gte("created_at", monthStart.toISOString()).lt("created_at", tomorrow),
   ]);
-
-  return { salesToday, salesMonth, pendingPayments, totalBalance, revenue, expenses, lowStock, activeRepairs, completedToday, totalCustomers,
-    quotationsMonth, invoicesMonth, repairRevenueMonth, totalRepairJobs, pendingRepairs };
-}
-
-async function fetchWeeklySales() {
-  const days: { name: string; sales: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = subDays(new Date(), i);
-    const dayStart = startOfDay(d).toISOString();
-    const dayEnd = startOfDay(subDays(new Date(), i - 1)).toISOString();
-    const { data } = await supabase.from("pos_transactions").select("total").gte("created_at", dayStart).lt("created_at", dayEnd);
-    days.push({ name: format(d, "EEE"), sales: data?.reduce((s, t) => s + Number(t.total), 0) ?? 0 });
-  }
-  return days;
-}
-
-async function fetchRepairBreakdown() {
-  const { data } = await supabase.from("job_sheets").select("status");
-  const counts: Record<string, number> = {};
-  data?.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
-  const colorMap: Record<string, string> = {
-    created: "#6366f1", pending_approval: "#f59e0b", approved: "#3b82f6", rejected: "#ef4444",
-    assigned: "#06b6d4", in_progress: "#8b5cf6", waiting_parts: "#a855f7",
-    repair_completed: "#22c55e", quality_check: "#ec4899", invoice_generated: "#14b8a6", delivered: "#6b7280",
+  assertResults(results);
+  const [sales, pending, accounts, finance, stock, customers, invoices] = results;
+  return {
+    salesToday: sum(sales.data, "total"), pendingPayments: sum(pending.data, "amount"), totalBalance: sum(accounts.data, "current_balance"),
+    revenue: sum(finance.data?.filter((row: any) => row.type === "income"), "amount"),
+    expenses: sum(finance.data?.filter((row: any) => row.type === "expense"), "amount"),
+    lowStock: stock.count ?? 0, totalCustomers: customers.count ?? 0,
+    invoicesMonth: sum(invoices.data, "total"), collectedMonth: sum(invoices.data, "paid_amount"),
   };
-  return Object.entries(counts).map(([name, value]) => ({ name: name.replace(/_/g, " "), value, color: colorMap[name] || "#6b7280" }));
+}
+
+async function fetchSalesTrend() {
+  const { data, error } = await supabase.from("pos_transactions").select("total, created_at")
+    .gte("created_at", startOfDay(subDays(new Date(), 59)).toISOString()).lt("created_at", startOfDay(addDays(new Date(), 1)).toISOString());
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row: any) => ({ date: localDateKey(row.created_at), value: Number(row.total) }));
+}
+
+async function fetchRepairs() {
+  const { data, error } = await supabase.from("job_sheets").select("status");
+  if (error) throw new Error(error.message);
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) counts[row.status] = (counts[row.status] ?? 0) + 1;
+  const completed = ["repair_completed", "quality_check", "invoice_generated", "delivered"].reduce((total, status) => total + (counts[status] ?? 0), 0);
+  const total = (data ?? []).length - (counts.rejected ?? 0);
+  const active = (data ?? []).length - (counts.delivered ?? 0) - (counts.invoice_generated ?? 0) - (counts.rejected ?? 0);
+  return { completed, total, active, items: Object.entries(counts).map(([name, value]) => ({ name: name.replace(/_/g, " "), value })) };
 }
 
 async function fetchRecentInvoices() {
-  const { data } = await supabase.from("invoices")
-    .select("id, invoice_number, total, payment_status, created_at, customers(name)")
+  const { data, error } = await supabase.from("invoices").select("id, invoice_number, total, payment_status, created_at, customers(name)")
     .order("created_at", { ascending: false }).limit(5);
-  return data || [];
+  if (error) throw new Error(error.message);
+  return data ?? [];
 }
-
-// --- Formatters ---
-function fmt(n: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
-}
-function fmtInt(n: number) {
-  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.round(n));
-}
-
-// --- GSAP-driven count-up number ---
-function CountUp({ value, formatter = fmtInt, duration = 1.4 }: {
-  value: number; formatter?: (n: number) => string; duration?: number;
-}) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const displayed = useRef(0);
-
-  useEffect(() => {
-    const from = displayed.current;
-    const obj = { v: from };
-    const tween = gsap.to(obj, {
-      v: value,
-      duration,
-      ease: "power3.out",
-      onUpdate: () => { if (ref.current) ref.current.textContent = formatter(obj.v); },
-      onComplete: () => { displayed.current = value; },
-    });
-    return () => { tween.kill(); };
-  }, [value, formatter, duration]);
-
-  return <span ref={ref}>{formatter(0)}</span>;
-}
-
-// --- framer-motion variants ---
-const containerVariants: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
-};
-const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 26, scale: 0.98 },
-  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
-};
-
-type AccentKey = "success" | "primary" | "info" | "warning" | "error" | "secondary";
-
-function KpiCard({ label, value, isCurrency, trend, trendUp, icon, accent, isLoading, onClick, index }: {
-  label: string; value: number; isCurrency?: boolean; trend?: string; trendUp?: boolean;
-  icon: React.ReactNode; accent: AccentKey; isLoading: boolean; onClick?: () => void; index: number;
-}) {
-  return (
-    <motion.div variants={cardVariants} whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300, damping: 22 }} style={{ height: "100%" }}>
-      <Card
-        onClick={onClick}
-        sx={{
-          height: "100%", cursor: "pointer", position: "relative", overflow: "hidden",
-          transition: "border-color .25s, box-shadow .25s",
-          "&:hover": (t) => ({
-            borderColor: alpha(t.palette[accent].main, 0.5),
-            boxShadow: `0 12px 32px -12px ${alpha(t.palette[accent].main, 0.35)}`,
-          }),
-        }}
-      >
-        {/* corner glow */}
-        <Box sx={{
-          position: "absolute", top: -30, right: -30, width: 90, height: 90, borderRadius: "50%",
-          background: (t) => `radial-gradient(circle, ${alpha(t.palette[accent].main, 0.16)}, transparent 70%)`,
-        }} />
-        <CardContent sx={{ p: 2.5, position: "relative" }}>
-          {isLoading ? (
-            <Stack spacing={1.5}>
-              <Skeleton variant="rounded" width={44} height={44} sx={{ borderRadius: 3 }} />
-              <Skeleton variant="text" width="55%" />
-              <Skeleton variant="text" width="75%" height={32} />
-            </Stack>
-          ) : (
-            <Stack spacing={1.5}>
-              <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                <Box sx={(t) => ({
-                  height: 44, width: 44, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center",
-                  bgcolor: alpha(t.palette[accent].main, 0.14), color: t.palette[accent].main,
-                })}>
-                  {icon}
-                </Box>
-                <IconButton size="small" sx={{ color: "text.secondary", "&:hover": { color: "text.primary" } }}>
-                  <NorthEast sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Box>
-              <Typography variant="caption" sx={{ color: "text.secondary", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>
-                {label}
-              </Typography>
-              <Box sx={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 1 }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-                  <CountUp value={value} formatter={isCurrency ? fmt : fmtInt} duration={1.2 + index * 0.08} />
-                </Typography>
-                {trend && (
-                  <Chip
-                    size="small"
-                    label={trend}
-                    icon={trendUp === false ? undefined : <NorthEast sx={{ fontSize: 12 }} />}
-                    sx={{
-                      height: 22, fontSize: 11, fontWeight: 600,
-                      bgcolor: (t) => alpha(t.palette[accent].main, 0.12),
-                      color: `${accent}.main`,
-                      "& .MuiChip-icon": { color: "inherit" },
-                    }}
-                  />
-                )}
-              </Box>
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-const paymentColor: Record<string, "success" | "error" | "warning"> = { paid: "success", unpaid: "error", partial: "warning" };
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: kpis, isLoading: kpiLoading } = useQuery({ queryKey: ["dashboard-kpis"], queryFn: fetchKpis, staleTime: 60_000 });
-  const { data: weeklySales, isLoading: salesLoading } = useQuery({ queryKey: ["dashboard-weekly-sales"], queryFn: fetchWeeklySales, staleTime: 60_000 });
-  const { data: repairBreakdown } = useQuery({ queryKey: ["dashboard-repairs"], queryFn: fetchRepairBreakdown, staleTime: 60_000 });
-  const { data: recentInvoices } = useQuery({ queryKey: ["dashboard-recent-invoices"], queryFn: fetchRecentInvoices, staleTime: 60_000 });
-
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["dashboard-kpis"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard-weekly-sales"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard-repairs"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard-recent-invoices"] });
-  };
-
-  const firstName = (user as { user_metadata?: { full_name?: string }; email?: string })?.user_metadata?.full_name?.split(" ")[0]
-    || (user as { email?: string })?.email?.split("@")[0]
-    || "there";
-
+  const [agendaDate, setAgendaDate] = useState(new Date());
+  const weekStart = startOfWeek(agendaDate, { weekStartsOn: 1 });
+  const key = ["dashboard", user?.id];
+  const kpiQuery = useQuery({ queryKey: [...key, "kpis"], queryFn: fetchKpis, staleTime: 60_000 });
+  const salesQuery = useQuery({ queryKey: [...key, "sales"], queryFn: fetchSalesTrend, staleTime: 60_000 });
+  const repairsQuery = useQuery({ queryKey: [...key, "repairs"], queryFn: fetchRepairs, staleTime: 60_000 });
+  const invoicesQuery = useQuery({ queryKey: [...key, "invoices"], queryFn: fetchRecentInvoices, staleTime: 60_000 });
+  const agendaQuery = useQuery({
+    queryKey: [...key, "agenda", localDateKey(weekStart)], staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("calendar_events").select("id, title, start_date, all_day, category")
+        .gte("start_date", weekStart.toISOString()).lte("start_date", endOfWeek(agendaDate, { weekStartsOn: 1 }).toISOString()).order("start_date");
+      if (error) throw new Error(error.message);
+      return (data ?? []).map((event: any) => ({ id: event.id, title: event.title, date: event.start_date, allDay: event.all_day, detail: event.category }));
+    },
+  });
+  const board = useTaskBoard();
+  const agendaItems: AgendaItem[] = [...(agendaQuery.data ?? []), ...board.tasks.filter(task => !!task.due_date).map(task => ({
+    id: `task-${task.id}`, title: task.title, date: task.due_date!, allDay: true, kind: "task" as const,
+    completed: task.status === "completed", detail: `${task.priority} priority · ${task.status.replace(/_/g, " ")}`,
+  }))];
+  const refreshing = [kpiQuery, salesQuery, repairsQuery, invoicesQuery, agendaQuery, board].some(query => query.isFetching);
+  const work = taskSummary(board.tasks);
+  const kpis = kpiQuery.data;
+  const repairs = repairsQuery.data;
   const net = (kpis?.revenue ?? 0) - (kpis?.expenses ?? 0);
-  const margin = kpis && kpis.revenue > 0 ? Math.max(0, Math.min(100, (net / kpis.revenue) * 100)) : 0;
-  const repairThroughput = kpis && kpis.totalRepairJobs > 0 ? Math.round(((kpis.totalRepairJobs - kpis.pendingRepairs) / kpis.totalRepairJobs) * 100) : 0;
-  const collectionRate = kpis && (kpis.invoicesMonth + kpis.pendingPayments) > 0
-    ? Math.round((kpis.invoicesMonth / (kpis.invoicesMonth + kpis.pendingPayments)) * 100) : 0;
-
-  const kpisList = [
-    { label: "Today's Sales", value: kpis?.salesToday ?? 0, isCurrency: true, trend: "POS today", icon: <ShoppingCart fontSize="small" />, accent: "success" as AccentKey, onClick: () => navigate("/pos") },
-    { label: "Monthly Revenue", value: kpis?.revenue ?? 0, isCurrency: true, trend: "This month", icon: <TrendingUp fontSize="small" />, accent: "primary" as AccentKey, onClick: () => navigate("/finance") },
-    { label: "Cash Balance", value: kpis?.totalBalance ?? 0, isCurrency: true, icon: <AccountBalanceWallet fontSize="small" />, accent: "info" as AccentKey, onClick: () => navigate("/finance") },
-    { label: "Pending Payments", value: kpis?.pendingPayments ?? 0, isCurrency: true, trend: "Due", trendUp: false, icon: <PendingActions fontSize="small" />, accent: "warning" as AccentKey, onClick: () => navigate("/payments") },
-    { label: "Customers", value: kpis?.totalCustomers ?? 0, icon: <People fontSize="small" />, accent: "primary" as AccentKey, onClick: () => navigate("/customers") },
-    { label: "Active Repairs", value: kpis?.activeRepairs ?? 0, trend: kpis ? `${kpis.completedToday} done today` : undefined, icon: <Build fontSize="small" />, accent: "secondary" as AccentKey, onClick: () => navigate("/repairs") },
-    { label: "Invoices (Month)", value: kpis?.invoicesMonth ?? 0, isCurrency: true, trend: "This month", icon: <Receipt fontSize="small" />, accent: "success" as AccentKey, onClick: () => navigate("/invoices") },
-    { label: "Low Stock Items", value: kpis?.lowStock ?? 0, icon: <Inventory2 fontSize="small" />, accent: "error" as AccentKey, onClick: () => navigate("/inventory") },
+  const collection = completionPercent(kpis?.collectedMonth ?? 0, kpis?.invoicesMonth ?? 0);
+  const today = localDateKey(new Date());
+  const firstName = String(user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "there").split(" ")[0];
+  const refresh = () => { void queryClient.invalidateQueries({ queryKey: ["dashboard"] }); void board.refresh(); };
+  const kpiValue = (value?: number) => kpiQuery.isError ? "—" : value ?? 0;
+  const stats: { label: string; value: number | string; isCurrency?: boolean; icon: React.ReactNode; accent: StatAccent; to: string; caption: string; sparkline?: number[] }[] = [
+    { label: "Today's Sales", value: kpiValue(kpis?.salesToday), isCurrency: true, icon: <ShoppingCart fontSize="small" />, accent: "success", to: "/pos", caption: "Point-of-sale transactions", sparkline: salesQuery.data?.length ? dailySeries(salesQuery.data, 7).map(day => day.value) : undefined },
+    { label: "Monthly Revenue", value: kpiValue(kpis?.revenue), isCurrency: true, icon: <TrendingUp fontSize="small" />, accent: "primary", to: "/finance", caption: format(new Date(), "MMMM 'to date'") },
+    { label: "Cash Balance", value: kpiValue(kpis?.totalBalance), isCurrency: true, icon: <AccountBalanceWallet fontSize="small" />, accent: "info", to: "/finance", caption: "Across active accounts" },
+    { label: "Pending Payments", value: kpiValue(kpis?.pendingPayments), isCurrency: true, icon: <PendingActions fontSize="small" />, accent: "warning", to: "/payments", caption: "Awaiting payment" },
+    { label: "Customers", value: kpiValue(kpis?.totalCustomers), icon: <People fontSize="small" />, accent: "primary", to: "/customers", caption: "In your customer directory" },
+    { label: "Active Repairs", value: repairsQuery.isError ? "—" : repairs?.active ?? 0, icon: <Build fontSize="small" />, accent: "secondary", to: "/repairs", caption: "Open, including ready for handover" },
+    { label: "Invoices (Month)", value: kpiValue(kpis?.invoicesMonth), isCurrency: true, icon: <Receipt fontSize="small" />, accent: "success", to: "/invoices", caption: "Value invoiced this month" },
+    { label: "Low Stock Items", value: kpiValue(kpis?.lowStock), icon: <Inventory2 fontSize="small" />, accent: "error", to: "/inventory", caption: "At or below reorder threshold" },
   ];
-
   const quickActions = [
     { label: "New Sale", icon: <PointOfSale fontSize="small" />, to: "/pos" },
     { label: "Quotation", icon: <RequestQuote fontSize="small" />, to: "/sales/new" },
@@ -244,217 +130,56 @@ export default function Dashboard() {
     { label: "Payment", icon: <Payments fontSize="small" />, to: "/finance" },
   ];
 
-  return (
-    <Box component={motion.div} initial="hidden" animate="show" variants={containerVariants} sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      {/* ─── Header ─── */}
-      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { sm: "center" }, justifyContent: "space-between", gap: 2 }}>
-        <motion.div variants={cardVariants}>
-          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: -0.5 }}>Dashboard</Typography>
-          <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
-            Welcome back, <Box component="span" sx={{ color: "primary.main", fontWeight: 600 }}>{firstName}</Box> — here's your business overview
-          </Typography>
-        </motion.div>
-        <motion.div variants={cardVariants}>
-          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
-            {quickActions.map(a => (
-              <Button key={a.label} size="small" variant="outlined" startIcon={a.icon} onClick={() => navigate(a.to)}
-                sx={{ borderRadius: 3, borderColor: "divider" }}>
-                {a.label}
-              </Button>
-            ))}
-            <Tooltip title="Refresh">
-              <IconButton onClick={refresh} size="small" sx={{ border: 1, borderColor: "divider", borderRadius: 3 }}>
-                <Refresh fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        </motion.div>
-      </Box>
-
-      {/* ─── KPI grid ─── */}
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2,1fr)", lg: "repeat(4,1fr)" }, gap: 2 }}>
-        {kpisList.map((k, i) => (
-          <KpiCard key={k.label} index={i} label={k.label} value={k.value} isCurrency={k.isCurrency}
-            trend={k.trend} trendUp={k.trendUp} icon={k.icon} accent={k.accent} isLoading={kpiLoading} onClick={k.onClick} />
-        ))}
-      </Box>
-
-      {/* ─── Charts row ─── */}
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "3fr 2fr" }, gap: 3 }}>
-        <motion.div variants={cardVariants}>
-          <Card sx={{ height: "100%" }}>
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Sales Analytics</Typography>
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Last 7 days</Typography>
-                </Box>
-                <Box sx={{ textAlign: "right" }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    <CountUp value={kpis?.salesMonth ?? 0} formatter={fmt} />
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>This Month</Typography>
-                </Box>
-              </Box>
-              {salesLoading ? (
-                <Skeleton variant="rounded" height={240} sx={{ borderRadius: 3 }} />
-              ) : (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={weeklySales} barCategoryGap="28%">
-                    <defs>
-                      <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#22c55e" stopOpacity={0.95} />
-                        <stop offset="100%" stopColor="#22c55e" stopOpacity={0.25} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} style={{ fill: "currentColor", opacity: 0.6 }} />
-                    <YAxis stroke="currentColor" fontSize={11} tickLine={false} axisLine={false} style={{ fill: "currentColor", opacity: 0.6 }} />
-                    <RTooltip
-                      contentStyle={{ background: "var(--mui-palette-background-paper, #141416)", border: "1px solid rgba(128,128,128,0.25)", borderRadius: 12, fontSize: 12 }}
-                      formatter={(value: number) => [fmt(value), "Sales"]}
-                      cursor={{ fill: "rgba(128,128,128,0.12)" }}
-                    />
-                    <Bar dataKey="sales" fill="url(#barGrad)" radius={[8, 8, 0, 0]} barSize={32} isAnimationActive animationDuration={900} animationEasing="ease-out" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div variants={cardVariants}>
-          <Card sx={{ height: "100%" }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Repair Progress</Typography>
-              <Typography variant="caption" sx={{ color: "text.secondary" }}>Current status breakdown</Typography>
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={repairBreakdown || []} cx="50%" cy="50%" innerRadius={58} outerRadius={88} paddingAngle={3}
-                    dataKey="value" strokeWidth={0} isAnimationActive animationDuration={900} animationEasing="ease-out">
-                    {(repairBreakdown || []).map((entry, index) => <Cell key={index} fill={entry.color} />)}
-                  </Pie>
-                  <RTooltip contentStyle={{ background: "var(--mui-palette-background-paper, #141416)", border: "1px solid rgba(128,128,128,0.25)", borderRadius: 12, fontSize: 12 }} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </Box>
-
-      {/* ─── Financial overview + recent invoices ─── */}
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "2fr 3fr" }, gap: 3 }}>
-        {/* Financial overview */}
-        <motion.div variants={cardVariants}>
-          <Card sx={{ height: "100%" }}>
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                <Savings fontSize="small" sx={{ color: "primary.main" }} />
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Financial Overview</Typography>
-              </Box>
-              <Typography variant="caption" sx={{ color: "text.secondary" }}>This month</Typography>
-
-              <Stack direction="row" spacing={2} sx={{ mt: 2.5, mb: 3 }}>
-                <Box sx={{ flex: 1, p: 1.5, borderRadius: 3, bgcolor: (t) => alpha(t.palette.success.main, 0.08) }}>
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Revenue</Typography>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "success.main" }}>
-                    <CountUp value={kpis?.revenue ?? 0} formatter={fmt} />
-                  </Typography>
-                </Box>
-                <Box sx={{ flex: 1, p: 1.5, borderRadius: 3, bgcolor: (t) => alpha(t.palette.error.main, 0.08) }}>
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Expenses</Typography>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "error.main" }}>
-                    <CountUp value={kpis?.expenses ?? 0} formatter={fmt} />
-                  </Typography>
-                </Box>
-              </Stack>
-
-              {/* Animated metric bars */}
-              {[
-                { label: "Net margin", value: margin, display: `${margin.toFixed(0)}%`, color: "primary" as const, icon: <TrendingUp sx={{ fontSize: 14 }} /> },
-                { label: "Collection rate", value: collectionRate, display: `${collectionRate}%`, color: "success" as const, icon: <CheckCircle sx={{ fontSize: 14 }} /> },
-                { label: "Repair throughput", value: repairThroughput, display: `${repairThroughput}%`, color: "warning" as const, icon: <QueryBuilder sx={{ fontSize: 14 }} /> },
-              ].map((m, i) => (
-                <Box key={m.label} sx={{ mb: 2 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                    <Typography variant="caption" sx={{ color: "text.secondary", display: "flex", alignItems: "center", gap: 0.5 }}>
-                      {m.icon}{m.label}
-                    </Typography>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: `${m.color}.main` }}>{m.display}</Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={kpiLoading ? 0 : m.value}
-                    color={m.color}
-                    sx={{
-                      height: 8, borderRadius: 4,
-                      bgcolor: (t) => alpha(t.palette[m.color].main, 0.12),
-                      "& .MuiLinearProgress-bar": { borderRadius: 4, transition: "transform 1.2s cubic-bezier(0.16,1,0.3,1)" },
-                    }}
-                  />
-                </Box>
-              ))}
-
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Typography variant="body2" sx={{ color: "text.secondary" }}>Net profit</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: net >= 0 ? "success.main" : "error.main" }}>
-                  <CountUp value={net} formatter={fmt} />
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Recent invoices */}
-        <motion.div variants={cardVariants}>
-          <Card sx={{ height: "100%" }}>
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Recent Invoices</Typography>
-                  <Typography variant="caption" sx={{ color: "text.secondary" }}>Latest transactions</Typography>
-                </Box>
-                <Button size="small" endIcon={<NorthEast sx={{ fontSize: 14 }} />} onClick={() => navigate("/invoices")}>View all</Button>
-              </Box>
-              <Box component={motion.div} variants={containerVariants} initial="hidden" animate="show">
-                {(recentInvoices || []).map((inv: { id: string; invoice_number?: string; total?: number; payment_status?: string; customers?: { name?: string } }, idx: number) => (
-                  <Box
-                    component={motion.div}
-                    variants={cardVariants}
-                    key={inv.id}
-                    onClick={() => navigate("/invoices")}
-                    sx={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      py: 1.5, px: 1, borderRadius: 2, cursor: "pointer",
-                      borderBottom: 1, borderColor: "divider", "&:last-child": { borderBottom: 0 },
-                      "&:hover": { bgcolor: (t) => alpha(t.palette.primary.main, 0.04) },
-                    }}
-                  >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                      <Avatar sx={{ width: 36, height: 36, fontSize: 12, fontWeight: 700, bgcolor: (t) => alpha(t.palette.primary.main, 0.12), color: "primary.main" }}>
-                        {(inv.customers?.name || "?").slice(0, 2).toUpperCase()}
-                      </Avatar>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{inv.customers?.name || "Unknown"}</Typography>
-                        <Typography variant="caption" sx={{ color: "text.secondary" }}>{inv.invoice_number}</Typography>
-                      </Box>
-                    </Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{fmt(inv.total || 0)}</Typography>
-                      <Chip size="small" label={inv.payment_status || "unpaid"} color={paymentColor[inv.payment_status || "unpaid"] || "default"}
-                        variant="outlined" sx={{ textTransform: "capitalize", height: 22, fontSize: 11 }} />
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-              {(!recentInvoices || recentInvoices.length === 0) && (
-                <Typography variant="body2" sx={{ color: "text.secondary", textAlign: "center", py: 6 }}>No recent invoices</Typography>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-      </Box>
+  return <AnimatedPage><Box sx={{ display: "grid", gap: 3 }}>
+    <PageHeader title="Dashboard" subtitle={<>Welcome back, <Box component="span" sx={{ color: "primary.main", fontWeight: 600 }}>{firstName}</Box>. Here’s your day at a glance.</>} actions={<>
+      <Chip variant="outlined" size="small" label={format(new Date(), "EEE, d MMM")} sx={{ fontSize: 11 }} />
+      <Tooltip title="Refresh dashboard"><Box component="span"><IconButton aria-label="Refresh dashboard" aria-busy={refreshing} loading={refreshing} onClick={refresh} size="small"><Refresh fontSize="small" /></IconButton></Box></Tooltip>
+    </>} />
+    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>{quickActions.map(action => <Button key={action.label} size="small" variant="outlined" startIcon={action.icon} onClick={() => navigate(action.to)} sx={{ borderColor: "divider", bgcolor: "background.paper" }}>{action.label}</Button>)}</Box>
+    {kpiQuery.isError && <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void kpiQuery.refetch()}>Retry</Button>}>Business totals could not be loaded. They are not shown as zero.</Alert>}
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2,minmax(0,1fr))", lg: "repeat(4,minmax(0,1fr))" }, gap: 2 }}>
+      {stats.map((stat, index) => <StatCard key={stat.label} {...stat} loading={stat.label === "Active Repairs" ? repairsQuery.isPending : kpiQuery.isPending} index={index} onClick={() => navigate(stat.to)} />)}
     </Box>
-  );
+
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1fr) minmax(0,1.5fr) minmax(0,1fr)" }, gap: 2.5 }}>
+      <WorkloadCalendar tasks={board.tasks} date={agendaDate} onDateChange={setAgendaDate} loading={board.isPending} error={board.error?.message} onRetry={() => void board.refetch()} />
+      <TrendChart title="Sales activity" subtitle="A little perspective on your daily sales." visual="area" series={[{ id: "sales", label: "POS sales", values: salesQuery.data ?? [], color: "primary" }]} loading={salesQuery.isPending} error={salesQuery.error?.message} onRetry={() => void salesQuery.refetch()} index={1} />
+      <WidgetCard title="Repair momentum" subtitle="A clear view of your team’s repair progress." eyebrow="OPERATIONS" featured index={2} error={repairsQuery.error?.message} onRetry={() => void repairsQuery.refetch()} action={<Button size="small" endIcon={<NorthEast sx={{ fontSize: 13 }} />} onClick={() => navigate("/repairs")}>Jobs</Button>}>
+        {repairsQuery.isPending ? <Skeleton variant="circular" width={144} height={144} sx={{ mx: "auto", my: 2 }} /> : repairs?.total ? <>
+          <ProgressRing value={completionPercent(repairs.completed, repairs.total)} label="Repair completion" caption={`${repairs.completed} of ${repairs.total} non-rejected jobs repaired`} />
+          <Box sx={{ mt: 2.5, display: "flex", gap: 1, alignItems: "center", justifyContent: "center", color: "text.secondary" }}><CheckCircleOutlined sx={{ fontSize: 15, color: "success.main" }} /><Typography variant="caption">Includes quality check, invoiced & delivered</Typography></Box>
+        </> : <EmptyState title="Your next repair starts here" description="Repair completion will appear when jobs are recorded." action={<Button size="small" onClick={() => navigate("/repairs/new")}>Create a job</Button>} sx={{ py: 3 }} />}
+        <Divider sx={{ my: 2 }} />
+        {board.isError ? <Typography color="error" variant="caption">Task progress unavailable</Typography> : <>
+          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}><Typography variant="caption" color="text.secondary">Team tasks</Typography><Typography variant="caption" sx={{ fontWeight: 600 }}>{board.isPending ? "Loading…" : `${work.completed} / ${work.total}`}</Typography></Box>
+          <LinearProgress variant="determinate" value={work.percent} aria-label="Team task completion" sx={{ height: 5, borderRadius: 4 }} />
+        </>}
+      </WidgetCard>
+    </Box>
+
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", md: "repeat(2,minmax(0,1fr))", lg: "repeat(3,minmax(0,1fr))" }, gap: 2.5 }}>
+      <ChecklistWidget items={work.focus.map(task => ({ id: task.id, title: task.title, completed: task.status === "completed", overdue: !!task.due_date && task.due_date < today, detail: task.due_date === today ? "Due today" : `Overdue · ${task.due_date}` }))} onToggle={(id, completed) => void board.updateStatus(id, completed ? "completed" : "pending")} pendingIds={board.pendingIds} loading={board.isPending} error={board.error?.message} onRetry={() => void board.refetch()} action={<Button size="small" onClick={() => navigate("/tasks")}>View all</Button>} />
+      <AgendaWidget items={agendaItems} date={agendaDate} onDateChange={setAgendaDate} onOpen={item => navigate(item.kind === "task" ? "/tasks" : `/calendar?date=${localDateKey(item.date)}`)} loading={agendaQuery.isPending || board.isPending} error={agendaQuery.error?.message ?? board.error?.message} onRetry={() => { void agendaQuery.refetch(); void board.refetch(); }} index={1} action={<Button size="small" onClick={() => navigate("/calendar")}>Calendar</Button>} />
+      <WidgetCard title="Financial overview" subtitle={format(new Date(), "MMMM yyyy")} index={2} error={kpiQuery.error?.message} onRetry={() => void kpiQuery.refetch()}>
+        {kpiQuery.isPending ? <Skeleton height={180} /> : <>
+          {[
+            { label: "Income recorded", value: kpis?.revenue ?? 0, color: "success.main" },
+            { label: "Expenses recorded", value: kpis?.expenses ?? 0, color: "warning.main" },
+            { label: "Net income", value: net, color: net >= 0 ? "text.primary" : "error.main" },
+          ].map(item => <Box key={item.label} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 1.5, borderBottom: 1, borderColor: "divider", gap: 1 }}><Typography variant="caption" color="text.secondary">{item.label}</Typography><Typography variant="body2" sx={{ color: item.color, fontWeight: 600 }}><CountUp value={item.value} formatter={money} /></Typography></Box>)}
+          <Box sx={{ pt: 2.5 }}><Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, mb: 1 }}><Typography variant="caption" color="text.secondary">This month’s invoice collection</Typography><Typography variant="caption" sx={{ fontWeight: 600 }}>{Math.round(collection)}%</Typography></Box><LinearProgress variant="determinate" value={collection} color="success" aria-label="Invoice collection" sx={{ height: 5, borderRadius: 4 }} /><Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, fontSize: 10 }}>{money(kpis?.collectedMonth ?? 0)} paid against {money(kpis?.invoicesMonth ?? 0)} invoiced</Typography></Box>
+        </>}
+      </WidgetCard>
+    </Box>
+
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1.8fr) minmax(0,1fr)" }, gap: 2.5 }}>
+      <WidgetCard title="Recent invoices" subtitle="The latest from your business." error={invoicesQuery.error?.message} onRetry={() => void invoicesQuery.refetch()} action={<Button size="small" endIcon={<NorthEast sx={{ fontSize: 13 }} />} onClick={() => navigate("/invoices")}>View all</Button>}>
+        {invoicesQuery.isPending ? <Box>{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} height={65} />)}</Box> : !invoicesQuery.data?.length ? <EmptyState title="No invoices yet" description="Your most recent invoices will appear here." /> : invoicesQuery.data.map((invoice: any) => <ButtonBase key={invoice.id} onClick={() => navigate(`/invoices/${invoice.id}`)} sx={theme => ({ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", py: 1.6, px: .75, borderRadius: 2, textAlign: "left", borderBottom: `1px solid ${theme.palette.divider}`, "&:last-child": { borderBottom: 0 }, "&:hover": { bgcolor: alpha(theme.palette.primary.main, .04) }, gap: 1 })}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}><Avatar sx={theme => ({ width: 34, height: 34, fontSize: 11, bgcolor: alpha(theme.palette.primary.main, .08), color: "primary.main" })}>{String(invoice.customers?.name ?? "?").slice(0, 2).toUpperCase()}</Avatar><Box sx={{ minWidth: 0 }}><Typography variant="body2" noWrap sx={{ fontSize: 12, fontWeight: 550 }}>{invoice.customers?.name ?? "Walk-in customer"}</Typography><Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>{invoice.invoice_number}</Typography></Box></Box>
+          <Box sx={{ textAlign: "right", flexShrink: 0 }}><Typography variant="body2" sx={{ fontSize: 12, fontWeight: 650 }}>{money(Number(invoice.total ?? 0))}</Typography><Typography variant="caption" color={invoice.payment_status === "paid" ? "success.main" : "text.secondary"} sx={{ fontSize: 10, textTransform: "capitalize" }}>{invoice.payment_status ?? "unpaid"}</Typography></Box>
+        </ButtonBase>)}
+      </WidgetCard>
+      <DistributionWidget title="Repair pipeline" subtitle="Every job, by its current stage." items={repairs?.items ?? []} loading={repairsQuery.isPending} error={repairsQuery.error?.message} onRetry={() => void repairsQuery.refetch()} formatter={integer} index={1} />
+    </Box>
+  </Box></AnimatedPage>;
 }

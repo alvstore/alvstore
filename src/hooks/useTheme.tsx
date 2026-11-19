@@ -332,13 +332,11 @@ function applyTheme(def: ThemeDefinition) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeName, setThemeName] = useState(() => {
-    try {
-      return localStorage.getItem("app-theme") || "obsidian";
-    } catch {
-      return "obsidian";
-    }
-  });
+  // The first client render must match SSR (including Emotion's theme styles).
+  const [themeName, setThemeName] = useState("obsidian");
+  useEffect(() => {
+    try { setThemeName(localStorage.getItem("app-theme") || "obsidian"); } catch {}
+  }, []);
 
   const currentTheme = themes.find(t => t.name === themeName) || themes[0];
 

@@ -1,64 +1,44 @@
-/**
- * Seeds the initial admin user (idempotent).
- *   ADMIN_EMAIL / ADMIN_PASSWORD env vars, defaults: admin@alvstore.in / admin123
- *
- * Dual mode: talks to the embedded PGlite data dir directly (default), or to
- * DATABASE_URL when one is provided.
- */
+/** Idempotent Prisma seed. Re-running repairs admin/profile/defaults without resetting passwords or data. */
 import bcrypt from "bcryptjs";
-import path from "node:path";
-import url from "node:url";
 import fs from "node:fs";
-import dotenv from "dotenv";
+import path from "node:path";
+import { prisma, pool } from "../src/db.js";
+import { serverRoot } from "../src/env.js";
 
-const here = path.dirname(url.fileURLToPath(import.meta.url));
-const serverRoot = path.resolve(here, "..");
-if (fs.existsSync(path.join(serverRoot, ".env"))) dotenv.config({ path: path.join(serverRoot, ".env") });
-
-const email = process.env.ADMIN_EMAIL ?? "admin@alvstore.in";
+const email = (process.env.ADMIN_EMAIL ?? "admin@alvstore.in").trim().toLowerCase();
 const password = process.env.ADMIN_PASSWORD ?? "admin123";
 const fullName = process.env.ADMIN_NAME ?? "ALV Admin";
 
-interface Querier {
-  query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
-  close: () => Promise<void>;
-}
+try {
+  // Triggers are not expressible in Prisma. This installs behaviour only, not tables.
+  await pool.query(fs.readFileSync(path.join(serverRoot, "prisma/runtime.sql"), "utf8"));
+  await prisma.$transaction(async tx => {
+    const existing = await tx.authUser.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
+    const admin = existing ?? await tx.authUser.create({ data: {
+      email, password_hash: await bcrypt.hash(password, 10), raw_user_meta_data: { full_name: fullName },
+    } });
+    await tx.profiles.upsert({ where: { user_id: admin.id }, update: {}, create: { user_id: admin.id, full_name: fullName } });
+    await tx.userRoles.upsert({ where: { user_id_role: { user_id: admin.id, role: "admin" } }, update: {}, create: { user_id: admin.id, role: "admin" } });
+    if (!await tx.businessSettings.findFirst()) await tx.businessSettings.create({ data: { company_name: "ALV Store" } });
 
-async function openDb(): Promise<Querier> {
-  if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("127.0.0.1:5433")) {
-    const pg = await import("pg");
-    const client = new pg.default.Client({ connectionString: process.env.DATABASE_URL });
-    await client.connect();
-    return {
-      query: async (sql, params) => client.query(sql, params as never[]),
-      close: () => client.end(),
-    };
-  }
-  const { PGlite } = await import("@electric-sql/pglite");
-  const dataDir = process.env.PGLITE_DATA_DIR ?? path.join(serverRoot, ".pgdata");
-  const db = new PGlite(dataDir);
-  await db.waitReady;
-  return {
-    query: async (sql, params) => db.query(sql, (params ?? []) as never[]),
-    close: () => db.close(),
-  };
-}
+    for (const [name, type] of [
+      ["POS Sales", "income"], ["Repair Income", "income"], ["Service Income", "income"], ["Other Income", "income"],
+      ["Salary", "expense"], ["Rent", "expense"], ["Purchase", "expense"], ["Utilities", "expense"], ["Maintenance", "expense"], ["Misc Expense", "expense"],
+    ]) if (!await tx.financeCategories.findFirst({ where: { name, type } })) await tx.financeCategories.create({ data: { name, type } });
 
-const db = await openDb();
-const existing = await db.query("SELECT id FROM auth.users WHERE lower(email) = lower($1)", [email]);
-if (existing.rows.length) {
-  console.log(`[seed] admin user ${email} already exists`);
-} else {
-  const hash = await bcrypt.hash(password, 10);
-  const inserted = await db.query(
-    `INSERT INTO auth.users (email, password_hash, raw_user_meta_data) VALUES ($1, $2, $3) RETURNING id`,
-    [email, hash, JSON.stringify({ full_name: fullName })]
-  );
-  await db.query(
-    `INSERT INTO public.user_roles (user_id, role) VALUES ($1, 'admin') ON CONFLICT (user_id, role) DO NOTHING`,
-    [inserted.rows[0].id]
-  );
-  console.log(`[seed] created admin user ${email} (password: ${password})`);
+    for (const [name, charge] of [["iPhone", 750], ["Android", 500], ["Laptop", 2600], ["MacBook", 3500], ["Tablet", 1000], ["Other", 500]] as const) {
+      if (!await tx.serviceChargeCategories.findFirst({ where: { name } })) await tx.serviceChargeCategories.create({ data: { name, default_charge: charge } });
+    }
+    for (const [name, description] of [
+      ["Hardware", "Physical component issues"], ["Software", "OS, apps, firmware issues"], ["Screen", "Display damage and touch issues"],
+      ["Battery", "Battery and charging issues"], ["Water Damage", "Liquid damage recovery"], ["Data Backup", "Data recovery and backup"], ["Other", "Miscellaneous repairs"],
+    ]) if (!await tx.issueCategories.findFirst({ where: { name } })) await tx.issueCategories.create({ data: { name, description } });
+    console.log(`[seed] admin ${email} ${existing ? "already exists (password unchanged)" : "created"}; defaults ready`);
+  }, { timeout: 30_000 });
+} catch (error) {
+  console.error("[seed] failed:", error);
+  process.exitCode = 1;
+} finally {
+  await prisma.$disconnect();
+  await pool.end();
 }
-await db.close();
-process.exit(0);

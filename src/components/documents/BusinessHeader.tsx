@@ -1,60 +1,49 @@
+"use client";
+
+import { Box, Typography } from "@mui/material";
+import { mergeSx } from "@/components/mui";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Building2, Mail, Phone, MapPin } from "lucide-react";
-
 interface BusinessSettings {
-  company_name: string | null;
-  company_address: string | null;
-  company_email: string | null;
-  company_phone: string | null;
-  gst_number: string | null;
-  logo_url: string | null;
+    company_name: string | null;
+    company_address: string | null;
+    company_email: string | null;
+    company_phone: string | null;
+    gst_number: string | null;
+    logo_url: string | null;
 }
-
 interface BusinessHeaderProps {
-  settings?: BusinessSettings | null;
-  compact?: boolean;
+    settings?: BusinessSettings | null;
+    compact?: boolean;
 }
-
 export function BusinessHeader({ settings: externalSettings, compact }: BusinessHeaderProps) {
-  const [settings, setSettings] = useState<BusinessSettings | null>(externalSettings || null);
-
-  useEffect(() => {
-    if (externalSettings) { setSettings(externalSettings); return; }
-    supabase.from("business_settings").select("company_name, company_address, company_email, company_phone, gst_number, logo_url").limit(1).single()
-      .then(({ data }) => { if (data) setSettings(data); });
-  }, [externalSettings]);
-
-  if (!settings) return null;
-
-  return (
-    <div className={`flex items-start gap-4 ${compact ? "gap-3" : "gap-5"}`}>
-      {settings.logo_url ? (
-        <img src={settings.logo_url} alt="Logo" className={`${compact ? "h-10 w-10" : "h-14 w-14"} rounded-lg object-contain border border-border bg-card`} />
-      ) : (
-        <div className={`${compact ? "h-10 w-10" : "h-14 w-14"} rounded-lg bg-primary/10 flex items-center justify-center`}>
-          <Building2 className={`${compact ? "h-5 w-5" : "h-7 w-7"} text-primary`} />
-        </div>
-      )}
-      <div className="flex-1 min-w-0">
-        <h2 className={`${compact ? "text-base" : "text-lg"} font-bold text-foreground tracking-tight`}>
+    const [settings, setSettings] = useState<BusinessSettings | null>(externalSettings || null);
+    useEffect(() => {
+        if (externalSettings) {
+            setSettings(externalSettings);
+            return;
+        }
+        supabase.from("business_settings").select("company_name, company_address, company_email, company_phone, gst_number, logo_url").limit(1).single()
+            .then(({ data }) => { if (data)
+            setSettings(data); });
+    }, [externalSettings]);
+    if (!settings)
+        return null;
+    return (<Box sx={mergeSx({ display: "flex", alignItems: "flex-start", gap: "1rem" }, compact ? { gap: "0.75rem" } : { gap: "1.25rem" })}>
+      {settings.logo_url ? (<Box src={settings.logo_url} alt="Logo" component="img" sx={mergeSx(compact ? { height: "2.5rem", width: "2.5rem" } : { height: "3.5rem", width: "3.5rem" }, { borderRadius: "var(--radius)", objectFit: "contain", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "hsl(var(--card))" })}/>) : (<Box sx={mergeSx(compact ? { height: "2.5rem", width: "2.5rem" } : { height: "3.5rem", width: "3.5rem" }, { borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" })}>
+          <Box component={Building2} sx={mergeSx(compact ? { height: "1.25rem", width: "1.25rem" } : { height: "1.75rem", width: "1.75rem" }, { color: "hsl(var(--primary))" })}/>
+        </Box>)}
+      <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
+        <Typography component="h2" variant="h2" sx={mergeSx(compact ? { fontSize: "1rem", lineHeight: "1.5rem" } : { fontSize: "1.125rem", lineHeight: "1.75rem" }, { fontWeight: "700", color: "hsl(var(--foreground))", letterSpacing: "-0.025em" })}>
           {settings.company_name || "Your Business"}
-        </h2>
-        {settings.gst_number && (
-          <p className="text-xs font-medium text-muted-foreground mt-0.5">GSTIN: {settings.gst_number}</p>
-        )}
-        <div className={`flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-xs text-muted-foreground ${compact ? "" : "mt-1.5"}`}>
-          {settings.company_address && (
-            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{settings.company_address}</span>
-          )}
-          {settings.company_phone && (
-            <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{settings.company_phone}</span>
-          )}
-          {settings.company_email && (
-            <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{settings.company_email}</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+        </Typography>
+        {settings.gst_number && (<Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))", marginTop: "0.125rem" }}>GSTIN: {settings.gst_number}</Typography>)}
+        <Box sx={mergeSx({ display: "flex", flexWrap: "wrap", columnGap: "1rem", rowGap: "0.125rem", marginTop: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }, compact ? {} : { marginTop: "0.375rem" })}>
+          {settings.company_address && (<Box component="span" sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={MapPin} sx={{ height: "0.75rem", width: "0.75rem" }}/>{settings.company_address}</Box>)}
+          {settings.company_phone && (<Box component="span" sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Phone} sx={{ height: "0.75rem", width: "0.75rem" }}/>{settings.company_phone}</Box>)}
+          {settings.company_email && (<Box component="span" sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Mail} sx={{ height: "0.75rem", width: "0.75rem" }}/>{settings.company_email}</Box>)}
+        </Box>
+      </Box>
+    </Box>);
 }

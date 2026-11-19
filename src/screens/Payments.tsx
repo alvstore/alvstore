@@ -1,197 +1,152 @@
+"use client";
+
+import { Box, Button, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField } from "@mui/material";
+import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { DollarSign, Clock, CheckCircle, Plus, Search } from "lucide-react";
-import { toast } from "sonner";
 import { format } from "date-fns";
-
 interface Payment {
-  id: string;
-  payment_number: string;
-  type: string;
-  amount: number;
-  payment_method: string;
-  status: string;
-  reference_id: string | null;
-  notes: string | null;
-  created_at: string;
-  customer_id: string | null;
+    id: string;
+    payment_number: string;
+    type: string;
+    amount: number;
+    payment_method: string;
+    status: string;
+    reference_id: string | null;
+    notes: string | null;
+    created_at: string;
+    customer_id: string | null;
 }
-
 export default function Payments() {
-  const { user } = useAuth();
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [form, setForm] = useState({ amount: "", type: "pos", payment_method: "cash", status: "completed", reference_id: "", notes: "" });
-
-  const fetchPayments = async () => {
-    setLoading(true);
-    let query = supabase.from("payments").select("*").order("created_at", { ascending: false });
-    if (statusFilter !== "all") query = query.eq("status", statusFilter as any);
-    if (search) query = query.ilike("payment_number", `%${search}%`);
-    const { data, error } = await query;
-    if (error) toast.error(error.message);
-    setPayments(data || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchPayments(); }, [search, statusFilter]);
-
-  const todayTotal = payments.filter(p => p.status === "completed" && new Date(p.created_at).toDateString() === new Date().toDateString()).reduce((s, p) => s + p.amount, 0);
-  const pendingTotal = payments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0);
-
-  const handleSave = async () => {
-    const amount = parseFloat(form.amount);
-    if (!amount || amount <= 0) { toast.error("Enter valid amount"); return; }
-    const { error } = await supabase.from("payments").insert({
-      amount, type: form.type as any, payment_method: form.payment_method as any,
-      status: form.status as any, reference_id: form.reference_id || null,
-      notes: form.notes || null, created_by: user?.id,
-    });
-    if (error) toast.error(error.message);
-    else { toast.success("Payment recorded"); setSheetOpen(false); fetchPayments(); }
-  };
-
-  const statusBadge = (s: string) => {
-    const map: Record<string, string> = { completed: "bg-success/10 text-success", pending: "bg-warning/10 text-warning", failed: "bg-destructive/10 text-destructive", refunded: "bg-muted text-muted-foreground" };
-    return <Badge className={map[s] || ""}>{s}</Badge>;
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Payments</h1>
-          <p className="text-muted-foreground">Track and manage payment records</p>
-        </div>
-        <Button onClick={() => { setForm({ amount: "", type: "pos", payment_method: "cash", status: "completed", reference_id: "", notes: "" }); setSheetOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />Record Payment
-        </Button>
-      </div>
+    const { user } = useAuth();
+    const [payments, setPayments] = useState<Payment[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("all");
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const [form, setForm] = useState({ amount: "", type: "pos", payment_method: "cash", status: "completed", reference_id: "", notes: "" });
+    const fetchPayments = async () => {
+        setLoading(true);
+        let query = supabase.from("payments").select("*").order("created_at", { ascending: false });
+        if (statusFilter !== "all")
+            query = query.eq("status", statusFilter as any);
+        if (search)
+            query = query.ilike("payment_number", `%${search}%`);
+        const { data, error } = await query;
+        if (error)
+            toast.error(error.message);
+        setPayments(data || []);
+        setLoading(false);
+    };
+    useEffect(() => { fetchPayments(); }, [search, statusFilter]);
+    const todayTotal = payments.filter(p => p.status === "completed" && new Date(p.created_at).toDateString() === new Date().toDateString()).reduce((s, p) => s + p.amount, 0);
+    const pendingTotal = payments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0);
+    const handleSave = async () => {
+        const amount = parseFloat(form.amount);
+        if (!amount || amount <= 0) {
+            toast.error("Enter valid amount");
+            return;
+        }
+        const { error } = await supabase.from("payments").insert({
+            amount, type: form.type as any, payment_method: form.payment_method as any,
+            status: form.status as any, reference_id: form.reference_id || null,
+            notes: form.notes || null, created_by: user?.id,
+        });
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Payment recorded");
+            setSheetOpen(false);
+            fetchPayments();
+        }
+    };
+    const statusBadge = (s: string) => {
+        const map = { completed: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }, pending: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" }, failed: { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))" }, refunded: { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" } };
+        return <StatusChip label={s} sx={map[s] || {}}/>;
+    };
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={"Payments"} subtitle={"Track and manage payment records"} actions={<><Button onClick={() => { setForm({ amount: "", type: "pos", payment_method: "cash", status: "completed", reference_id: "", notes: "" }); setSheetOpen(true); }} variant="contained">
+          <Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Record Payment
+        </Button></>}/>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card><CardContent className="p-5 flex items-center gap-4"><div className="p-2.5 rounded-xl bg-success/10"><CheckCircle className="h-5 w-5 text-success" /></div><div><p className="text-sm text-muted-foreground">Collected Today</p><p className="text-xl font-bold">₹{todayTotal.toLocaleString()}</p></div></CardContent></Card>
-        <Card><CardContent className="p-5 flex items-center gap-4"><div className="p-2.5 rounded-xl bg-warning/10"><Clock className="h-5 w-5 text-warning" /></div><div><p className="text-sm text-muted-foreground">Pending</p><p className="text-xl font-bold">₹{pendingTotal.toLocaleString()}</p></div></CardContent></Card>
-        <Card><CardContent className="p-5 flex items-center gap-4"><div className="p-2.5 rounded-xl bg-primary/10"><DollarSign className="h-5 w-5 text-primary" /></div><div><p className="text-sm text-muted-foreground">Total Records</p><p className="text-xl font-bold">{payments.length}</p></div></CardContent></Card>
-      </div>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
+        <StatCard label={"Collected Today"} value={todayTotal} formatter={amount => "\u20B9" + amount.toLocaleString()} icon={<Box component={CheckCircle} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--success))" }}/>} accent="success"/>
+        <StatCard label={"Pending"} value={pendingTotal} formatter={amount => "\u20B9" + amount.toLocaleString()} icon={<Box component={Clock} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--warning))" }}/>} accent="warning"/>
+        <StatCard label={"Total Records"} value={payments.length} icon={<Box component={DollarSign} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--primary))" }}/>} accent="primary"/>
+      </Box>
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search payment #..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
-            <SelectItem value="refunded">Refunded</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <Box sx={{ display: "flex", gap: "0.75rem" }}>
+        <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search payment #..." sx={{ flex: "1 1 0%", maxWidth: "24rem" }}/>
+        <TextField value={statusFilter} select size="small" fullWidth onChange={event => setStatusFilter(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "150px" }}>
+            <MenuItem value="all">All Status</MenuItem>
+            <MenuItem value="completed">Completed</MenuItem>
+            <MenuItem value="pending">Pending</MenuItem>
+            <MenuItem value="failed">Failed</MenuItem>
+            <MenuItem value="refunded">Refunded</MenuItem>
+          </TextField>
+      </Box>
 
       {/* Table */}
-      <div className="rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
+      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
+        <DataTable columnsCount={6} loading={loading} empty={payments.length === 0} emptyMessage={"No payments found"}>
+          <TableHead>
             <TableRow>
-              <TableHead>Payment #</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Date</TableHead>
+              <TableCell>Payment #</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell>Method</TableCell>
+              <TableCell sx={{ textAlign: "right" }}>Amount</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Date</TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
-            ) : payments.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No payments found</TableCell></TableRow>
-            ) : payments.map(p => (
-              <TableRow key={p.id}>
-                <TableCell className="font-medium">{p.payment_number}</TableCell>
-                <TableCell className="capitalize">{p.type}</TableCell>
-                <TableCell className="capitalize">{p.payment_method}</TableCell>
-                <TableCell className="text-right font-medium">₹{p.amount.toLocaleString()}</TableCell>
+          </TableHead>
+          <TableBody>{payments.map(p => (<TableRow key={p.id}>
+                <TableCell sx={{ fontWeight: "500" }}>{p.payment_number}</TableCell>
+                <TableCell sx={{ textTransform: "capitalize" }}>{p.type}</TableCell>
+                <TableCell sx={{ textTransform: "capitalize" }}>{p.payment_method}</TableCell>
+                <TableCell sx={{ textAlign: "right", fontWeight: "500" }}>₹{p.amount.toLocaleString()}</TableCell>
                 <TableCell>{statusBadge(p.status)}</TableCell>
-                <TableCell className="text-muted-foreground">{format(new Date(p.created_at), "dd MMM yyyy")}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                <TableCell sx={{ color: "hsl(var(--muted-foreground))" }}>{format(new Date(p.created_at), "dd MMM yyyy")}</TableCell>
+              </TableRow>))}</TableBody>
+        </DataTable>
+      </Box>
 
       {/* Slide-over */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Record Payment</SheetTitle>
-            <SheetDescription>Enter payment details</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="space-y-1.5"><Label>Amount *</Label><Input type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} /></div>
-            <div className="space-y-1.5">
-              <Label>Type</Label>
-              <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pos">POS</SelectItem>
-                  <SelectItem value="invoice">Invoice</SelectItem>
-                  <SelectItem value="online">Online</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Method</Label>
-              <Select value={form.payment_method} onValueChange={v => setForm(p => ({ ...p, payment_method: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                  <SelectItem value="upi">UPI</SelectItem>
-                  <SelectItem value="online">Online</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={v => setForm(p => ({ ...p, status: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5"><Label>Reference ID</Label><Input value={form.reference_id} onChange={e => setForm(p => ({ ...p, reference_id: e.target.value }))} /></div>
-            <div className="space-y-1.5"><Label>Notes</Label><Textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>
-            <Button className="w-full" onClick={handleSave}>Save Payment</Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
+      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"Record Payment"} description={"Enter payment details"}>
+
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} label={"Amount *"} size="small" fullWidth/></Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField value={form.type} label={"Type"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, type: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+                  <MenuItem value="pos">POS</MenuItem>
+                  <MenuItem value="invoice">Invoice</MenuItem>
+                  <MenuItem value="online">Online</MenuItem>
+                </TextField>
+            </Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField value={form.payment_method} label={"Method"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, payment_method: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+                  <MenuItem value="cash">Cash</MenuItem>
+                  <MenuItem value="card">Card</MenuItem>
+                  <MenuItem value="upi">UPI</MenuItem>
+                  <MenuItem value="online">Online</MenuItem>
+                </TextField>
+            </Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField value={form.status} label={"Status"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, status: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+                  <MenuItem value="completed">Completed</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
+                </TextField>
+            </Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.reference_id} onChange={e => setForm(p => ({ ...p, reference_id: e.target.value }))} label={"Reference ID"} size="small" fullWidth/></Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} label={"Notes"} size="small" fullWidth multiline/></Box>
+            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>Save Payment</Button>
+          </Box>
+        </FormDialog>
+    </Box></AnimatedPage>;
 }

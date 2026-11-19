@@ -34,3 +34,9 @@ server/dist/
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local agent diagnostics and browser test artifacts (may contain sessions)
+.arena/
+test-results/
+playwright-report/
+certificates/

@@ -1,150 +1,168 @@
 # ALV Store — ERP & Storefront
 
-Premium home-theater installer ERP: CRM, repairs (job sheets), POS, inventory, invoicing/quotations, finance, HR/payroll, procurement, chat, and a public marketing site.
+Home-theater installer ERP: CRM, repairs, POS, inventory, invoices and quotations, finance, HR/payroll, procurement, chat, and a public marketing site.
 
 ## Stack
 
-| Layer     | Technology |
-|-----------|------------|
-| Frontend  | **Next.js 15** (App Router, React 19, TypeScript), Tailwind + shadcn/ui, **Material UI v9** (Emotion), TanStack Query |
-| Motion    | **GSAP** (ScrollTrigger scrubs, count-up tweens) + **Framer Motion** (entrances, layout, SVG) — *no three.js/WebGL* |
-| Auth      | **Auth.js (NextAuth v5)** credentials provider → own API (bcrypt + JWT sessions) |
-| Backend   | **Express + TypeScript** (`server/`) — replaces Supabase |
-| Database  | **PostgreSQL** via **Prisma** (embedded PGlite for local dev; any Postgres in prod) |
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js 15 App Router, React 19, TypeScript, Material UI 9 / Emotion, TanStack Query |
+| Motion | Framer Motion for page/widget entrances; GSAP for leaf-text counters and scroll scrubbing only |
+| Charts | Recharts with actual transaction data, 7/30-day controls, loading/empty/error states |
+| Authentication | Auth.js v5 credentials → Express API, bcrypt passwords, JWT sessions |
+| Backend | Express + Prisma + PostgreSQL; embedded PGlite is available for local development |
 
-No Supabase dependency remains at runtime: the original SQL migrations (now in
-`server/migrations/`) are applied to a plain PostgreSQL database, auth lives
-in `auth.users` (bcrypt password hashes), file storage is served from disk by
-the API, and the former edge functions are Express routes under
-`/api/functions/*`. There is no `supabase/` directory, no Supabase package, and
-no Supabase service in the running system.
+There is **one UI system**: MUI components styled with `sx`. Tailwind, shadcn, and Radix have been removed. SVG/canvas are used for drawing, not as a second UI kit. There is no Supabase runtime dependency; the compatibility client retains the old query-builder API and sends requests to our own backend.
 
 ## Quick start
 
+Use Node.js 22+ and npm.
+
 ```sh
-# 1. install dependencies
 npm install
 npm --prefix server install
 
-# 2. create + migrate + seed the database (one command)
-npm run db:setup        # admin login: admin@alvstore.in / admin123
+# If local environment files are absent, copy the examples and set secrets:
+# cp .env.example .env
+# cp server/.env.example server/.env
 
-# 3. run everything (db socket :5433, API :4000, web :3000)
+# Create/update the schema, generate Prisma metadata, and seed defaults.
+npm run db:setup
+
+# Database socket :5433, API :4000, web :3000
 npm run dev:all
 ```
 
-Open http://localhost:3000 — sign in with `admin@alvstore.in` / `admin123`
-(override via `ADMIN_EMAIL` / `ADMIN_PASSWORD` before `db:setup`).
+Open http://localhost:3000. The development seed creates `admin@alvstore.in` / `admin123` **only if that account does not exist**. Override `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and optionally `ADMIN_NAME` before the first setup. Re-running setup does not reset an existing password or erase business data. Never use the development credentials in production.
 
-Runtimes can also be started individually:
+Services can also run individually:
 
 ```sh
-npm run dev:db          # embedded PostgreSQL socket (dev only)
-npm run dev:backend     # Express API on :4000
-npm run dev             # Next.js on :3000
+npm run dev:db
+npm run dev:backend
+npm run dev
 ```
+
+### HTTPS and embedded previews
+
+The web server binds to `0.0.0.0`; Next.js permits the sandbox `*.e2b.app` development origin. Browser requests always use relative `/api/backend/*` URLs. Next.js proxies them to `API_SERVER_URL`, which is server-side configuration; a browser must never call the sandbox's localhost API directly.
+
+All three Auth.js cookies explicitly use `sameSite: "none"`, `secure: true`, and `partitioned: true` (CHIPS), with host-only `__Host-alv.*` names and no fixed cookie domain. Partitioning lets supported browsers retain the preview's CSRF/session cookies even when ordinary third-party cookies are blocked; CSRF validation is not bypassed. Use an HTTPS web origin for a non-local preview or deployment. For local HTTPS, `npm run dev:https` uses Next.js's development certificate support.
+
+If sign-in fails with a security-check/cookie message, reload the preview and retry. The login page offers **Open sign-in in a new tab** for browsers that still prohibit embedded storage. Partitioned sessions are isolated by top-level site, so the standalone tab and embedded preview may require separate sign-ins. Blocking all cookies still prevents a session. The new cookie names replace the old `authjs.*` names, so existing sessions need a one-time sign-in again.
+
+Only an actual credentials rejection is shown as **Invalid email or password**. Missing CSRF cookies, provider/network failures, and a callback without a retained session have distinct messages; none silently redirects to Dashboard as a successful login. Signup likewise reports when an account was created but automatic sign-in failed.
+
+## Prisma database lifecycle
+
+`server/prisma/schema.prisma` is the source of truth for 64 public models and the two auth models. There is no SQL migration directory to replay.
+
+`npm run db:setup` performs:
+
+1. Start a temporary embedded socket if the configured local database is not running.
+2. `prisma db push --skip-generate` against the configured `DATABASE_URL`.
+3. Generate the JavaScript/WASM Prisma client and source-schema query metadata.
+4. Run the idempotent Prisma seed, which also installs `prisma/runtime.sql` functions and triggers.
+5. Close only the temporary socket owned by setup.
+
+Runtime SQL defines behavior Prisma cannot express (number generation, audit, finance/stock triggers); it does not create application tables. Setup uses no reset or accept-data-loss flags. If Prisma detects a destructive schema change, inspect it and back up the database rather than bypassing the warning. Schema push is not a substitute for a reviewed production change-management process.
+
+Useful commands:
+
+```sh
+npm --prefix server run db:push
+npm --prefix server run prisma:generate  # also regenerates API metadata
+npm --prefix server run db:seed          # requires a running database
+```
+
+Metadata is generated from the full source schema, not the reduced runtime DMMF, so UUIDs and native `@db.Date` fields retain their types. Unchanged metadata is not rewritten, avoiding unnecessary API watcher restarts on no-op setup. The API validates/coerces date filters and writes, returns date-only fields as `YYYY-MM-DD`, and serializes Prisma decimals as JSON numbers. Audit writes set the actor identity transaction-locally so it cannot leak into another pooled request.
+
+### External PostgreSQL
+
+1. Provision PostgreSQL 14+ and a database/user permitted to manage the `public` and `auth` schemas. Back up any existing database.
+2. Set `DATABASE_URL` to the external database. The local embedded default is `postgres://postgres:postgres@127.0.0.1:5433/postgres`.
+3. Set unique `AUTH_SECRET`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and the HTTPS `APP_ORIGIN`.
+4. Run `npm run db:setup` against that URL, inspect the result, then build and run:
+
+   ```sh
+   npm --prefix server run build
+   npm run build
+   npm --prefix server start
+   npm start
+   ```
+
+5. Set the web server's `API_SERVER_URL` to the API's internal address and terminate public HTTPS at a trusted reverse proxy.
+
+The isolated lifecycle test covers embedded PostgreSQL; an external PostgreSQL deployment must still be verified in its own environment.
+
+## UI and motion conventions
+
+Shared components are in `src/components/mui/`:
+
+- `AnimatedPage` on every screen; `PageHeader` for titles and actions.
+- `StatCard` / `CountUp`, `DataTable`, `FormDialog`, `ConfirmDialog`, search, tabs, status chips, and empty states.
+- `WidgetCard`, `Sparkline`, `ProgressRing`, `TrendChart`, `ChecklistWidget`, `AgendaWidget`, `WorkloadCalendar`, and `DistributionWidget`.
+- `SegmentedControl` for keyboard-operable moving selection pills; `ChartViewport` for first-visible chart drawing.
+
+Dashboard's workload month grid uses actual task due dates/statuses and coordinates with its event/task agenda. Sales use a soft area chart; Finance keeps highlighted daily bars. The shared shell exposes **Cmd/Ctrl+K** page/action search, with a mobile search button and shortcuts derived from the existing role-filtered navigation. Shared MUI buttons, icon controls and navigation receive composable hover/press feedback; first-visible widget/counter entrances do not repeat on scroll, and reduced motion/print retain final content.
+
+Dashboard, Finance, Tasks, and Calendar adopt the new real-data widgets. The shared theme and kit provide consistent surfaces, focus treatment, and finite entrance/interaction timing throughout all 58 screens and all seven palettes. Financial trends are never fabricated, and failed requests are not presented as zero activity.
+
+Use `Box component={motion.div}`, **never `Stack` as a motion host**. Animation tokens live in `src/lib/motion-presets.ts`; stagger delays are capped. Do not add blanket layout animation to editable forms or tables. GSAP may count numbers or read scroll progress, but must not pin/reparent React DOM. The public speaker section uses CSS sticky positioning. Repeating public decoration pauses offscreen/in hidden tabs and is replaced by static content for reduced motion. Print styles preserve actual document and barcode content.
+
+The public reference audit, ERP mapping, and implementation notes are in [docs/ui-modernization.md](docs/ui-modernization.md). The follow-up scan, gap analysis, implementation plan and results are in [docs/interaction-audit.md](docs/interaction-audit.md). These are original components inspired by public widget patterns, not copied paid template source or assets.
+
+## Verification
+
+```sh
+npm run check          # 58-screen UI guardrails, TypeScript, unit/API tests
+npm run test:db        # opt-in disposable DB setup/seed/disconnect/recovery test
+npm --prefix server run build
+npm run build
+
+# With DB/API/web already running, and Playwright Chromium installed:
+npx playwright install chromium
+npm run test:e2e
+```
+
+E2E uses the seeded admin unless `E2E_EMAIL` / `E2E_PASSWORD` are set. `E2E_BASE_URL` overrides the default `http://localhost:3000`; `CHROMIUM_EXECUTABLE_PATH` can select an existing browser. E2E creates disposable business records and cleans them up: use a development/test database, not production. Browser downloads may require an unrestricted development environment.
+
+Latest verification: **22 root tests, 5 API/serialization tests, and all 27 browser tests passed**; both production builds passed. The browser sweep covered **61 routes at 390px and 1440px (122 visits)** without render boundaries, page overflow or collected console/page/API errors. The isolated DB lifecycle test also passed during the earlier database work and was not repeated for this UI-only follow-up. Detailed results and limitations are recorded in [docs/ui-modernization.md](docs/ui-modernization.md#verification-results) and [docs/interaction-audit.md](docs/interaction-audit.md#verification).
+
+Coverage includes workload month counts/failure/retry/day coordination, keyboard selectors, command-palette search/focus/mobile navigation, actual-request refresh feedback, composable button press/reduced-motion states, first-view chart/counter/print behavior, real-data widget controls, task persistence/failure rollback, calendar validation/CRUD/task linkage, destructive confirmation/focus, seven-theme restoration, barcodes/print-media content, public overlays/marquees, and client-side navigation cleanup. The lifecycle test uses a separate temporary data directory and socket, never the developer's running database. Expected outage logs during that test are intentional.
+
+For deterministic release checks, run schema/lifecycle tooling first, then use compiled API/web servers (`npm --prefix server start` and `npm start`) for the browser sweep rather than hot-reloading processes. The HTTPS iframe tests also need OpenSSL; they create temporary certificates and locally map only their two fixture hostnames. They verify Secure/SameSite=None/Partitioned cookies, login/reload/logout with third-party cookies allowed and blocked, and use a server-observed control cookie to prove blocking is active. Negative tests cover real invalid-password and CSRF rejection, simulated provider unavailability, and a missing retained session. This does not verify the live external Arena proxy or every browser policy. External asset/provider requests are stubbed in browser tests.
+
+## API operations
+
+- `GET /api/health`: liveness, independent of the database.
+- `GET /api/ready`: database readiness; returns 503 during an outage.
+- Pool defaults: max 1 embedded / 5 external clients, 5-second connection timeout, idle-client error handling.
+- Database-unavailable responses use `503`, `DB_UNAVAILABLE`, and `Retry-After: 2`. Express 4 async failures reach the error middleware instead of terminating the API process.
+- **Writes are never automatically replayed** after a disconnect because their commit outcome may be unknown.
+- SIGINT/SIGTERM stop accepting requests and close Prisma/the pool with a bounded shutdown window.
+- Web access uses `/api/backend/health` and `/api/backend/ready` through the same-origin proxy.
 
 ## Architecture
 
-```
-repo root                 Next.js app (src/app, src/screens, src/components)
-├── src/app/              App Router: route wrappers + Auth.js handler
-│   ├── (app)/            protected section — guarded by <ProtectedRoute>
-│   ├── page.tsx…         public pages (marketing site, login, public share links)
-│   └── api/auth/         Auth.js route handler
-├── src/integrations/
-│   └── supabase/client.ts   ← drop-in replacement client: same API surface
-│                              (from()/auth/storage/functions), talks to our API
-├── src/lib/router-compat.tsx  react-router-dom → next/navigation shim
-└── server/               Express + Prisma backend (own package.json)
-    ├── src/routes/data.ts       PostgREST-style data API over Prisma
-    ├── src/routes/storage.ts    file uploads served from server/uploads
-    ├── src/routes/functions.ts  edge-function ports (WhatsApp/Razorpay/…)
-    ├── src/auth/                signup/login/password-reset, JWT middleware
-    ├── tools/bootstrap-db.ts    applies server/migrations to plain Postgres
-    ├── tools/introspect.ts      generates prisma/schema.prisma + relation meta
-    └── tools/seed.ts            creates the admin user
+```text
+src/app/                      App Router pages and Auth.js route
+src/screens/                  58 screen modules
+src/components/mui/           Shared MUI/motion kit and widgets
+src/components/layout/        Drawer/AppBar shell and route protection
+src/integrations/supabase/    Local compatibility client; not a Supabase service
+server/prisma/schema.prisma  Authoritative database models
+server/prisma/runtime.sql    Trigger/function behavior
+server/tools/setup-db.ts     Prisma push → generate → metadata → seed
+server/src/routes/           Data, uploads, integration functions
+server/src/auth/             API credentials/JWT/password-reset handlers
+server/src/generated/        API query metadata (no auth password exposure)
 ```
 
-### How data flows
+Web settings: `AUTH_SECRET`, `API_SERVER_URL` (see `.env.example`). API settings: `DATABASE_URL`, `JWT_SECRET`, `APP_ORIGIN`, optional provider credentials (see `server/.env.example`). `PGLITE_DATA_DIR` / `PGLITE_SOCKET_PORT` override the embedded database location/port; the latter must match `DATABASE_URL`.
 
-Pages keep their original query-builder calls:
+## Production safety / existing limitations
 
-```ts
-const { data } = await supabase
-  .from("job_sheets")
-  .select("id, status, customers(name)")
-  .eq("status", "in_progress");
-```
+This UI/database modernization is **not a full authorization/security review**. Before internet exposure, scope the generic data API's anonymous/public-share access and authenticated record access more narrowly; its current table allowlists do not enforce complete per-record share-token isolation. Review password-reset development behavior (links can be returned/logged without SMTP), remove development credentials, rotate any previously tracked secrets, and use deployment secret storage. Keep uploaded files, local DB data, certificates, and test artifacts outside version control.
 
-The client (`src/integrations/supabase/client.ts`) serializes the chain to a
-compact JSON payload → `POST /api/backend/data/query` → the Express data router
-translates it into a Prisma query (filters, embedded relations, ordering,
-pagination, counts) → PostgreSQL. Responses keep the `{ data, error, count }`
-shape, so the UI layer is unchanged.
-
-### Authentication
-
-- Email+password verified by the API against `auth.users.password_hash` (bcrypt).
-- The API issues a JWT access token; Auth.js stores it in the session JWT.
-- Client calls carry `Authorization: Bearer <token>`; the API enforces auth and
-  anonymous-access rules per table (mirrors the old RLS public-token policies).
-- `user_roles` (admin / staff / technician / customer) loads with the session.
-
-### Production database
-
-1. Provision PostgreSQL 14+.
-2. Apply the schema: run the bootstrap against your DB —
-   set `DATABASE_URL` and use `psql "$DATABASE_URL"` with
-   `server/sql/bootstrap.sql`, then every file in `server/migrations/` in
-   filename order, then `server/sql/own-auth.sql`
-   (or point `PGDATA` tooling at it; the bootstrap tool currently targets the
-   embedded dev database).
-3. `server/.env`: `DATABASE_URL=postgres://user:pass@host:5432/alvstore`.
-4. `npm --prefix server run prisma:generate && npm --prefix server run db:seed`.
-5. Run the API (`npm --prefix server run dev` or build + start) and set
-   `API_SERVER_URL` for the Next.js app to its address.
-
-### Environment variables
-
-Web (`.env`): `AUTH_SECRET`, `API_SERVER_URL` (see `.env.example`).
-API (`server/.env`): `DATABASE_URL`, `JWT_SECRET`, optional Razorpay / SMTP /
-WhatsApp credentials (see `server/.env.example`).
-
-### Notes & known deltas
-
-- **Realtime**: Supabase Realtime subscriptions were replaced with short
-  polling (chat: 4 s, notifications: 10–15 s).
-- **Client error reporting**: uncaught browser errors and React boundary
-  errors are POSTed to `/api/backend/log` and printed in the API server logs
-  (tagged `[client:…]`).
-- The root `<html>` is marked `translate="no"` so browser auto-translate can't
-  mutate React-managed DOM (a common cause of `removeChild` crashes). GSAP
-  scroll "pinning" is done with CSS `position: sticky` rather than
-  ScrollTrigger's `pin: true`, because GSAP pinning reparents the element into
-  a `.pin-spacer` and collides with React 19 reconciliation (`removeChild`).
-- **UI kits**: shadcn/ui + Tailwind power the ERP screens; **Material UI** is
-  also available app-wide (theme bridged from `useTheme` by
-  `src/components/MuiThemeBridge.tsx`, Emotion SSR cache in `src/app/layout.tsx`)
-  and drives the animated Dashboard. Home-theater visuals are SVG/canvas +
-  GSAP/Framer Motion (three.js was removed).
-- **Edge functions**: all eleven former Supabase functions are full Express
-  ports under `/api/backend/functions/*` — `manage-staff`, `send-whatsapp`
-  (with Meta webhook verification on GET), `send-email` (template support +
-  SMTP), `send-sms` (template support + generic provider),
-  `whatsapp-automation` (WhatsApp → SMS fallback), `whatsapp-webhook`
-  (inbound messages, lead creation, admin notifications, status updates),
-  `create-payment-link`, `razorpay-webhook` (HMAC-verified, updates invoice
-  paid amounts), `parse-offer-pdf` (AI gateway when `AI_GATEWAY_URL` is set,
-  heuristic parser otherwise), and the complete Hik-Partner integration
-  `hikvision-sync` (test-credentials, site-search, list/import devices,
-  ISAPI employee sync, MQ attendance polling, backfill, full-sync, auto-map,
-  manual-add-employee, demo-test) + `hikvision-webhook` (HMAC signature check,
-  deduped event ingestion, auto check-in/out records). Provider credentials
-  live in `server/.env` (see `server/.env.example`); unconfigured providers
-  return a clear JSON error, exactly like the original functions.
-- **Password reset**: without SMTP the reset link is printed in the API logs
-  and shown inline on the forgot-password page (dev convenience).
-- The legacy `supabase/` directory has been removed entirely — its SQL
-  migrations now live in `server/migrations/`, and the old edge functions are
-  Express routes. No Supabase package or service is used anywhere.
+External providers (Razorpay, messaging, Hikvision, email, and the optional PDF AI gateway) require their own credentials and were not live-tested. Realtime UI uses short polling rather than Supabase subscriptions. Provider configuration does not belong in browser code.

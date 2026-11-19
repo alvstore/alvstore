@@ -1,1796 +1,1678 @@
+"use client";
+
+import { Box, Button, ButtonBase, Card, CardContent, Checkbox, Divider, FormLabel, IconButton, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { AnimatedPage, DataTable, FormDialog, PageHeader, StatusChip, TabBar, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  User, Shield, Building2, Receipt, Mail, MessageSquare, Phone,
-  Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock,
-  Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench, Code,
-} from "lucide-react";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-
+import { User, Shield, Building2, Receipt, Mail, MessageSquare, Phone, Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock, Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench, Code, } from "lucide-react";
 type AppRole = "admin" | "staff" | "technician" | "customer";
-
 interface Profile {
-  id: string;
-  user_id: string;
-  full_name: string | null;
-  phone: string | null;
-  avatar_url: string | null;
+    id: string;
+    user_id: string;
+    full_name: string | null;
+    phone: string | null;
+    avatar_url: string | null;
 }
-
 interface UserWithRole {
-  profile: Profile;
-  role: AppRole;
+    profile: Profile;
+    role: AppRole;
 }
-
 const SETTINGS_SECTIONS = [
-  { id: "profile", label: "Profile", icon: User, group: "Account" },
-  { id: "users", label: "User Management", icon: Shield, group: "Account", adminOnly: true },
-  { id: "business", label: "Business Info", icon: Building2, group: "Organization", adminOnly: true },
-  { id: "gst", label: "GST Settings", icon: Receipt, group: "Organization", adminOnly: true },
-  { id: "documents", label: "Document Settings", icon: FileText, group: "Organization", adminOnly: true },
-  { id: "email", label: "Email / SMTP", icon: Mail, group: "Integrations", adminOnly: true },
-  { id: "sms", label: "SMS Gateway", icon: MessageSquare, group: "Integrations", adminOnly: true },
-  { id: "whatsapp", label: "WhatsApp", icon: Phone, group: "Integrations", adminOnly: true },
-  { id: "razorpay", label: "Razorpay", icon: CreditCard, group: "Integrations", adminOnly: true },
-  { id: "hikvision", label: "Hikvision", icon: Camera, group: "Integrations", adminOnly: true },
-  { id: "templates", label: "Templates", icon: FileText, group: "System", adminOnly: true },
-  { id: "service-categories", label: "Service Categories", icon: Wrench, group: "System", adminOnly: true },
+    { id: "profile", label: "Profile", icon: User, group: "Account" },
+    { id: "users", label: "User Management", icon: Shield, group: "Account", adminOnly: true },
+    { id: "business", label: "Business Info", icon: Building2, group: "Organization", adminOnly: true },
+    { id: "gst", label: "GST Settings", icon: Receipt, group: "Organization", adminOnly: true },
+    { id: "documents", label: "Document Settings", icon: FileText, group: "Organization", adminOnly: true },
+    { id: "email", label: "Email / SMTP", icon: Mail, group: "Integrations", adminOnly: true },
+    { id: "sms", label: "SMS Gateway", icon: MessageSquare, group: "Integrations", adminOnly: true },
+    { id: "whatsapp", label: "WhatsApp", icon: Phone, group: "Integrations", adminOnly: true },
+    { id: "razorpay", label: "Razorpay", icon: CreditCard, group: "Integrations", adminOnly: true },
+    { id: "hikvision", label: "Hikvision", icon: Camera, group: "Integrations", adminOnly: true },
+    { id: "templates", label: "Templates", icon: FileText, group: "System", adminOnly: true },
+    { id: "service-categories", label: "Service Categories", icon: Wrench, group: "System", adminOnly: true },
 ];
-
 export default function Settings() {
-  const { hasRole } = useAuth();
-  const isAdmin = hasRole("admin");
-  const [activeSection, setActiveSection] = useState("profile");
+    const { hasRole } = useAuth();
+    const isAdmin = hasRole("admin");
+    const [activeSection, setActiveSection] = useState("profile");
+    const visibleSections = SETTINGS_SECTIONS.filter(s => !s.adminOnly || isAdmin);
+    const groups = [...new Set(visibleSections.map(s => s.group))];
+    const renderContent = () => {
+        switch (activeSection) {
+            case "profile": return <ProfileTab />;
+            case "users": return isAdmin ? <UsersTab /> : null;
+            case "business": return isAdmin ? <BusinessTab /> : null;
+            case "gst": return isAdmin ? <GSTTab /> : null;
+            case "documents": return isAdmin ? <DocumentSettingsTab /> : null;
+            case "email": return isAdmin ? <EmailTab /> : null;
+            case "sms": return isAdmin ? <SMSTab /> : null;
+            case "whatsapp": return isAdmin ? <WhatsAppTab /> : null;
+            case "razorpay": return isAdmin ? <RazorpayTab /> : null;
+            case "hikvision": return isAdmin ? <HikvisionTab /> : null;
+            case "templates": return isAdmin ? <TemplatesTab /> : null;
+            case "service-categories": return isAdmin ? <ServiceCategoriesTab /> : null;
+            default: return <ProfileTab />;
+        }
+    };
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={"Settings"} subtitle={"Manage your account, organization, and integrations"}/>
 
-  const visibleSections = SETTINGS_SECTIONS.filter(s => !s.adminOnly || isAdmin);
-  const groups = [...new Set(visibleSections.map(s => s.group))];
-
-  const renderContent = () => {
-    switch (activeSection) {
-      case "profile": return <ProfileTab />;
-      case "users": return isAdmin ? <UsersTab /> : null;
-      case "business": return isAdmin ? <BusinessTab /> : null;
-      case "gst": return isAdmin ? <GSTTab /> : null;
-      case "documents": return isAdmin ? <DocumentSettingsTab /> : null;
-      case "email": return isAdmin ? <EmailTab /> : null;
-      case "sms": return isAdmin ? <SMSTab /> : null;
-      case "whatsapp": return isAdmin ? <WhatsAppTab /> : null;
-      case "razorpay": return isAdmin ? <RazorpayTab /> : null;
-      case "hikvision": return isAdmin ? <HikvisionTab /> : null;
-      case "templates": return isAdmin ? <TemplatesTab /> : null;
-      case "service-categories": return isAdmin ? <ServiceCategoriesTab /> : null;
-      default: return <ProfileTab />;
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Manage your account, organization, and integrations</p>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-6">
+      <Box sx={{ display: "flex", flexDirection: "column", "@media (min-width: 1024px)": { flexDirection: "row" }, gap: "1.5rem" }}>
         {/* Vertical Sidebar Navigation */}
-        <div className="lg:w-64 shrink-0">
-          <Card className="sticky top-4">
-            <CardContent className="p-2">
-              {groups.map(group => (
-                <div key={group} className="mb-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-3 py-2">{group}</p>
+        <Box sx={{ "@media (min-width: 1024px)": { width: "16rem" }, flexShrink: "0" }}>
+          <Card sx={{ position: "sticky", top: "1rem" }}>
+            <CardContent sx={{ padding: "0.5rem" }}>
+              {groups.map(group => (<Box key={group} sx={{ marginBottom: "0.5rem" }}>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.5rem", paddingBottom: "0.5rem" }}>{group}</Typography>
                   {visibleSections.filter(s => s.group === group).map(section => {
-                    const Icon = section.icon;
-                    return (
-                      <button
-                        key={section.id}
-                        onClick={() => setActiveSection(section.id)}
-                        className={cn(
-                          "w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors text-left",
-                          activeSection === section.id
-                            ? "bg-primary/10 text-primary font-medium"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                        )}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
+                const Icon = section.icon;
+                return (<ButtonBase key={section.id} onClick={() => setActiveSection(section.id)} type="button" sx={mergeSx({ width: "100%", display: "flex", alignItems: "center", gap: "0.625rem", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", borderRadius: "calc(var(--radius) - 2px)", fontSize: "0.875rem", lineHeight: "1.25rem", transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", textAlign: "left" }, activeSection === section.id
+                    ? { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))", fontWeight: "500" } : { color: "hsl(var(--muted-foreground))", "&:hover": { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--foreground))" } })}>
+                        <Box component={Icon} sx={{ height: "1rem", width: "1rem", flexShrink: "0" }}/>
                         {section.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+                      </ButtonBase>);
+            })}
+                </Box>))}
             </CardContent>
           </Card>
-        </div>
+        </Box>
 
         {/* Main Content */}
-        <div className="flex-1 min-w-0">
+        <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
           {renderContent()}
-        </div>
-      </div>
-    </div>
-  );
+        </Box>
+      </Box>
+    </Box></AnimatedPage>;
 }
-
 // ─── Profile Tab ────────────────────────────────────────────────
 function ProfileTab() {
-  const { user } = useAuth();
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  useEffect(() => {
-    if (!user) return;
-    supabase.from("profiles").select("*").eq("user_id", user.id).single().then(({ data }) => {
-      if (data) { setFullName(data.full_name || ""); setPhone(data.phone || ""); }
-    });
-  }, [user]);
-
-  const saveProfile = async () => {
-    if (!user) return;
-    setSaving(true);
-    const { error } = await supabase.from("profiles").update({ full_name: fullName, phone }).eq("user_id", user.id);
-    if (error) toast.error(error.message); else toast.success("Profile updated");
-    setSaving(false);
-  };
-
-  const changePassword = async () => {
-    if (password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
-    if (password !== confirmPassword) { toast.error("Passwords don't match"); return; }
-    setSaving(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) toast.error(error.message); else { toast.success("Password updated"); setPassword(""); setConfirmPassword(""); }
-    setSaving(false);
-  };
-
-  return (
-    <div className="grid gap-6 max-w-2xl">
+    const { user } = useAuth();
+    const [fullName, setFullName] = useState("");
+    const [phone, setPhone] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    useEffect(() => {
+        if (!user)
+            return;
+        supabase.from("profiles").select("*").eq("user_id", user.id).single().then(({ data }) => {
+            if (data) {
+                setFullName(data.full_name || "");
+                setPhone(data.phone || "");
+            }
+        });
+    }, [user]);
+    const saveProfile = async () => {
+        if (!user)
+            return;
+        setSaving(true);
+        const { error } = await supabase.from("profiles").update({ full_name: fullName, phone }).eq("user_id", user.id);
+        if (error)
+            toast.error(error.message);
+        else
+            toast.success("Profile updated");
+        setSaving(false);
+    };
+    const changePassword = async () => {
+        if (password.length < 6) {
+            toast.error("Password must be at least 6 characters");
+            return;
+        }
+        if (password !== confirmPassword) {
+            toast.error("Passwords don't match");
+            return;
+        }
+        setSaving(true);
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Password updated");
+            setPassword("");
+            setConfirmPassword("");
+        }
+        setSaving(false);
+    };
+    return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "42rem" }}>
       <Card>
-        <CardHeader><CardTitle>Profile Information</CardTitle><CardDescription>Update your personal details</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5"><Label>Email</Label><Input value={user?.email || ""} disabled /></div>
-          <div className="space-y-1.5"><Label>Full Name</Label><Input value={fullName} onChange={e => setFullName(e.target.value)} /></div>
-          <div className="space-y-1.5"><Label>Phone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
-          <Button onClick={saveProfile} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save</Button>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Profile Information</Typography><Typography variant="body2" color="text.secondary">Update your personal details</Typography></Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={user?.email || ""} disabled label={"Email"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={fullName} onChange={e => setFullName(e.target.value)} label={"Full Name"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={phone} onChange={e => setPhone(e.target.value)} label={"Phone"} size="small" fullWidth/></Box>
+          <Button onClick={saveProfile} disabled={saving} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save</Button>
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>Change Password</CardTitle><CardDescription>Update your account password</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5"><Label>New Password</Label><Input type="password" value={password} onChange={e => setPassword(e.target.value)} /></div>
-          <div className="space-y-1.5"><Label>Confirm Password</Label><Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} /></div>
-          <Button onClick={changePassword} disabled={saving}>Update Password</Button>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Change Password</Typography><Typography variant="body2" color="text.secondary">Update your account password</Typography></Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="password" value={password} onChange={e => setPassword(e.target.value)} label={"New Password"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} label={"Confirm Password"} size="small" fullWidth/></Box>
+          <Button onClick={changePassword} disabled={saving} variant="contained">Update Password</Button>
         </CardContent>
       </Card>
-    </div>
-  );
+    </Box>);
 }
-
 // ─── Users Tab ──────────────────────────────────────────────────
-interface EmployeeLink { id: string; name: string; designation: string | null; role: string | null; }
-
-function UsersTab() {
-  const [users, setUsers] = useState<(UserWithRole & { employee?: EmployeeLink | null })[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchUsers = async () => {
-    setLoading(true);
-    const [profilesRes, rolesRes, employeesRes] = await Promise.all([
-      supabase.from("profiles").select("*"),
-      supabase.from("user_roles").select("*"),
-      supabase.from("employees").select("id, name, designation, role, user_id"),
-    ]);
-    const profiles = profilesRes.data || [];
-    const roles = rolesRes.data || [];
-    const employees = employeesRes.data || [];
-    setUsers(profiles.map(p => {
-      const emp = employees.find(e => e.user_id === p.user_id);
-      return {
-        profile: p,
-        role: (roles.find(r => r.user_id === p.user_id)?.role || "staff") as AppRole,
-        employee: emp ? { id: emp.id, name: emp.name, designation: emp.designation, role: emp.role } : null,
-      };
-    }));
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchUsers(); }, []);
-
-  const updateRole = async (userId: string, newRole: AppRole) => {
-    const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
-    if (error) toast.error(error.message); else { toast.success("Role updated"); fetchUsers(); }
-  };
-
-  const roleColors: Record<AppRole, string> = {
-    admin: "bg-destructive/10 text-destructive",
-    staff: "bg-primary/10 text-primary",
-    technician: "bg-warning/10 text-warning",
-    customer: "bg-muted text-muted-foreground",
-  };
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>User Management</CardTitle><CardDescription>Manage user accounts and roles. Auth role determines access level. Employee link shows HR record.</CardDescription></CardHeader>
-      <CardContent>
-        {loading ? <p className="text-muted-foreground py-6 text-center">Loading...</p> : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead><TableHead>Phone</TableHead><TableHead>Auth Role</TableHead><TableHead>Employee Link</TableHead><TableHead>Change Role</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map(u => (
-                <TableRow key={u.profile.user_id}>
-                  <TableCell className="font-medium">{u.profile.full_name || "—"}</TableCell>
-                  <TableCell>{u.profile.phone || "—"}</TableCell>
-                  <TableCell><Badge className={roleColors[u.role]}>{u.role}</Badge></TableCell>
-                  <TableCell>
-                    {u.employee ? (
-                      <div className="text-xs">
-                        <span className="font-medium text-foreground">{u.employee.designation || u.employee.role || "Employee"}</span>
-                        <span className="text-muted-foreground ml-1">({u.employee.name})</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">Not linked</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Select value={u.role} onValueChange={(v) => updateRole(u.profile.user_id, v as AppRole)}>
-                      <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="staff">Staff</SelectItem>
-                        <SelectItem value="technician">Technician</SelectItem>
-                        <SelectItem value="customer">Customer</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
-  );
+interface EmployeeLink {
+    id: string;
+    name: string;
+    designation: string | null;
+    role: string | null;
 }
-
+function UsersTab() {
+    const [users, setUsers] = useState<(UserWithRole & {
+        employee?: EmployeeLink | null;
+    })[]>([]);
+    const [loading, setLoading] = useState(true);
+    const fetchUsers = async () => {
+        setLoading(true);
+        const [profilesRes, rolesRes, employeesRes] = await Promise.all([
+            supabase.from("profiles").select("*"),
+            supabase.from("user_roles").select("*"),
+            supabase.from("employees").select("id, name, designation, role, user_id"),
+        ]);
+        const profiles = profilesRes.data || [];
+        const roles = rolesRes.data || [];
+        const employees = employeesRes.data || [];
+        setUsers(profiles.map(p => {
+            const emp = employees.find(e => e.user_id === p.user_id);
+            return {
+                profile: p,
+                role: (roles.find(r => r.user_id === p.user_id)?.role || "staff") as AppRole,
+                employee: emp ? { id: emp.id, name: emp.name, designation: emp.designation, role: emp.role } : null,
+            };
+        }));
+        setLoading(false);
+    };
+    useEffect(() => { fetchUsers(); }, []);
+    const updateRole = async (userId: string, newRole: AppRole) => {
+        const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Role updated");
+            fetchUsers();
+        }
+    };
+    const roleColors = {
+        admin: { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))" },
+        staff: { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" },
+        technician: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" },
+        customer: { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" },
+    };
+    return (<Card>
+      <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>User Management</Typography><Typography variant="body2" color="text.secondary">Manage user accounts and roles. Auth role determines access level. Employee link shows HR record.</Typography></Box>
+      <CardContent>
+        {loading ? <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", paddingTop: "1.5rem", paddingBottom: "1.5rem", textAlign: "center" }}>Loading...</Typography> : (<DataTable columnsCount={5}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell><TableCell>Phone</TableCell><TableCell>Auth Role</TableCell><TableCell>Employee Link</TableCell><TableCell>Change Role</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {users.map(u => (<TableRow key={u.profile.user_id}>
+                  <TableCell sx={{ fontWeight: "500" }}>{u.profile.full_name || "—"}</TableCell>
+                  <TableCell>{u.profile.phone || "—"}</TableCell>
+                  <TableCell><StatusChip label={u.role} sx={roleColors[u.role]}/></TableCell>
+                  <TableCell>
+                    {u.employee ? (<Box sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>
+                        <Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{u.employee.designation || u.employee.role || "Employee"}</Box>
+                        <Box component="span" sx={{ color: "hsl(var(--muted-foreground))", marginLeft: "0.25rem" }}>({u.employee.name})</Box>
+                      </Box>) : (<Box component="span" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", fontStyle: "italic" }}>Not linked</Box>)}
+                  </TableCell>
+                  <TableCell>
+                    <TextField value={u.role} select size="small" fullWidth onChange={event => ((v) => updateRole(u.profile.user_id, v as AppRole))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "140px" }}>
+                        <MenuItem value="admin">Admin</MenuItem>
+                        <MenuItem value="staff">Staff</MenuItem>
+                        <MenuItem value="technician">Technician</MenuItem>
+                        <MenuItem value="customer">Customer</MenuItem>
+                      </TextField>
+                  </TableCell>
+                </TableRow>))}
+            </TableBody>
+          </DataTable>)}
+      </CardContent>
+    </Card>);
+}
 // ─── Business Tab ───────────────────────────────────────────────
 function BusinessTab() {
-  const [form, setForm] = useState({
-    company_name: "", company_address: "", company_phone: "",
-    company_email: "", logo_url: "", invoice_prefix: "INV-", quotation_prefix: "QT-",
-    timezone: "Asia/Kolkata",
-    bank_name: "", bank_account_number: "", bank_ifsc: "", bank_branch: "", bank_upi_id: "",
-  });
-  const [saving, setSaving] = useState(false);
-  const [settingsId, setSettingsId] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
-      if (data) {
-        setSettingsId(data.id);
-        const d = data as any;
-        setForm({
-          company_name: data.company_name || "",
-          company_address: data.company_address || "",
-          company_phone: data.company_phone || "",
-          company_email: data.company_email || "",
-          logo_url: data.logo_url || "",
-          invoice_prefix: data.invoice_prefix || "INV-",
-          quotation_prefix: data.quotation_prefix || "QT-",
-          timezone: d.timezone || "Asia/Kolkata",
-          bank_name: d.bank_name || "",
-          bank_account_number: d.bank_account_number || "",
-          bank_ifsc: d.bank_ifsc || "",
-          bank_branch: d.bank_branch || "",
-          bank_upi_id: d.bank_upi_id || "",
-        });
-      }
+    const [form, setForm] = useState({
+        company_name: "", company_address: "", company_phone: "",
+        company_email: "", logo_url: "", invoice_prefix: "INV-", quotation_prefix: "QT-",
+        timezone: "Asia/Kolkata",
+        bank_name: "", bank_account_number: "", bank_ifsc: "", bank_branch: "", bank_upi_id: "",
     });
-  }, []);
+    const [saving, setSaving] = useState(false);
+    const [settingsId, setSettingsId] = useState<string | null>(null);
+    useEffect(() => {
+        supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
+            if (data) {
+                setSettingsId(data.id);
+                const d = data as any;
+                setForm({
+                    company_name: data.company_name || "",
+                    company_address: data.company_address || "",
+                    company_phone: data.company_phone || "",
+                    company_email: data.company_email || "",
+                    logo_url: data.logo_url || "",
+                    invoice_prefix: data.invoice_prefix || "INV-",
+                    quotation_prefix: data.quotation_prefix || "QT-",
+                    timezone: d.timezone || "Asia/Kolkata",
+                    bank_name: d.bank_name || "",
+                    bank_account_number: d.bank_account_number || "",
+                    bank_ifsc: d.bank_ifsc || "",
+                    bank_branch: d.bank_branch || "",
+                    bank_upi_id: d.bank_upi_id || "",
+                });
+            }
+        });
+    }, []);
+    const save = async () => {
+        setSaving(true);
+        if (settingsId) {
+            const { error } = await supabase.from("business_settings").update(form as any).eq("id", settingsId);
+            if (error)
+                toast.error(error.message);
+            else
+                toast.success("Settings saved");
+        }
+        else {
+            const { data, error } = await supabase.from("business_settings").insert(form as any).select().single();
+            if (error)
+                toast.error(error.message);
+            else {
+                toast.success("Settings saved");
+                setSettingsId(data.id);
+            }
+        }
+        setSaving(false);
+    };
+    const timezones = ["Asia/Kolkata", "Asia/Dubai", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney"];
+    return (<Card>
+      <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Business Settings</Typography><Typography variant="body2" color="text.secondary">Company information, logo, address, and timezone</Typography></Box>
+      <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, maxWidth: "42rem" }}>
+        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.company_name} onChange={e => setForm(p => ({ ...p, company_name: e.target.value }))} label={"Company Name"} size="small" fullWidth/></Box>
+        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.company_address} onChange={e => setForm(p => ({ ...p, company_address: e.target.value }))} rows={3} label={"Address"} size="small" fullWidth multiline/></Box>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.company_phone} onChange={e => setForm(p => ({ ...p, company_phone: e.target.value }))} label={"Phone"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.company_email} onChange={e => setForm(p => ({ ...p, company_email: e.target.value }))} label={"Email"} size="small" fullWidth/></Box>
+        </Box>
+        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.logo_url} onChange={e => setForm(p => ({ ...p, logo_url: e.target.value }))} placeholder="https://example.com/logo.png" label={"Logo URL"} size="small" fullWidth/></Box>
+        {form.logo_url && <Box src={form.logo_url} alt="Logo preview" component="img" sx={{ height: "4rem", width: "auto", borderRadius: "0.25rem", borderWidth: "1px", borderColor: "hsl(var(--border))" }}/>}
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.invoice_prefix} onChange={e => setForm(p => ({ ...p, invoice_prefix: e.target.value }))} label={"Invoice Prefix"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.quotation_prefix} onChange={e => setForm(p => ({ ...p, quotation_prefix: e.target.value }))} label={"Quotation Prefix"} size="small" fullWidth/></Box>
+        </Box>
+        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-  const save = async () => {
-    setSaving(true);
-    if (settingsId) {
-      const { error } = await supabase.from("business_settings").update(form as any).eq("id", settingsId);
-      if (error) toast.error(error.message); else toast.success("Settings saved");
-    } else {
-      const { data, error } = await supabase.from("business_settings").insert(form as any).select().single();
-      if (error) toast.error(error.message); else { toast.success("Settings saved"); setSettingsId(data.id); }
-    }
-    setSaving(false);
-  };
+          <TextField value={form.timezone} label={"Timezone"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, timezone: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>{timezones.map(tz => <MenuItem key={tz} value={tz}>{tz}</MenuItem>)}</TextField>
+        </Box>
 
-  const timezones = ["Asia/Kolkata", "Asia/Dubai", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney"];
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>Business Settings</CardTitle><CardDescription>Company information, logo, address, and timezone</CardDescription></CardHeader>
-      <CardContent className="space-y-4 max-w-2xl">
-        <div className="space-y-1.5"><Label>Company Name</Label><Input value={form.company_name} onChange={e => setForm(p => ({ ...p, company_name: e.target.value }))} /></div>
-        <div className="space-y-1.5"><Label>Address</Label><Textarea value={form.company_address} onChange={e => setForm(p => ({ ...p, company_address: e.target.value }))} rows={3} /></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5"><Label>Phone</Label><Input value={form.company_phone} onChange={e => setForm(p => ({ ...p, company_phone: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>Email</Label><Input value={form.company_email} onChange={e => setForm(p => ({ ...p, company_email: e.target.value }))} /></div>
-        </div>
-        <div className="space-y-1.5"><Label>Logo URL</Label><Input value={form.logo_url} onChange={e => setForm(p => ({ ...p, logo_url: e.target.value }))} placeholder="https://example.com/logo.png" /></div>
-        {form.logo_url && <img src={form.logo_url} alt="Logo preview" className="h-16 w-auto rounded border border-border" />}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5"><Label>Invoice Prefix</Label><Input value={form.invoice_prefix} onChange={e => setForm(p => ({ ...p, invoice_prefix: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>Quotation Prefix</Label><Input value={form.quotation_prefix} onChange={e => setForm(p => ({ ...p, quotation_prefix: e.target.value }))} /></div>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Timezone</Label>
-          <Select value={form.timezone} onValueChange={v => setForm(p => ({ ...p, timezone: v }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{timezones.map(tz => <SelectItem key={tz} value={tz}>{tz}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-
-        <Separator className="my-4" />
-        <h3 className="text-sm font-semibold text-foreground">Bank Details</h3>
-        <p className="text-xs text-muted-foreground mb-2">Displayed on quotations and invoices for customer payment</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5"><Label>Bank Name</Label><Input value={form.bank_name} onChange={e => setForm(p => ({ ...p, bank_name: e.target.value }))} placeholder="e.g. HDFC Bank" /></div>
-          <div className="space-y-1.5"><Label>Account Number</Label><Input value={form.bank_account_number} onChange={e => setForm(p => ({ ...p, bank_account_number: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>IFSC Code</Label><Input value={form.bank_ifsc} onChange={e => setForm(p => ({ ...p, bank_ifsc: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>Branch</Label><Input value={form.bank_branch} onChange={e => setForm(p => ({ ...p, bank_branch: e.target.value }))} /></div>
-        </div>
-        <div className="space-y-1.5"><Label>UPI ID</Label><Input value={form.bank_upi_id} onChange={e => setForm(p => ({ ...p, bank_upi_id: e.target.value }))} placeholder="e.g. business@upi" /></div>
-        <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Settings</Button>
+        <Divider sx={{ marginTop: "1rem", marginBottom: "1rem" }}/>
+        <Typography component="h3" variant="h3" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>Bank Details</Typography>
+        <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Displayed on quotations and invoices for customer payment</Typography>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.bank_name} onChange={e => setForm(p => ({ ...p, bank_name: e.target.value }))} placeholder="e.g. HDFC Bank" label={"Bank Name"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.bank_account_number} onChange={e => setForm(p => ({ ...p, bank_account_number: e.target.value }))} label={"Account Number"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.bank_ifsc} onChange={e => setForm(p => ({ ...p, bank_ifsc: e.target.value }))} label={"IFSC Code"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.bank_branch} onChange={e => setForm(p => ({ ...p, bank_branch: e.target.value }))} label={"Branch"} size="small" fullWidth/></Box>
+        </Box>
+        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.bank_upi_id} onChange={e => setForm(p => ({ ...p, bank_upi_id: e.target.value }))} placeholder="e.g. business@upi" label={"UPI ID"} size="small" fullWidth/></Box>
+        <Button onClick={save} disabled={saving} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save Settings</Button>
       </CardContent>
-    </Card>
-  );
+    </Card>);
 }
-
 // ─── GST Tab ────────────────────────────────────────────────────
 function GSTTab() {
-  const [form, setForm] = useState({
-    gst_number: "", gst_state_code: "", gst_type: "regular",
-    default_cgst_rate: "9", default_sgst_rate: "9", default_igst_rate: "18", hsn_default: "",
-  });
-  const [saving, setSaving] = useState(false);
-  const [settingsId, setSettingsId] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
-      if (data) {
-        setSettingsId(data.id);
-        const d = data as any;
-        setForm({
-          gst_number: data.gst_number || "",
-          gst_state_code: d.gst_state_code || "",
-          gst_type: d.gst_type || "regular",
-          default_cgst_rate: String(d.default_cgst_rate ?? 9),
-          default_sgst_rate: String(d.default_sgst_rate ?? 9),
-          default_igst_rate: String(d.default_igst_rate ?? 18),
-          hsn_default: d.hsn_default || "",
-        });
-      }
+    const [form, setForm] = useState({
+        gst_number: "", gst_state_code: "", gst_type: "regular",
+        default_cgst_rate: "9", default_sgst_rate: "9", default_igst_rate: "18", hsn_default: "",
     });
-  }, []);
-
-  const save = async () => {
-    setSaving(true);
-    const payload = {
-      gst_number: form.gst_number, gst_state_code: form.gst_state_code, gst_type: form.gst_type,
-      default_cgst_rate: parseFloat(form.default_cgst_rate) || 9,
-      default_sgst_rate: parseFloat(form.default_sgst_rate) || 9,
-      default_igst_rate: parseFloat(form.default_igst_rate) || 18,
-      hsn_default: form.hsn_default,
+    const [saving, setSaving] = useState(false);
+    const [settingsId, setSettingsId] = useState<string | null>(null);
+    useEffect(() => {
+        supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
+            if (data) {
+                setSettingsId(data.id);
+                const d = data as any;
+                setForm({
+                    gst_number: data.gst_number || "",
+                    gst_state_code: d.gst_state_code || "",
+                    gst_type: d.gst_type || "regular",
+                    default_cgst_rate: String(d.default_cgst_rate ?? 9),
+                    default_sgst_rate: String(d.default_sgst_rate ?? 9),
+                    default_igst_rate: String(d.default_igst_rate ?? 18),
+                    hsn_default: d.hsn_default || "",
+                });
+            }
+        });
+    }, []);
+    const save = async () => {
+        setSaving(true);
+        const payload = {
+            gst_number: form.gst_number, gst_state_code: form.gst_state_code, gst_type: form.gst_type,
+            default_cgst_rate: parseFloat(form.default_cgst_rate) || 9,
+            default_sgst_rate: parseFloat(form.default_sgst_rate) || 9,
+            default_igst_rate: parseFloat(form.default_igst_rate) || 18,
+            hsn_default: form.hsn_default,
+        };
+        if (settingsId) {
+            const { error } = await supabase.from("business_settings").update(payload as any).eq("id", settingsId);
+            if (error)
+                toast.error(error.message);
+            else
+                toast.success("GST settings saved");
+        }
+        else {
+            const { data, error } = await supabase.from("business_settings").insert(payload as any).select().single();
+            if (error)
+                toast.error(error.message);
+            else {
+                toast.success("GST settings saved");
+                setSettingsId(data.id);
+            }
+        }
+        setSaving(false);
     };
-    if (settingsId) {
-      const { error } = await supabase.from("business_settings").update(payload as any).eq("id", settingsId);
-      if (error) toast.error(error.message); else toast.success("GST settings saved");
-    } else {
-      const { data, error } = await supabase.from("business_settings").insert(payload as any).select().single();
-      if (error) toast.error(error.message); else { toast.success("GST settings saved"); setSettingsId(data.id); }
-    }
-    setSaving(false);
-  };
+    return (<Card>
+      <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>GST Settings</Typography><Typography variant="body2" color="text.secondary">Configure GST rates and tax information</Typography></Box>
+      <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, maxWidth: "42rem" }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.gst_number} onChange={e => setForm(p => ({ ...p, gst_number: e.target.value }))} placeholder="22AAAAA0000A1Z5" label={"GST Number (GSTIN)"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.gst_state_code} onChange={e => setForm(p => ({ ...p, gst_state_code: e.target.value }))} placeholder="27" label={"State Code"} size="small" fullWidth/></Box>
+        </Box>
+        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-  return (
-    <Card>
-      <CardHeader><CardTitle>GST Settings</CardTitle><CardDescription>Configure GST rates and tax information</CardDescription></CardHeader>
-      <CardContent className="space-y-4 max-w-2xl">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5"><Label>GST Number (GSTIN)</Label><Input value={form.gst_number} onChange={e => setForm(p => ({ ...p, gst_number: e.target.value }))} placeholder="22AAAAA0000A1Z5" /></div>
-          <div className="space-y-1.5"><Label>State Code</Label><Input value={form.gst_state_code} onChange={e => setForm(p => ({ ...p, gst_state_code: e.target.value }))} placeholder="27" /></div>
-        </div>
-        <div className="space-y-1.5">
-          <Label>GST Type</Label>
-          <Select value={form.gst_type} onValueChange={v => setForm(p => ({ ...p, gst_type: v }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="regular">Regular</SelectItem>
-              <SelectItem value="composition">Composition</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="space-y-1.5"><Label>Default CGST Rate (%)</Label><Input type="number" value={form.default_cgst_rate} onChange={e => setForm(p => ({ ...p, default_cgst_rate: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>Default SGST Rate (%)</Label><Input type="number" value={form.default_sgst_rate} onChange={e => setForm(p => ({ ...p, default_sgst_rate: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>Default IGST Rate (%)</Label><Input type="number" value={form.default_igst_rate} onChange={e => setForm(p => ({ ...p, default_igst_rate: e.target.value }))} /></div>
-        </div>
-        <div className="space-y-1.5"><Label>Default HSN/SAC Code</Label><Input value={form.hsn_default} onChange={e => setForm(p => ({ ...p, hsn_default: e.target.value }))} placeholder="9987" /></div>
-        <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save GST Settings</Button>
+          <TextField value={form.gst_type} label={"GST Type"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, gst_type: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+              <MenuItem value="regular">Regular</MenuItem>
+              <MenuItem value="composition">Composition</MenuItem>
+            </TextField>
+        </Box>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.default_cgst_rate} onChange={e => setForm(p => ({ ...p, default_cgst_rate: e.target.value }))} label={"Default CGST Rate (%)"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.default_sgst_rate} onChange={e => setForm(p => ({ ...p, default_sgst_rate: e.target.value }))} label={"Default SGST Rate (%)"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.default_igst_rate} onChange={e => setForm(p => ({ ...p, default_igst_rate: e.target.value }))} label={"Default IGST Rate (%)"} size="small" fullWidth/></Box>
+        </Box>
+        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.hsn_default} onChange={e => setForm(p => ({ ...p, hsn_default: e.target.value }))} placeholder="9987" label={"Default HSN/SAC Code"} size="small" fullWidth/></Box>
+        <Button onClick={save} disabled={saving} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save GST Settings</Button>
       </CardContent>
-    </Card>
-  );
+    </Card>);
 }
-
 // ─── Document Settings Tab ──────────────────────────────────────
 function DocumentSettingsTab() {
-  const { user } = useAuth();
-  const [signatureUrl, setSignatureUrl] = useState("");
-  const [showOnQuotations, setShowOnQuotations] = useState(false);
-  const [showOnInvoices, setShowOnInvoices] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [settingsId, setSettingsId] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.from("business_settings").select("id, integrations").limit(1).single().then(({ data }) => {
-      if (data) {
-        setSettingsId(data.id);
-        const int = (data.integrations as Record<string, any>) || {};
-        setSignatureUrl(int.signature_url || "");
-        setShowOnQuotations(int.show_signature_quotations === true);
-        setShowOnInvoices(int.show_signature_invoices === true);
-      }
-    });
-  }, []);
-
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    const file = files[0];
-    const ext = file.name.split(".").pop();
-    const path = `signatures/signature_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("uploads").upload(path, file);
-    if (error) { toast.error(error.message); setUploading(false); return; }
-    const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(path);
-    setSignatureUrl(urlData.publicUrl);
-    setUploading(false);
-    toast.success("Signature uploaded");
-  };
-
-  const saveSettings = async () => {
-    if (!settingsId) return;
-    setSaving(true);
-    const { data: current } = await supabase.from("business_settings").select("integrations").eq("id", settingsId).single();
-    const existing = (current?.integrations as Record<string, any>) || {};
-    const updated = { ...existing, signature_url: signatureUrl, show_signature_quotations: showOnQuotations, show_signature_invoices: showOnInvoices };
-    const { error } = await supabase.from("business_settings").update({ integrations: updated }).eq("id", settingsId);
-    if (error) toast.error(error.message); else toast.success("Document settings saved");
-    setSaving(false);
-  };
-
-  return (
-    <div className="grid gap-6 max-w-2xl">
+    const { user } = useAuth();
+    const [signatureUrl, setSignatureUrl] = useState("");
+    const [showOnQuotations, setShowOnQuotations] = useState(false);
+    const [showOnInvoices, setShowOnInvoices] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [settingsId, setSettingsId] = useState<string | null>(null);
+    useEffect(() => {
+        supabase.from("business_settings").select("id, integrations").limit(1).single().then(({ data }) => {
+            if (data) {
+                setSettingsId(data.id);
+                const int = (data.integrations as Record<string, any>) || {};
+                setSignatureUrl(int.signature_url || "");
+                setShowOnQuotations(int.show_signature_quotations === true);
+                setShowOnInvoices(int.show_signature_invoices === true);
+            }
+        });
+    }, []);
+    const handleUpload = async (files: FileList | null) => {
+        if (!files || files.length === 0)
+            return;
+        setUploading(true);
+        const file = files[0];
+        const ext = file.name.split(".").pop();
+        const path = `signatures/signature_${Date.now()}.${ext}`;
+        const { error } = await supabase.storage.from("uploads").upload(path, file);
+        if (error) {
+            toast.error(error.message);
+            setUploading(false);
+            return;
+        }
+        const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(path);
+        setSignatureUrl(urlData.publicUrl);
+        setUploading(false);
+        toast.success("Signature uploaded");
+    };
+    const saveSettings = async () => {
+        if (!settingsId)
+            return;
+        setSaving(true);
+        const { data: current } = await supabase.from("business_settings").select("integrations").eq("id", settingsId).single();
+        const existing = (current?.integrations as Record<string, any>) || {};
+        const updated = { ...existing, signature_url: signatureUrl, show_signature_quotations: showOnQuotations, show_signature_invoices: showOnInvoices };
+        const { error } = await supabase.from("business_settings").update({ integrations: updated }).eq("id", settingsId);
+        if (error)
+            toast.error(error.message);
+        else
+            toast.success("Document settings saved");
+        setSaving(false);
+    };
+    return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "42rem" }}>
       <Card>
-        <CardHeader><CardTitle>Signature Settings</CardTitle><CardDescription>Upload a signature image for documents</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          {signatureUrl && (
-            <div className="border rounded-lg p-4 bg-muted/30">
-              <img src={signatureUrl} alt="Signature" className="max-h-20 w-auto" />
-            </div>
-          )}
-          <div>
-            <Label>Upload Signature Image</Label>
-            <label className="mt-2 flex items-center gap-2 text-sm text-primary cursor-pointer">
-              <Camera className="h-4 w-4" /> {uploading ? "Uploading..." : "Choose file"}
-              <input type="file" accept="image/*" className="hidden" onChange={e => handleUpload(e.target.files)} disabled={uploading} />
-            </label>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Show on Quotations</Label>
-              <input type="checkbox" checked={showOnQuotations} onChange={e => setShowOnQuotations(e.target.checked)} className="h-4 w-4 rounded border-border" />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label>Show on Invoices</Label>
-              <input type="checkbox" checked={showOnInvoices} onChange={e => setShowOnInvoices(e.target.checked)} className="h-4 w-4 rounded border-border" />
-            </div>
-          </div>
-          <Button onClick={saveSettings} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Document Settings</Button>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Signature Settings</Typography><Typography variant="body2" color="text.secondary">Upload a signature image for documents</Typography></Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          {signatureUrl && (<Box sx={{ borderWidth: "1px", borderRadius: "var(--radius)", padding: "1rem", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}>
+              <Box src={signatureUrl} alt="Signature" component="img" sx={{ maxHeight: "5rem", width: "auto" }}/>
+            </Box>)}
+          <Box>
+            <FormLabel>Upload Signature Image</FormLabel>
+            <Box component="label" sx={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--primary))", cursor: "pointer" }}>
+              <Box component={Camera} sx={{ height: "1rem", width: "1rem" }}/> {uploading ? "Uploading..." : "Choose file"}
+              <Box type="file" accept="image/*" onChange={e => handleUpload(e.target.files)} disabled={uploading} component="input" sx={{ display: "none" }}/>
+            </Box>
+          </Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <FormLabel>Show on Quotations</FormLabel>
+              <Checkbox checked={showOnQuotations} onChange={e => setShowOnQuotations(e.target.checked)} sx={{ height: "1rem", width: "1rem", borderRadius: "0.25rem", borderColor: "hsl(var(--border))" }}/>
+            </Box>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <FormLabel>Show on Invoices</FormLabel>
+              <Checkbox checked={showOnInvoices} onChange={e => setShowOnInvoices(e.target.checked)} sx={{ height: "1rem", width: "1rem", borderRadius: "0.25rem", borderColor: "hsl(var(--border))" }}/>
+            </Box>
+          </Box>
+          <Button onClick={saveSettings} disabled={saving} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save Document Settings</Button>
         </CardContent>
       </Card>
-    </div>
-  );
+    </Box>);
 }
-
 // ─── Integration Settings Helpers ───────────────────────────────
 function useIntegrations() {
-  const [integrations, setIntegrations] = useState<Record<string, string>>({});
-  const [settingsId, setSettingsId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    supabase.from("business_settings").select("id, integrations").limit(1).single().then(({ data }) => {
-      if (data) {
-        setSettingsId(data.id);
-        if (data.integrations && typeof data.integrations === "object") {
-          setIntegrations(data.integrations as Record<string, string>);
+    const [integrations, setIntegrations] = useState<Record<string, string>>({});
+    const [settingsId, setSettingsId] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    useEffect(() => {
+        supabase.from("business_settings").select("id, integrations").limit(1).single().then(({ data }) => {
+            if (data) {
+                setSettingsId(data.id);
+                if (data.integrations && typeof data.integrations === "object") {
+                    setIntegrations(data.integrations as Record<string, string>);
+                }
+            }
+        });
+    }, []);
+    const updateField = (key: string, value: string) => {
+        setIntegrations(prev => ({ ...prev, [key]: value }));
+    };
+    const saveIntegrations = async () => {
+        setSaving(true);
+        if (settingsId) {
+            const { error } = await supabase.from("business_settings").update({ integrations }).eq("id", settingsId);
+            if (error)
+                toast.error(error.message);
+            else
+                toast.success("Settings saved");
         }
-      }
-    });
-  }, []);
-
-  const updateField = (key: string, value: string) => {
-    setIntegrations(prev => ({ ...prev, [key]: value }));
-  };
-
-  const saveIntegrations = async () => {
-    setSaving(true);
-    if (settingsId) {
-      const { error } = await supabase.from("business_settings").update({ integrations }).eq("id", settingsId);
-      if (error) toast.error(error.message); else toast.success("Settings saved");
-    } else {
-      const { data, error } = await supabase.from("business_settings").insert({ integrations } as any).select().single();
-      if (error) toast.error(error.message); else { toast.success("Settings saved"); setSettingsId(data.id); }
-    }
-    setSaving(false);
-  };
-
-  return { integrations, updateField, saveIntegrations, saving };
+        else {
+            const { data, error } = await supabase.from("business_settings").insert({ integrations } as any).select().single();
+            if (error)
+                toast.error(error.message);
+            else {
+                toast.success("Settings saved");
+                setSettingsId(data.id);
+            }
+        }
+        setSaving(false);
+    };
+    return { integrations, updateField, saveIntegrations, saving };
 }
-
 function IntegrationFieldGroup({ title, description, fields, integrations, updateField }: {
-  title: string; description: string;
-  fields: { key: string; label: string; type?: string; placeholder?: string; readOnly?: boolean; copyable?: boolean }[];
-  integrations: Record<string, string>;
-  updateField: (k: string, v: string) => void;
+    title: string;
+    description: string;
+    fields: {
+        key: string;
+        label: string;
+        type?: string;
+        placeholder?: string;
+        readOnly?: boolean;
+        copyable?: boolean;
+    }[];
+    integrations: Record<string, string>;
+    updateField: (k: string, v: string) => void;
 }) {
-  const copyToClipboard = (value: string) => {
-    navigator.clipboard.writeText(value);
-    toast.success("Copied to clipboard");
-  };
-
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader>
-      <CardContent className="space-y-3">
-        {fields.map(f => (
-          <div key={f.key} className="space-y-1.5">
-            <Label>{f.label}</Label>
-            <div className="flex gap-2">
-              <Input
-                type={f.type || "text"}
-                placeholder={f.placeholder || `Enter ${f.label.toLowerCase()}`}
-                value={integrations[f.key] || ""}
-                onChange={e => updateField(f.key, e.target.value)}
-                readOnly={f.readOnly}
-                className={f.readOnly ? "bg-muted" : ""}
-              />
-              {f.copyable && (
-                <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(integrations[f.key] || "")}>
-                  <Copy className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
+    const copyToClipboard = (value: string) => {
+        navigator.clipboard.writeText(value);
+        toast.success("Copied to clipboard");
+    };
+    return (<Card>
+      <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Box>
+      <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+        {fields.map(f => (<Box key={f.key} sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+            <FormLabel>{f.label}</FormLabel>
+            <Box sx={{ display: "flex", gap: "0.5rem" }}>
+              <TextField type={f.type || "text"} placeholder={f.placeholder || `Enter ${f.label.toLowerCase()}`} value={integrations[f.key] || ""} onChange={e => updateField(f.key, e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { readOnly: f.readOnly, "aria-label": f.placeholder || `Enter ${f.label.toLowerCase()}` } }} sx={f.readOnly ? { backgroundColor: "hsl(var(--muted))" } : {}}/>
+              {f.copyable && (<IconButton onClick={() => copyToClipboard(integrations[f.key] || "")} aria-label={"Copy"} sx={{ flexShrink: "0" }}>
+                  <Box component={Copy} sx={{ height: "1rem", width: "1rem" }}/>
+                </IconButton>)}
+            </Box>
+          </Box>))}
       </CardContent>
-    </Card>
-  );
+    </Card>);
 }
-
 // ─── Email/SMTP Tab ─────────────────────────────────────────────
 function EmailTab() {
-  const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
-  return (
-    <div className="grid gap-6 max-w-2xl">
-      <IntegrationFieldGroup
-        title="SMTP Configuration" description="Configure your email sending settings"
-        fields={[
-          { key: "smtp_host", label: "SMTP Host", placeholder: "smtp.example.com" },
-          { key: "smtp_port", label: "SMTP Port", placeholder: "587" },
-          { key: "smtp_user", label: "Username" },
-          { key: "smtp_pass", label: "Password", type: "password" },
-          { key: "smtp_from_name", label: "From Name", placeholder: "My Company" },
-          { key: "smtp_from_email", label: "From Email", placeholder: "noreply@example.com" },
-        ]}
-        integrations={integrations} updateField={updateField}
-      />
-      <Button onClick={saveIntegrations} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Email Settings</Button>
-    </div>
-  );
+    const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
+    return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "42rem" }}>
+      <IntegrationFieldGroup title="SMTP Configuration" description="Configure your email sending settings" fields={[
+        { key: "smtp_host", label: "SMTP Host", placeholder: "smtp.example.com" },
+        { key: "smtp_port", label: "SMTP Port", placeholder: "587" },
+        { key: "smtp_user", label: "Username" },
+        { key: "smtp_pass", label: "Password", type: "password" },
+        { key: "smtp_from_name", label: "From Name", placeholder: "My Company" },
+        { key: "smtp_from_email", label: "From Email", placeholder: "noreply@example.com" },
+    ]} integrations={integrations} updateField={updateField}/>
+      <Button onClick={saveIntegrations} disabled={saving} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save Email Settings</Button>
+    </Box>);
 }
-
 // ─── SMS Tab ────────────────────────────────────────────────────
 function SMSTab() {
-  const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
-  return (
-    <div className="grid gap-6 max-w-2xl">
-      <IntegrationFieldGroup
-        title="SMS API Configuration" description="DLT-compliant SMS gateway settings"
-        fields={[
-          { key: "sms_api_url", label: "API Endpoint", placeholder: "https://api.sms-provider.com/send" },
-          { key: "sms_api_key", label: "API Key", type: "password" },
-          { key: "sms_sender_id", label: "Sender ID", placeholder: "MYCOMP" },
-          { key: "sms_dlt_entity_id", label: "DLT Entity ID" },
-        ]}
-        integrations={integrations} updateField={updateField}
-      />
-      <Button onClick={saveIntegrations} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save SMS Settings</Button>
-    </div>
-  );
+    const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
+    return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "42rem" }}>
+      <IntegrationFieldGroup title="SMS API Configuration" description="DLT-compliant SMS gateway settings" fields={[
+        { key: "sms_api_url", label: "API Endpoint", placeholder: "https://api.sms-provider.com/send" },
+        { key: "sms_api_key", label: "API Key", type: "password" },
+        { key: "sms_sender_id", label: "Sender ID", placeholder: "MYCOMP" },
+        { key: "sms_dlt_entity_id", label: "DLT Entity ID" },
+    ]} integrations={integrations} updateField={updateField}/>
+      <Button onClick={saveIntegrations} disabled={saving} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save SMS Settings</Button>
+    </Box>);
 }
-
 // ─── WhatsApp Tab ───────────────────────────────────────────────
 function WhatsAppTab() {
-  const [form, setForm] = useState({ whatsapp_api_url: "", whatsapp_api_key: "", whatsapp_phone_id: "" });
-  const { integrations, updateField, saveIntegrations, saving: intSaving } = useIntegrations();
-  const [saving, setSaving] = useState(false);
-  const [settingsId, setSettingsId] = useState<string | null>(null);
-
-  const webhookUrl = `${window.location.origin}/api/backend/functions/whatsapp-webhook`;
-  const verifyToken = integrations["wa_verify_token"] || "lovable_whatsapp_verify_" + Math.random().toString(36).substring(2, 10);
-
-  useEffect(() => {
-    supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
-      if (data) {
-        setSettingsId(data.id);
-        const d = data as any;
-        setForm({
-          whatsapp_api_url: d.whatsapp_api_url || "",
-          whatsapp_api_key: d.whatsapp_api_key || "",
-          whatsapp_phone_id: d.whatsapp_phone_id || "",
+    const [form, setForm] = useState({ whatsapp_api_url: "", whatsapp_api_key: "", whatsapp_phone_id: "" });
+    const { integrations, updateField, saveIntegrations, saving: intSaving } = useIntegrations();
+    const [saving, setSaving] = useState(false);
+    const [settingsId, setSettingsId] = useState<string | null>(null);
+    const webhookUrl = `${window.location.origin}/api/backend/functions/whatsapp-webhook`;
+    const verifyToken = integrations["wa_verify_token"] || "lovable_whatsapp_verify_" + Math.random().toString(36).substring(2, 10);
+    useEffect(() => {
+        supabase.from("business_settings").select("*").limit(1).single().then(({ data }) => {
+            if (data) {
+                setSettingsId(data.id);
+                const d = data as any;
+                setForm({
+                    whatsapp_api_url: d.whatsapp_api_url || "",
+                    whatsapp_api_key: d.whatsapp_api_key || "",
+                    whatsapp_phone_id: d.whatsapp_phone_id || "",
+                });
+            }
         });
-      }
-    });
-    // Ensure verify token is set
-    if (!integrations["wa_verify_token"]) {
-      updateField("wa_verify_token", verifyToken);
-    }
-  }, []);
-
-  const save = async () => {
-    setSaving(true);
-    if (settingsId) {
-      const { error } = await supabase.from("business_settings").update(form as any).eq("id", settingsId);
-      if (error) toast.error(error.message); else toast.success("WhatsApp settings saved");
-    }
-    // Also save integrations (for webhook verify token, fb app id/secret)
-    await saveIntegrations();
-    setSaving(false);
-  };
-
-  const copyToClipboard = (value: string) => {
-    navigator.clipboard.writeText(value);
-    toast.success("Copied to clipboard");
-  };
-
-  return (
-    <div className="grid gap-6 max-w-2xl">
+        // Ensure verify token is set
+        if (!integrations["wa_verify_token"]) {
+            updateField("wa_verify_token", verifyToken);
+        }
+    }, []);
+    const save = async () => {
+        setSaving(true);
+        if (settingsId) {
+            const { error } = await supabase.from("business_settings").update(form as any).eq("id", settingsId);
+            if (error)
+                toast.error(error.message);
+            else
+                toast.success("WhatsApp settings saved");
+        }
+        // Also save integrations (for webhook verify token, fb app id/secret)
+        await saveIntegrations();
+        setSaving(false);
+    };
+    const copyToClipboard = (value: string) => {
+        navigator.clipboard.writeText(value);
+        toast.success("Copied to clipboard");
+    };
+    return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "42rem" }}>
       <Card>
-        <CardHeader><CardTitle className="text-base">WhatsApp Business API</CardTitle><CardDescription>Configure WhatsApp messaging integration</CardDescription></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1.5"><Label>API URL</Label><Input value={form.whatsapp_api_url} onChange={e => setForm(p => ({ ...p, whatsapp_api_url: e.target.value }))} placeholder="https://graph.facebook.com/v17.0" /></div>
-          <div className="space-y-1.5"><Label>API Key / Access Token</Label><Input type="password" value={form.whatsapp_api_key} onChange={e => setForm(p => ({ ...p, whatsapp_api_key: e.target.value }))} /></div>
-          <div className="space-y-1.5"><Label>Phone Number ID</Label><Input value={form.whatsapp_phone_id} onChange={e => setForm(p => ({ ...p, whatsapp_phone_id: e.target.value }))} /></div>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>WhatsApp Business API</Typography><Typography variant="body2" color="text.secondary">Configure WhatsApp messaging integration</Typography></Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.whatsapp_api_url} onChange={e => setForm(p => ({ ...p, whatsapp_api_url: e.target.value }))} placeholder="https://graph.facebook.com/v17.0" label={"API URL"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="password" value={form.whatsapp_api_key} onChange={e => setForm(p => ({ ...p, whatsapp_api_key: e.target.value }))} label={"API Key / Access Token"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.whatsapp_phone_id} onChange={e => setForm(p => ({ ...p, whatsapp_phone_id: e.target.value }))} label={"Phone Number ID"} size="small" fullWidth/></Box>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" /> Facebook Developer Portal</CardTitle>
-          <CardDescription>Configure these settings for webhook verification in your Facebook App</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Facebook App ID</Label>
-            <Input value={integrations["fb_app_id"] || ""} onChange={e => updateField("fb_app_id", e.target.value)} placeholder="Enter Facebook App ID" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Facebook App Secret</Label>
-            <Input type="password" value={integrations["fb_app_secret"] || ""} onChange={e => updateField("fb_app_secret", e.target.value)} placeholder="Enter Facebook App Secret" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Webhook Verify Token</Label>
-            <div className="flex gap-2">
-              <Input value={verifyToken} readOnly className="bg-muted font-mono text-xs" />
-              <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(verifyToken)}><Copy className="h-4 w-4" /></Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Enter this token in the Facebook Developer Portal webhook configuration</p>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Webhook Callback URL</Label>
-            <div className="flex gap-2">
-              <Input value={webhookUrl} readOnly className="bg-muted font-mono text-xs" />
-              <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(webhookUrl)}><Copy className="h-4 w-4" /></Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Enter this URL in the Facebook Developer Portal → WhatsApp → Configuration → Webhook</p>
-          </div>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+          <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Globe} sx={{ height: "1rem", width: "1rem" }}/> Facebook Developer Portal</Typography>
+          <Typography variant="body2" color="text.secondary">Configure these settings for webhook verification in your Facebook App</Typography>
+        </Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+            <TextField value={integrations["fb_app_id"] || ""} onChange={e => updateField("fb_app_id", e.target.value)} placeholder="Enter Facebook App ID" label={"Facebook App ID"} size="small" fullWidth/>
+          </Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+            <TextField type="password" value={integrations["fb_app_secret"] || ""} onChange={e => updateField("fb_app_secret", e.target.value)} placeholder="Enter Facebook App Secret" label={"Facebook App Secret"} size="small" fullWidth/>
+          </Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+            <FormLabel>Webhook Verify Token</FormLabel>
+            <Box sx={{ display: "flex", gap: "0.5rem" }}>
+              <TextField value={verifyToken} size="small" fullWidth slotProps={{ htmlInput: { readOnly: true, "aria-label": "Input" } }} sx={{ backgroundColor: "hsl(var(--muted))", fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem" }}/>
+              <IconButton onClick={() => copyToClipboard(verifyToken)} aria-label={"Copy"} sx={{ flexShrink: "0" }}><Box component={Copy} sx={{ height: "1rem", width: "1rem" }}/></IconButton>
+            </Box>
+            <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Enter this token in the Facebook Developer Portal webhook configuration</Typography>
+          </Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+            <FormLabel>Webhook Callback URL</FormLabel>
+            <Box sx={{ display: "flex", gap: "0.5rem" }}>
+              <TextField value={webhookUrl} size="small" fullWidth slotProps={{ htmlInput: { readOnly: true, "aria-label": "Input" } }} sx={{ backgroundColor: "hsl(var(--muted))", fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem" }}/>
+              <IconButton onClick={() => copyToClipboard(webhookUrl)} aria-label={"Copy"} sx={{ flexShrink: "0" }}><Box component={Copy} sx={{ height: "1rem", width: "1rem" }}/></IconButton>
+            </Box>
+            <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Enter this URL in the Facebook Developer Portal → WhatsApp → Configuration → Webhook</Typography>
+          </Box>
         </CardContent>
       </Card>
 
-      <Button onClick={save} disabled={saving || intSaving}>{(saving || intSaving) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save WhatsApp Settings</Button>
+      <Button onClick={save} disabled={saving || intSaving} variant="contained">{(saving || intSaving) ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save WhatsApp Settings</Button>
 
       <WhatsAppAutomationSection />
-    </div>
-  );
+    </Box>);
 }
-
 // ─── WhatsApp Automation Settings ────────────────────────────────
 const AUTOMATION_EVENTS = [
-  { id: "lead_created", label: "New Lead Created", desc: "When a new lead is captured" },
-  { id: "job_created", label: "Job Sheet Created", desc: "When a repair job is created" },
-  { id: "job_approved", label: "Job Approved", desc: "When customer approves the job" },
-  { id: "job_in_progress", label: "Repair In Progress", desc: "When repair work starts" },
-  { id: "job_ready", label: "Ready for Pickup", desc: "When repair is completed" },
-  { id: "job_delivered", label: "Job Delivered", desc: "When device is delivered" },
-  { id: "invoice_generated", label: "Invoice Generated", desc: "When invoice is created" },
-  { id: "payment_received", label: "Payment Received", desc: "When payment is confirmed" },
-  { id: "quotation_sent", label: "Quotation Sent", desc: "When quotation is shared" },
-  { id: "payment_reminder", label: "Payment Reminder", desc: "Overdue payment reminder" },
+    { id: "lead_created", label: "New Lead Created", desc: "When a new lead is captured" },
+    { id: "job_created", label: "Job Sheet Created", desc: "When a repair job is created" },
+    { id: "job_approved", label: "Job Approved", desc: "When customer approves the job" },
+    { id: "job_in_progress", label: "Repair In Progress", desc: "When repair work starts" },
+    { id: "job_ready", label: "Ready for Pickup", desc: "When repair is completed" },
+    { id: "job_delivered", label: "Job Delivered", desc: "When device is delivered" },
+    { id: "invoice_generated", label: "Invoice Generated", desc: "When invoice is created" },
+    { id: "payment_received", label: "Payment Received", desc: "When payment is confirmed" },
+    { id: "quotation_sent", label: "Quotation Sent", desc: "When quotation is shared" },
+    { id: "payment_reminder", label: "Payment Reminder", desc: "Overdue payment reminder" },
 ];
-
 function WhatsAppAutomationSection() {
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
-
-  useEffect(() => {
-    fetchTemplates();
-  }, []);
-
-  const fetchTemplates = async () => {
-    setLoading(true);
-    const { data } = await supabase.from("templates").select("*").not("event_type", "is", null);
-    setTemplates(data || []);
-    setLoading(false);
-  };
-
-  const getTemplateForEvent = (eventType: string) => {
-    return templates.find((t: any) => t.event_type === eventType);
-  };
-
-  const createDefaultTemplate = async (eventId: string, eventLabel: string) => {
-    const defaultBodies: Record<string, string> = {
-      lead_created: "Hello {{customer_name}}, thank you for your interest! Our team will contact you shortly.",
-      job_created: "Hello {{customer_name}}, your repair job {{job_id}} has been created. Track: {{link}}",
-      job_approved: "Hello {{customer_name}}, your job {{job_id}} has been approved. We'll begin work shortly.",
-      job_in_progress: "Hello {{customer_name}}, repair on {{job_id}} is now in progress. Track: {{link}}",
-      job_ready: "Hello {{customer_name}}, your device ({{job_id}}) is ready for pickup! Track: {{link}}",
-      job_delivered: "Hello {{customer_name}}, job {{job_id}} delivered successfully. Thank you for choosing us!",
-      invoice_generated: "Hello {{customer_name}}, invoice for ₹{{amount}} has been generated. View: {{link}}",
-      payment_received: "Hello {{customer_name}}, payment of ₹{{amount}} received. Thank you!",
-      quotation_sent: "Hello {{customer_name}}, your quotation is ready. View: {{link}}",
-      payment_reminder: "Hello {{customer_name}}, payment of ₹{{amount}} is pending. Pay now: {{link}}",
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
+    useEffect(() => {
+        fetchTemplates();
+    }, []);
+    const fetchTemplates = async () => {
+        setLoading(true);
+        const { data } = await supabase.from("templates").select("*").not("event_type", "is", null);
+        setTemplates(data || []);
+        setLoading(false);
     };
-
-    const { error } = await supabase.from("templates").insert({
-      name: `WA: ${eventLabel}`,
-      type: "sms" as any,
-      body: defaultBodies[eventId] || `Hello {{customer_name}}, update on your job {{job_id}}: {{status}}`,
-      event_type: eventId,
-      created_by: user?.id,
-    });
-    if (error) toast.error(error.message);
-    else { toast.success("Template created"); fetchTemplates(); }
-  };
-
-  const removeAutomation = async (templateId: string) => {
-    const { error } = await supabase.from("templates").update({ event_type: null } as any).eq("id", templateId);
-    if (error) toast.error(error.message);
-    else { toast.success("Automation removed"); fetchTemplates(); }
-  };
-
-  const testAutomation = async (eventId: string) => {
-    try {
-      const result = await supabase.functions.invoke("whatsapp-automation", {
-        body: {
-          event_type: eventId,
-          customer_phone: "919999999999",
-          variables: {
-            customer_name: "Test Customer",
-            job_id: "JOB-2026-00001",
-            status: "test",
-            link: window.location.origin,
-            amount: "1000",
-          },
-        },
-      });
-      if (result.data?.success) toast.success(`Test sent via ${result.data.channel}`);
-      else if (result.data?.skipped) toast.info("No template configured for this event");
-      else toast.error(result.data?.error || "Test failed");
-    } catch (e) {
-      toast.error("Failed to test automation");
-    }
-  };
-
-  return (
-    <Card className="mt-6">
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <MessageSquare className="h-4 w-4" /> WhatsApp Automation
-        </CardTitle>
-        <CardDescription>Auto-send WhatsApp messages on key events. Falls back to SMS if WhatsApp is unavailable.</CardDescription>
-      </CardHeader>
+    const getTemplateForEvent = (eventType: string) => {
+        return templates.find((t: any) => t.event_type === eventType);
+    };
+    const createDefaultTemplate = async (eventId: string, eventLabel: string) => {
+        const defaultBodies: Record<string, string> = {
+            lead_created: "Hello {{customer_name}}, thank you for your interest! Our team will contact you shortly.",
+            job_created: "Hello {{customer_name}}, your repair job {{job_id}} has been created. Track: {{link}}",
+            job_approved: "Hello {{customer_name}}, your job {{job_id}} has been approved. We'll begin work shortly.",
+            job_in_progress: "Hello {{customer_name}}, repair on {{job_id}} is now in progress. Track: {{link}}",
+            job_ready: "Hello {{customer_name}}, your device ({{job_id}}) is ready for pickup! Track: {{link}}",
+            job_delivered: "Hello {{customer_name}}, job {{job_id}} delivered successfully. Thank you for choosing us!",
+            invoice_generated: "Hello {{customer_name}}, invoice for ₹{{amount}} has been generated. View: {{link}}",
+            payment_received: "Hello {{customer_name}}, payment of ₹{{amount}} received. Thank you!",
+            quotation_sent: "Hello {{customer_name}}, your quotation is ready. View: {{link}}",
+            payment_reminder: "Hello {{customer_name}}, payment of ₹{{amount}} is pending. Pay now: {{link}}",
+        };
+        const { error } = await supabase.from("templates").insert({
+            name: `WA: ${eventLabel}`,
+            type: "sms" as any,
+            body: defaultBodies[eventId] || `Hello {{customer_name}}, update on your job {{job_id}}: {{status}}`,
+            event_type: eventId,
+            created_by: user?.id,
+        });
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Template created");
+            fetchTemplates();
+        }
+    };
+    const removeAutomation = async (templateId: string) => {
+        const { error } = await supabase.from("templates").update({ event_type: null } as any).eq("id", templateId);
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Automation removed");
+            fetchTemplates();
+        }
+    };
+    const testAutomation = async (eventId: string) => {
+        try {
+            const result = await supabase.functions.invoke("whatsapp-automation", {
+                body: {
+                    event_type: eventId,
+                    customer_phone: "919999999999",
+                    variables: {
+                        customer_name: "Test Customer",
+                        job_id: "JOB-2026-00001",
+                        status: "test",
+                        link: window.location.origin,
+                        amount: "1000",
+                    },
+                },
+            });
+            if (result.data?.success)
+                toast.success(`Test sent via ${result.data.channel}`);
+            else if (result.data?.skipped)
+                toast.info("No template configured for this event");
+            else
+                toast.error(result.data?.error || "Test failed");
+        }
+        catch (e) {
+            toast.error("Failed to test automation");
+        }
+    };
+    return (<Card sx={{ marginTop: "1.5rem" }}>
+      <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+        <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}>
+          <Box component={MessageSquare} sx={{ height: "1rem", width: "1rem" }}/> WhatsApp Automation
+        </Typography>
+        <Typography variant="body2" color="text.secondary">Auto-send WhatsApp messages on key events. Falls back to SMS if WhatsApp is unavailable.</Typography>
+      </Box>
       <CardContent>
-        {loading ? (
-          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-        ) : (
-          <div className="space-y-3">
+        {loading ? (<Box sx={{ display: "flex", justifyContent: "center", paddingTop: "2rem", paddingBottom: "2rem" }}><Box component={Loader2} sx={{ height: "1.25rem", width: "1.25rem", animation: "spin 1s linear infinite", color: "hsl(var(--muted-foreground))" }}/></Box>) : (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
             {AUTOMATION_EVENTS.map(evt => {
-              const tpl = getTemplateForEvent(evt.id);
-              return (
-                <div key={evt.id} className="flex items-center justify-between p-3 rounded-xl border border-border bg-card/50">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{evt.label}</p>
-                    <p className="text-xs text-muted-foreground">{evt.desc}</p>
-                    {tpl && <p className="text-xs text-primary mt-1 truncate max-w-[300px]">Template: {tpl.name}</p>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {tpl ? (
-                      <>
-                        <Badge className="bg-success/10 text-success text-xs">Active</Badge>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => testAutomation(evt.id)}>
-                          <TestTube className="h-3 w-3 mr-1" /> Test
+                const tpl = getTemplateForEvent(evt.id);
+                return (<Box key={evt.id} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem", borderRadius: "0.75rem", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "color-mix(in srgb, hsl(var(--card)) 50%, transparent)" }}>
+                  <Box sx={{ flex: "1 1 0%" }}>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>{evt.label}</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{evt.desc}</Typography>
+                    {tpl && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--primary))", marginTop: "0.25rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "300px" }}>Template: {tpl.name}</Typography>}
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    {tpl ? (<>
+                        <StatusChip label={"Active"} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))", fontSize: "0.75rem", lineHeight: "1rem" }}/>
+                        <Button onClick={() => testAutomation(evt.id)} variant="text" size="small" sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem" }}>
+                          <Box component={TestTube} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/> Test
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => removeAutomation(tpl.id)}>
-                          <Trash2 className="h-3 w-3" />
+                        <Button onClick={() => removeAutomation(tpl.id)} variant="text" size="small" sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--destructive))" }}>
+                          <Box component={Trash2} sx={{ height: "0.75rem", width: "0.75rem" }}/>
                         </Button>
-                      </>
-                    ) : (
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => createDefaultTemplate(evt.id, evt.label)}>
-                        <Plus className="h-3 w-3 mr-1" /> Enable
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
+                      </>) : (<Button onClick={() => createDefaultTemplate(evt.id, evt.label)} variant="outlined" size="small" sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem" }}>
+                        <Box component={Plus} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/> Enable
+                      </Button>)}
+                  </Box>
+                </Box>);
             })}
-          </div>
-        )}
+          </Box>)}
       </CardContent>
-    </Card>
-  );
+    </Card>);
 }
-
 // ─── Razorpay Tab ───────────────────────────────────────────────
 function RazorpayTab() {
-  const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
-  const webhookUrl = `${window.location.origin}/api/backend/functions/razorpay-webhook`;
-
-  const copyToClipboard = (value: string) => {
-    navigator.clipboard.writeText(value);
-    toast.success("Copied to clipboard");
-  };
-
-  return (
-    <div className="grid gap-6 max-w-2xl">
+    const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
+    const webhookUrl = `${window.location.origin}/api/backend/functions/razorpay-webhook`;
+    const copyToClipboard = (value: string) => {
+        navigator.clipboard.writeText(value);
+        toast.success("Copied to clipboard");
+    };
+    return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "42rem" }}>
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><CreditCard className="h-4 w-4" /> Razorpay Payment Gateway</CardTitle>
-          <CardDescription>Configure Razorpay for accepting online payments on invoices</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1.5"><Label>Key ID</Label><Input value={integrations["razorpay_key_id"] || ""} onChange={e => updateField("razorpay_key_id", e.target.value)} placeholder="rzp_live_xxxxxxxxxxxx" /></div>
-          <div className="space-y-1.5"><Label>Key Secret</Label><Input type="password" value={integrations["razorpay_key_secret"] || ""} onChange={e => updateField("razorpay_key_secret", e.target.value)} placeholder="Enter Key Secret" /></div>
-          <div className="space-y-1.5"><Label>Webhook Secret</Label><Input type="password" value={integrations["razorpay_webhook_secret"] || ""} onChange={e => updateField("razorpay_webhook_secret", e.target.value)} placeholder="Enter Webhook Secret" /></div>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+          <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={CreditCard} sx={{ height: "1rem", width: "1rem" }}/> Razorpay Payment Gateway</Typography>
+          <Typography variant="body2" color="text.secondary">Configure Razorpay for accepting online payments on invoices</Typography>
+        </Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={integrations["razorpay_key_id"] || ""} onChange={e => updateField("razorpay_key_id", e.target.value)} placeholder="rzp_live_xxxxxxxxxxxx" label={"Key ID"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="password" value={integrations["razorpay_key_secret"] || ""} onChange={e => updateField("razorpay_key_secret", e.target.value)} placeholder="Enter Key Secret" label={"Key Secret"} size="small" fullWidth/></Box>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="password" value={integrations["razorpay_webhook_secret"] || ""} onChange={e => updateField("razorpay_webhook_secret", e.target.value)} placeholder="Enter Webhook Secret" label={"Webhook Secret"} size="small" fullWidth/></Box>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" /> Razorpay Dashboard Configuration</CardTitle>
-          <CardDescription>Configure this webhook URL in your Razorpay Dashboard → Settings → Webhooks</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Webhook URL</Label>
-            <div className="flex gap-2">
-              <Input value={webhookUrl} readOnly className="bg-muted font-mono text-xs" />
-              <Button variant="outline" size="icon" className="shrink-0" onClick={() => copyToClipboard(webhookUrl)}><Copy className="h-4 w-4" /></Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Add this URL in Razorpay Dashboard → Settings → Webhooks. Select events: <code className="text-[10px] bg-muted px-1 rounded">payment.captured</code>, <code className="text-[10px] bg-muted px-1 rounded">payment_link.paid</code></p>
-          </div>
-          <div className="p-3 rounded-lg bg-muted/50 border border-border text-sm space-y-1">
-            <p className="font-medium text-foreground">Setup Instructions:</p>
-            <ol className="text-xs text-muted-foreground list-decimal list-inside space-y-1">
-              <li>Go to <span className="font-medium text-foreground">Razorpay Dashboard</span> → Settings → Webhooks</li>
-              <li>Click <span className="font-medium text-foreground">Add New Webhook</span></li>
-              <li>Paste the Webhook URL above</li>
-              <li>Enter the same Webhook Secret you configured above</li>
-              <li>Select events: <code className="bg-background px-1 rounded">payment.captured</code> and <code className="bg-background px-1 rounded">payment_link.paid</code></li>
-              <li>Save the webhook</li>
-            </ol>
-          </div>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+          <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Globe} sx={{ height: "1rem", width: "1rem" }}/> Razorpay Dashboard Configuration</Typography>
+          <Typography variant="body2" color="text.secondary">Configure this webhook URL in your Razorpay Dashboard → Settings → Webhooks</Typography>
+        </Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+            <FormLabel>Webhook URL</FormLabel>
+            <Box sx={{ display: "flex", gap: "0.5rem" }}>
+              <TextField value={webhookUrl} size="small" fullWidth slotProps={{ htmlInput: { readOnly: true, "aria-label": "Input" } }} sx={{ backgroundColor: "hsl(var(--muted))", fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem" }}/>
+              <IconButton onClick={() => copyToClipboard(webhookUrl)} aria-label={"Copy"} sx={{ flexShrink: "0" }}><Box component={Copy} sx={{ height: "1rem", width: "1rem" }}/></IconButton>
+            </Box>
+            <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Add this URL in Razorpay Dashboard → Settings → Webhooks. Select events: <Box component="code" sx={{ fontSize: "10px", backgroundColor: "hsl(var(--muted))", paddingLeft: "0.25rem", paddingRight: "0.25rem", borderRadius: "0.25rem" }}>payment.captured</Box>, <Box component="code" sx={{ fontSize: "10px", backgroundColor: "hsl(var(--muted))", paddingLeft: "0.25rem", paddingRight: "0.25rem", borderRadius: "0.25rem" }}>payment_link.paid</Box></Typography>
+          </Box>
+          <Box sx={{ padding: "0.75rem", borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderWidth: "1px", borderColor: "hsl(var(--border))", fontSize: "0.875rem", lineHeight: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+            <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>Setup Instructions:</Typography>
+            <Box component="ol" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", listStyleType: "decimal", listStylePosition: "inside", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+              <Box component="li">Go to <Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>Razorpay Dashboard</Box> → Settings → Webhooks</Box>
+              <Box component="li">Click <Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>Add New Webhook</Box></Box>
+              <Box component="li">Paste the Webhook URL above</Box>
+              <Box component="li">Enter the same Webhook Secret you configured above</Box>
+              <Box component="li">Select events: <Box component="code" sx={{ backgroundColor: "hsl(var(--background))", paddingLeft: "0.25rem", paddingRight: "0.25rem", borderRadius: "0.25rem" }}>payment.captured</Box> and <Box component="code" sx={{ backgroundColor: "hsl(var(--background))", paddingLeft: "0.25rem", paddingRight: "0.25rem", borderRadius: "0.25rem" }}>payment_link.paid</Box></Box>
+              <Box component="li">Save the webhook</Box>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
 
-      <div className="flex gap-3">
-        <Button onClick={saveIntegrations} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Save Razorpay Settings</Button>
-        <p className="text-xs text-muted-foreground self-center">Note: Backend secrets (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET) are configured separately as backend secrets.</p>
-      </div>
-    </div>
-  );
+      <Box sx={{ display: "flex", gap: "0.75rem" }}>
+        <Button onClick={saveIntegrations} disabled={saving} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save Razorpay Settings</Button>
+        <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", alignSelf: "center" }}>Note: Backend secrets (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET) are configured separately as backend secrets.</Typography>
+      </Box>
+    </Box>);
 }
-
 // ─── Hikvision Tab ──────────────────────────────────────────────
 function HikvisionTab() {
-  const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
-  const [step, setStep] = useState(1);
-  const [credentialStatus, setCredentialStatus] = useState<"idle" | "valid" | "invalid">("idle");
-  const [testingCredentials, setTestingCredentials] = useState(false);
-  const [credentialInfo, setCredentialInfo] = useState<{ areaDomain?: string; expireTime?: number } | null>(null);
-
-  // Step 2: Sites
-  const [sites, setSites] = useState<Array<{ id: string; siteName: string }>>([]);
-  const [loadingSites, setLoadingSites] = useState(false);
-  const [selectedSiteId, setSelectedSiteId] = useState(integrations["hik_default_site_id"] || "");
-
-  // Step 3: Devices
-  const [cloudDevices, setCloudDevices] = useState<any[]>([]);
-  const [loadingDevices, setLoadingDevices] = useState(false);
-  const [importingDevices, setImportingDevices] = useState(false);
-  const [savedDevices, setSavedDevices] = useState<any[]>([]);
-
-  // Step 4: Sync
-  const [syncingAction, setSyncingAction] = useState<string | null>(null);
-  const [syncResults, setSyncResults] = useState<Record<string, any>>({});
-  const [backfillStart, setBackfillStart] = useState("");
-  const [backfillEnd, setBackfillEnd] = useState("");
-
-  useEffect(() => {
-    supabase.from("hikvision_devices").select("*").order("created_at").then(({ data }) => setSavedDevices(data || []));
-    if (integrations["hik_default_site_id"]) setSelectedSiteId(integrations["hik_default_site_id"]);
-  }, [integrations]);
-
-  const testCredentials = async () => {
-    setTestingCredentials(true);
-    setCredentialStatus("idle");
-    try {
-      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action: "test-credentials" },
-      });
-      if (error) throw error;
-      if (data?.success) {
-        setCredentialStatus("valid");
-        setCredentialInfo({ areaDomain: data.areaDomain, expireTime: data.expireTime });
-        toast.success("Backend credentials are valid!");
-        setStep(2);
-      } else {
-        setCredentialStatus("invalid");
-        toast.error(data?.error || "Invalid credentials");
-      }
-    } catch (e: any) {
-      setCredentialStatus("invalid");
-      toast.error(e.message || "Credential test failed");
-    }
-    setTestingCredentials(false);
-  };
-
-  const discoverSites = async () => {
-    setLoadingSites(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "site-search" } });
-      if (error) throw error;
-      if (data?.success) { setSites(data.sites || []); toast.success(`Found ${data.sites?.length || 0} sites`); }
-      else toast.error(data?.error || "Failed");
-    } catch (e: any) { toast.error(e.message); }
-    setLoadingSites(false);
-  };
-
-  const selectSite = async (siteId: string) => {
-    setSelectedSiteId(siteId);
-    updateField("hik_default_site_id", siteId);
-    await saveIntegrations();
-    toast.success("Default site saved");
-    setStep(3);
-  };
-
-  const discoverDevices = async () => {
-    setLoadingDevices(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "list-devices" } });
-      if (error) throw error;
-      if (data?.success) { setCloudDevices(data.devices || []); toast.success(`Found ${data.devices?.length || 0} devices`); }
-      else toast.error(data?.error || "Failed");
-    } catch (e: any) { toast.error(e.message); }
-    setLoadingDevices(false);
-  };
-
-  const importAllDevices = async () => {
-    setImportingDevices(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action: "list-cloud-devices", import_devices: true },
-      });
-      if (error) throw error;
-      if (data?.success) {
-        toast.success(`Imported ${data.imported || 0} devices`);
-        const { data: devs } = await supabase.from("hikvision_devices").select("*").order("created_at");
-        setSavedDevices(devs || []);
-        setStep(4);
-      } else toast.error(data?.error || "Failed");
-    } catch (e: any) { toast.error(e.message); }
-    setImportingDevices(false);
-  };
-
-  const runDeviceSync = async (deviceId: string, deviceSerial: string, action: string, extraBody?: Record<string, any>) => {
-    setSyncingAction(`${deviceId}-${action}`);
-    try {
-      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action, device_id: deviceId, device_serial: deviceSerial, ...extraBody },
-      });
-      if (error) throw error;
-      setSyncResults(prev => ({ ...prev, [`${deviceId}-${action}`]: data }));
-      if (data?.success) toast.success(`${action.replace(/-/g, " ")} completed — ${data.records_synced || 0} records`);
-      else toast.error(data?.error || "Failed");
-    } catch (e: any) { toast.error(e.message); }
-    setSyncingAction(null);
-  };
-
-  const functionsUrl = `${window.location.origin}/api/backend/functions`;
-  const webhookUrl = `${functionsUrl}/hikvision-webhook`;
-
-  const STEPS = [
-    { num: 1, label: "Connection" },
-    { num: 2, label: "Select Site" },
-    { num: 3, label: "Devices" },
-    { num: 4, label: "Sync & Monitor" },
-  ];
-
-  return (
-    <div className="grid gap-6 max-w-3xl">
+    const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
+    const [step, setStep] = useState(1);
+    const [credentialStatus, setCredentialStatus] = useState<"idle" | "valid" | "invalid">("idle");
+    const [testingCredentials, setTestingCredentials] = useState(false);
+    const [credentialInfo, setCredentialInfo] = useState<{
+        areaDomain?: string;
+        expireTime?: number;
+    } | null>(null);
+    // Step 2: Sites
+    const [sites, setSites] = useState<Array<{
+        id: string;
+        siteName: string;
+    }>>([]);
+    const [loadingSites, setLoadingSites] = useState(false);
+    const [selectedSiteId, setSelectedSiteId] = useState(integrations["hik_default_site_id"] || "");
+    // Step 3: Devices
+    const [cloudDevices, setCloudDevices] = useState<any[]>([]);
+    const [loadingDevices, setLoadingDevices] = useState(false);
+    const [importingDevices, setImportingDevices] = useState(false);
+    const [savedDevices, setSavedDevices] = useState<any[]>([]);
+    // Step 4: Sync
+    const [syncingAction, setSyncingAction] = useState<string | null>(null);
+    const [syncResults, setSyncResults] = useState<Record<string, any>>({});
+    const [backfillStart, setBackfillStart] = useState("");
+    const [backfillEnd, setBackfillEnd] = useState("");
+    useEffect(() => {
+        supabase.from("hikvision_devices").select("*").order("created_at").then(({ data }) => setSavedDevices(data || []));
+        if (integrations["hik_default_site_id"])
+            setSelectedSiteId(integrations["hik_default_site_id"]);
+    }, [integrations]);
+    const testCredentials = async () => {
+        setTestingCredentials(true);
+        setCredentialStatus("idle");
+        try {
+            const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+                body: { action: "test-credentials" },
+            });
+            if (error)
+                throw error;
+            if (data?.success) {
+                setCredentialStatus("valid");
+                setCredentialInfo({ areaDomain: data.areaDomain, expireTime: data.expireTime });
+                toast.success("Backend credentials are valid!");
+                setStep(2);
+            }
+            else {
+                setCredentialStatus("invalid");
+                toast.error(data?.error || "Invalid credentials");
+            }
+        }
+        catch (e: any) {
+            setCredentialStatus("invalid");
+            toast.error(e.message || "Credential test failed");
+        }
+        setTestingCredentials(false);
+    };
+    const discoverSites = async () => {
+        setLoadingSites(true);
+        try {
+            const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "site-search" } });
+            if (error)
+                throw error;
+            if (data?.success) {
+                setSites(data.sites || []);
+                toast.success(`Found ${data.sites?.length || 0} sites`);
+            }
+            else
+                toast.error(data?.error || "Failed");
+        }
+        catch (e: any) {
+            toast.error(e.message);
+        }
+        setLoadingSites(false);
+    };
+    const selectSite = async (siteId: string) => {
+        setSelectedSiteId(siteId);
+        updateField("hik_default_site_id", siteId);
+        await saveIntegrations();
+        toast.success("Default site saved");
+        setStep(3);
+    };
+    const discoverDevices = async () => {
+        setLoadingDevices(true);
+        try {
+            const { data, error } = await supabase.functions.invoke("hikvision-sync", { body: { action: "list-devices" } });
+            if (error)
+                throw error;
+            if (data?.success) {
+                setCloudDevices(data.devices || []);
+                toast.success(`Found ${data.devices?.length || 0} devices`);
+            }
+            else
+                toast.error(data?.error || "Failed");
+        }
+        catch (e: any) {
+            toast.error(e.message);
+        }
+        setLoadingDevices(false);
+    };
+    const importAllDevices = async () => {
+        setImportingDevices(true);
+        try {
+            const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+                body: { action: "list-cloud-devices", import_devices: true },
+            });
+            if (error)
+                throw error;
+            if (data?.success) {
+                toast.success(`Imported ${data.imported || 0} devices`);
+                const { data: devs } = await supabase.from("hikvision_devices").select("*").order("created_at");
+                setSavedDevices(devs || []);
+                setStep(4);
+            }
+            else
+                toast.error(data?.error || "Failed");
+        }
+        catch (e: any) {
+            toast.error(e.message);
+        }
+        setImportingDevices(false);
+    };
+    const runDeviceSync = async (deviceId: string, deviceSerial: string, action: string, extraBody?: Record<string, any>) => {
+        setSyncingAction(`${deviceId}-${action}`);
+        try {
+            const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+                body: { action, device_id: deviceId, device_serial: deviceSerial, ...extraBody },
+            });
+            if (error)
+                throw error;
+            setSyncResults(prev => ({ ...prev, [`${deviceId}-${action}`]: data }));
+            if (data?.success)
+                toast.success(`${action.replace(/-/g, " ")} completed — ${data.records_synced || 0} records`);
+            else
+                toast.error(data?.error || "Failed");
+        }
+        catch (e: any) {
+            toast.error(e.message);
+        }
+        setSyncingAction(null);
+    };
+    const functionsUrl = `${window.location.origin}/api/backend/functions`;
+    const webhookUrl = `${functionsUrl}/hikvision-webhook`;
+    const STEPS = [
+        { num: 1, label: "Connection" },
+        { num: 2, label: "Select Site" },
+        { num: 3, label: "Devices" },
+        { num: 4, label: "Sync & Monitor" },
+    ];
+    return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "48rem" }}>
       {/* Stepper Header */}
-      <div className="flex items-center gap-2">
-        {STEPS.map((s, idx) => (
-          <div key={s.num} className="flex items-center gap-2">
-            <button
-              onClick={() => setStep(s.num)}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
-                step === s.num ? "bg-primary text-primary-foreground" :
-                step > s.num ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
-              )}
-            >
-              <span className="h-5 w-5 rounded-full bg-background/20 flex items-center justify-center text-[10px] font-bold">{step > s.num ? "✓" : s.num}</span>
+      <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        {STEPS.map((s, idx) => (<Box key={s.num} sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <ButtonBase onClick={() => setStep(s.num)} type="button" sx={mergeSx({ display: "flex", alignItems: "center", gap: "0.5rem", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", borderRadius: "9999px", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, step === s.num ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" } :
+            step > s.num ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" })}>
+              <Box component="span" sx={{ height: "1.25rem", width: "1.25rem", borderRadius: "9999px", backgroundColor: "color-mix(in srgb, hsl(var(--background)) 20%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "700" }}>{step > s.num ? "✓" : s.num}</Box>
               {s.label}
-            </button>
-            {idx < STEPS.length - 1 && <div className="w-6 h-px bg-border" />}
-          </div>
-        ))}
-      </div>
+            </ButtonBase>
+            {idx < STEPS.length - 1 && <Box sx={{ width: "1.5rem", height: "1px", backgroundColor: "hsl(var(--border))" }}/>}
+          </Box>))}
+      </Box>
 
       {/* Step 1: Test Connection */}
-      {step === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Cloud className="h-5 w-5" /> Hik-Partner Pro Cloud API</CardTitle>
-            <CardDescription>API keys are stored as backend secrets (HIK_PARTNER_APP_KEY, HIK_PARTNER_SECRET_KEY). Test the connection below.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-3 rounded-lg bg-muted/50 border border-border text-sm space-y-1">
-              <p className="font-medium text-foreground">Backend Secrets Status</p>
-              <p className="text-muted-foreground text-xs">Keys are securely stored as backend secrets. To update them, contact your administrator or use the Lovable Cloud secrets manager.</p>
-            </div>
-            {credentialStatus !== "idle" && (
-              <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${credentialStatus === "valid" ? "bg-success/10 text-success border border-success/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
-                <span className={`h-2.5 w-2.5 rounded-full ${credentialStatus === "valid" ? "bg-success" : "bg-destructive"}`} />
+      {step === 1 && (<Card>
+          <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+            <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Cloud} sx={{ height: "1.25rem", width: "1.25rem" }}/> Hik-Partner Pro Cloud API</Typography>
+            <Typography variant="body2" color="text.secondary">API keys are stored as backend secrets (HIK_PARTNER_APP_KEY, HIK_PARTNER_SECRET_KEY). Test the connection below.</Typography>
+          </Box>
+          <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+            <Box sx={{ padding: "0.75rem", borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderWidth: "1px", borderColor: "hsl(var(--border))", fontSize: "0.875rem", lineHeight: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+              <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>Backend Secrets Status</Typography>
+              <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem" }}>Keys are securely stored as backend secrets. To update them, contact your administrator or use the Lovable Cloud secrets manager.</Typography>
+            </Box>
+            {credentialStatus !== "idle" && (<Box sx={mergeSx({ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", borderRadius: "var(--radius)", fontSize: "0.875rem", lineHeight: "1.25rem" }, credentialStatus === "valid" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--success)) 20%, transparent)" } : { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--destructive)) 20%, transparent)" })}>
+                <Box component="span" sx={mergeSx({ height: "0.625rem", width: "0.625rem", borderRadius: "9999px" }, credentialStatus === "valid" ? { backgroundColor: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--destructive))" })}/>
                 {credentialStatus === "valid" ? `Connected. Area Domain: ${credentialInfo?.areaDomain || "detected"}` : "Connection failed. Check your backend secrets."}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button onClick={testCredentials} disabled={testingCredentials}>
-                {testingCredentials ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}Test Connection
+              </Box>)}
+            <Box sx={{ display: "flex", gap: "0.5rem" }}>
+              <Button onClick={testCredentials} disabled={testingCredentials} variant="contained">
+                {testingCredentials ? <Box component={RefreshCw} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={TestTube} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Test Connection
               </Button>
-              {credentialStatus === "valid" && (
-                <Button variant="outline" onClick={() => setStep(2)}>Continue to Sites →</Button>
-              )}
-            </div>
+              {credentialStatus === "valid" && (<Button onClick={() => setStep(2)} variant="outlined">Continue to Sites →</Button>)}
+            </Box>
           </CardContent>
-        </Card>
-      )}
+        </Card>)}
 
       {/* Step 2: Site Selection */}
-      {step === 2 && (
-        <div className="space-y-4">
+      {step === 2 && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Discover & Select Site</CardTitle>
-              <CardDescription>Discover all sites linked to your Hik-Partner Pro account, then select your default site.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button onClick={discoverSites} disabled={loadingSites}>
-                {loadingSites ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Cloud className="h-4 w-4 mr-2" />}Discover Sites
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Discover & Select Site</Typography>
+              <Typography variant="body2" color="text.secondary">Discover all sites linked to your Hik-Partner Pro account, then select your default site.</Typography>
+            </Box>
+            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+              <Button onClick={discoverSites} disabled={loadingSites} variant="contained">
+                {loadingSites ? <Box component={RefreshCw} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Cloud} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Discover Sites
               </Button>
-              {sites.length > 0 && (
-                <Table>
-                  <TableHeader><TableRow><TableHead>Site Name</TableHead><TableHead>Site ID</TableHead><TableHead>Action</TableHead></TableRow></TableHeader>
+              {sites.length > 0 && (<DataTable columnsCount={3}>
+                  <TableHead><TableRow><TableCell>Site Name</TableCell><TableCell>Site ID</TableCell><TableCell>Action</TableCell></TableRow></TableHead>
                   <TableBody>
-                    {sites.map(s => (
-                      <TableRow key={s.id}>
-                        <TableCell className="font-medium">{s.siteName}</TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">{s.id}</TableCell>
+                    {sites.map(s => (<TableRow key={s.id}>
+                        <TableCell sx={{ fontWeight: "500" }}>{s.siteName}</TableCell>
+                        <TableCell sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{s.id}</TableCell>
                         <TableCell>
-                          {selectedSiteId === s.id ? (
-                            <Badge className="bg-success/10 text-success"><CheckCircle2 className="h-3 w-3 mr-1" />Default</Badge>
-                          ) : (
-                            <Button size="sm" variant="outline" onClick={() => selectSite(s.id)}>Set Default</Button>
-                          )}
+                          {selectedSiteId === s.id ? (<StatusChip label={<><Box component={CheckCircle2} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Default</>} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }}/>) : (<Button onClick={() => selectSite(s.id)} variant="outlined" size="small">Set Default</Button>)}
                         </TableCell>
-                      </TableRow>
-                    ))}
+                      </TableRow>))}
                   </TableBody>
-                </Table>
-              )}
-              {selectedSiteId && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-success/10 text-success border border-success/20 text-sm">
-                  <CheckCircle2 className="h-4 w-4" /> Default site set: <span className="font-mono text-xs">{selectedSiteId}</span>
-                </div>
-              )}
+                </DataTable>)}
+              {selectedSiteId && (<Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--success)) 20%, transparent)", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                  <Box component={CheckCircle2} sx={{ height: "1rem", width: "1rem" }}/> Default site set: <Box component="span" sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem" }}>{selectedSiteId}</Box>
+                </Box>)}
             </CardContent>
           </Card>
-          {selectedSiteId && <Button onClick={() => setStep(3)}>Continue to Devices →</Button>}
-        </div>
-      )}
+          {selectedSiteId && <Button onClick={() => setStep(3)} variant="contained">Continue to Devices →</Button>}
+        </Box>)}
 
       {/* Step 3: Device Discovery */}
-      {step === 3 && (
-        <div className="space-y-4">
+      {step === 3 && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Device Discovery</CardTitle>
-              <CardDescription>Discover biometric devices from your cloud account and import them.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Button onClick={discoverDevices} disabled={loadingDevices} variant="outline">
-                  {loadingDevices ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Cloud className="h-4 w-4 mr-2" />}Discover Devices
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Device Discovery</Typography>
+              <Typography variant="body2" color="text.secondary">Discover biometric devices from your cloud account and import them.</Typography>
+            </Box>
+            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+              <Box sx={{ display: "flex", gap: "0.5rem" }}>
+                <Button onClick={discoverDevices} disabled={loadingDevices} variant="outlined">
+                  {loadingDevices ? <Box component={RefreshCw} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Cloud} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Discover Devices
                 </Button>
-                {cloudDevices.length > 0 && (
-                  <Button onClick={importAllDevices} disabled={importingDevices}>
-                    {importingDevices ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}Import All Devices
-                  </Button>
-                )}
-              </div>
-              {cloudDevices.length > 0 && (
-                <Table>
-                  <TableHeader><TableRow><TableHead>Device Name</TableHead><TableHead>Serial</TableHead><TableHead>Model</TableHead><TableHead>Site</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                {cloudDevices.length > 0 && (<Button onClick={importAllDevices} disabled={importingDevices} variant="contained">
+                    {importingDevices ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Import All Devices
+                  </Button>)}
+              </Box>
+              {cloudDevices.length > 0 && (<DataTable columnsCount={5}>
+                  <TableHead><TableRow><TableCell>Device Name</TableCell><TableCell>Serial</TableCell><TableCell>Model</TableCell><TableCell>Site</TableCell><TableCell>Status</TableCell></TableRow></TableHead>
                   <TableBody>
-                    {cloudDevices.map((d: any, i: number) => (
-                      <TableRow key={i}>
-                        <TableCell className="font-medium">{d.deviceName || d.deviceSerial}</TableCell>
-                        <TableCell className="font-mono text-xs">{d.deviceSerial}</TableCell>
+                    {cloudDevices.map((d: any, i: number) => (<TableRow key={i}>
+                        <TableCell sx={{ fontWeight: "500" }}>{d.deviceName || d.deviceSerial}</TableCell>
+                        <TableCell sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem" }}>{d.deviceSerial}</TableCell>
                         <TableCell>{d.deviceModel || "—"}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{d._siteName || "—"}</TableCell>
+                        <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{d._siteName || "—"}</TableCell>
                         <TableCell>
-                          <Badge className={String(d.deviceOnlineStatus) === "1" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}>
-                            {String(d.deviceOnlineStatus) === "1" ? "Online" : "Offline"}
-                          </Badge>
+                          <StatusChip label={String(d.deviceOnlineStatus) === "1" ? "Online" : "Offline"} sx={String(d.deviceOnlineStatus) === "1" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}/>
                         </TableCell>
-                      </TableRow>
-                    ))}
+                      </TableRow>))}
                   </TableBody>
-                </Table>
-              )}
+                </DataTable>)}
             </CardContent>
           </Card>
-          {savedDevices.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Saved Devices ({savedDevices.length})</CardTitle></CardHeader>
+          {savedDevices.length > 0 && (<Card>
+              <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Saved Devices ({savedDevices.length})</Typography></Box>
               <CardContent>
-                <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Serial</TableHead><TableHead>Model</TableHead><TableHead>Status</TableHead><TableHead>Last Sync</TableHead></TableRow></TableHeader>
+                <DataTable columnsCount={5}>
+                  <TableHead><TableRow><TableCell>Name</TableCell><TableCell>Serial</TableCell><TableCell>Model</TableCell><TableCell>Status</TableCell><TableCell>Last Sync</TableCell></TableRow></TableHead>
                   <TableBody>
-                    {savedDevices.map(d => (
-                      <TableRow key={d.id}>
-                        <TableCell className="font-medium">{d.name}</TableCell>
-                        <TableCell className="font-mono text-xs">{d.device_serial}</TableCell>
+                    {savedDevices.map(d => (<TableRow key={d.id}>
+                        <TableCell sx={{ fontWeight: "500" }}>{d.name}</TableCell>
+                        <TableCell sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem" }}>{d.device_serial}</TableCell>
                         <TableCell>{d.device_model || "—"}</TableCell>
-                        <TableCell><Badge className={d.status === "active" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}>{d.status}</Badge></TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{d.last_sync_at ? new Date(d.last_sync_at).toLocaleString() : "Never"}</TableCell>
-                      </TableRow>
-                    ))}
+                        <TableCell><StatusChip label={d.status} sx={d.status === "active" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}/></TableCell>
+                        <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{d.last_sync_at ? new Date(d.last_sync_at).toLocaleString() : "Never"}</TableCell>
+                      </TableRow>))}
                   </TableBody>
-                </Table>
+                </DataTable>
               </CardContent>
-            </Card>
-          )}
-          <Button onClick={() => setStep(4)} disabled={savedDevices.length === 0}>Continue to Sync →</Button>
-        </div>
-      )}
+            </Card>)}
+          <Button onClick={() => setStep(4)} disabled={savedDevices.length === 0} variant="contained">Continue to Sync →</Button>
+        </Box>)}
 
       {/* Step 4: Sync & Monitor */}
-      {step === 4 && (
-        <div className="space-y-4">
+      {step === 4 && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
           {/* Demo Test Card */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><TestTube className="h-4 w-4" /> End-to-End Pipeline Test</CardTitle>
-              <CardDescription>Insert mock attendance events, process them through dedup + attendance pipeline, and verify results — no real device needed.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button
-                variant="outline"
-                onClick={() => runDeviceSync(savedDevices[0]?.id || "", savedDevices[0]?.device_serial || "", "demo-test")}
-                disabled={!!syncingAction}
-              >
-                {syncingAction?.includes("demo-test") ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5 mr-1.5" />}
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={TestTube} sx={{ height: "1rem", width: "1rem" }}/> End-to-End Pipeline Test</Typography>
+              <Typography variant="body2" color="text.secondary">Insert mock attendance events, process them through dedup + attendance pipeline, and verify results — no real device needed.</Typography>
+            </Box>
+            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+              <Button onClick={() => runDeviceSync(savedDevices[0]?.id || "", savedDevices[0]?.device_serial || "", "demo-test")} disabled={!!syncingAction} variant="outlined">
+                {syncingAction?.includes("demo-test") ? <Box component={Loader2} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem", animation: "spin 1s linear infinite" }}/> : <Box component={TestTube} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>}
                 Run Demo Test
               </Button>
-              {syncResults[`${savedDevices[0]?.id || ""}-demo-test`] && (
-                <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-1 overflow-auto max-h-60">
-                  <p className="font-semibold text-foreground">Test Results:</p>
-                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].steps?.map((s: string, i: number) => (
-                    <p key={i} className="text-muted-foreground">• {s}</p>
-                  ))}
-                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].errors?.length > 0 && (
-                    <div className="text-destructive mt-2">
-                      <p className="font-semibold">Errors:</p>
-                      {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].errors.map((e: string, i: number) => (
-                        <p key={i}>✗ {e}</p>
-                      ))}
-                    </div>
-                  )}
-                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification && (
-                    <div className="mt-2 border-t border-border pt-2">
-                      <p className="font-semibold text-foreground">Verification:</p>
-                      <p>Logs in DB: {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.logs_in_db}</p>
-                      <p>Attendance record: {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record ? 
-                        `✓ ${syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record.check_in} → ${syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record.check_out || "pending"}` : "✗ None"}</p>
-                    </div>
-                  )}
-                </div>
-              )}
+              {syncResults[`${savedDevices[0]?.id || ""}-demo-test`] && (<Box sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderRadius: "var(--radius)", padding: "0.75rem", fontSize: "0.75rem", lineHeight: "1rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" }, overflow: "auto", maxHeight: "15rem" }}>
+                  <Typography component="p" variant="body1" sx={{ fontWeight: "600", color: "hsl(var(--foreground))" }}>Test Results:</Typography>
+                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].steps?.map((s: string, i: number) => (<Typography key={i} component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>• {s}</Typography>))}
+                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].errors?.length > 0 && (<Box sx={{ color: "hsl(var(--destructive))", marginTop: "0.5rem" }}>
+                      <Typography component="p" variant="body1" sx={{ fontWeight: "600" }}>Errors:</Typography>
+                      {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].errors.map((e: string, i: number) => (<Typography key={i} component="p" variant="body1">✗ {e}</Typography>))}
+                    </Box>)}
+                  {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification && (<Box sx={{ marginTop: "0.5rem", borderTopWidth: "1px", borderColor: "hsl(var(--border))", paddingTop: "0.5rem" }}>
+                      <Typography component="p" variant="body1" sx={{ fontWeight: "600", color: "hsl(var(--foreground))" }}>Verification:</Typography>
+                      <Typography component="p" variant="body1">Logs in DB: {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.logs_in_db}</Typography>
+                      <Typography component="p" variant="body1">Attendance record: {syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record ?
+                        `✓ ${syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record.check_in} → ${syncResults[`${savedDevices[0]?.id || ""}-demo-test`].verification.attendance_record.check_out || "pending"}` : "✗ None"}</Typography>
+                    </Box>)}
+                </Box>)}
             </CardContent>
           </Card>
 
           {/* Webhook Config Card */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" /> Webhook Configuration</CardTitle>
-              <CardDescription>Configure this URL in your Hik-Partner Pro webhook settings for real-time event delivery.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Input readOnly value={webhookUrl} className="font-mono text-xs" />
-                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success("URL copied!"); }}>
-                  <Copy className="h-3.5 w-3.5" />
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Globe} sx={{ height: "1rem", width: "1rem" }}/> Webhook Configuration</Typography>
+              <Typography variant="body2" color="text.secondary">Configure this URL in your Hik-Partner Pro webhook settings for real-time event delivery.</Typography>
+            </Box>
+            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <TextField value={webhookUrl} size="small" fullWidth slotProps={{ htmlInput: { readOnly: true, "aria-label": "Input" } }} sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem", lineHeight: "1rem" }}/>
+                <Button onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success("URL copied!"); }} variant="outlined" size="small">
+                  <Box component={Copy} sx={{ height: "0.875rem", width: "0.875rem" }}/>
                 </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
+              </Box>
+              <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
                 In Hik-Partner Pro → Webhook → Save Config, set this as your callback URL. Enable HMAC signing for security.
                 Once configured, attendance events will be received automatically without polling.
-              </p>
+              </Typography>
             </CardContent>
           </Card>
 
           {/* Curl Examples Card */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Code className="h-4 w-4" /> API & Curl Examples</CardTitle>
-              <CardDescription>Test each action directly via curl. Replace YOUR_JWT with your auth token.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="bg-muted/50 rounded-lg p-3 font-mono text-[10px] leading-relaxed overflow-x-auto space-y-3">
-                <div>
-                  <p className="text-foreground font-semibold text-xs mb-1"># Test credentials</p>
-                  <p className="text-muted-foreground break-all">curl -X POST {functionsUrl}/hikvision-sync \</p>
-                  <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
-                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
-                  <p className="text-muted-foreground">  -d '{`{"action":"test-credentials"}`}'</p>
-                </div>
-                <div>
-                  <p className="text-foreground font-semibold text-xs mb-1"># Demo test (no device needed)</p>
-                  <p className="text-muted-foreground break-all">curl -X POST {functionsUrl}/hikvision-sync \</p>
-                  <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
-                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
-                  <p className="text-muted-foreground">  -d '{`{"action":"demo-test"}`}'</p>
-                </div>
-                <div>
-                  <p className="text-foreground font-semibold text-xs mb-1"># Backfill attendance (ISAPI)</p>
-                  <p className="text-muted-foreground break-all">curl -X POST {functionsUrl}/hikvision-sync \</p>
-                  <p className="text-muted-foreground">  -H "Authorization: Bearer YOUR_JWT" \</p>
-                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
-                  <p className="text-muted-foreground">  -d '{`{"action":"backfill-attendance","device_id":"YOUR_DEVICE_ID","start_time":"2026-04-01T00:00:00","end_time":"2026-04-06T23:59:59"}`}'</p>
-                </div>
-                <div>
-                  <p className="text-foreground font-semibold text-xs mb-1"># Test webhook (simulate Hik push)</p>
-                  <p className="text-muted-foreground break-all">curl -X POST {webhookUrl} \</p>
-                  <p className="text-muted-foreground">  -H "Content-Type: application/json" \</p>
-                  <p className="text-muted-foreground">  -d '{`{"events":[{"deviceSerial":"DS-K1T341AM","alarmData":{"eventType":"AccessControllerEvent","dateTime":"2026-04-06T09:00:00+05:30","AccessControllerEvent":{"employeeNoString":"1001","name":"Test","attendanceStatus":"checkIn","serialNo":"999999","currentVerifyMode":"faceRecognition"}}}]}`}'</p>
-                </div>
-              </div>
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Code} sx={{ height: "1rem", width: "1rem" }}/> API & Curl Examples</Typography>
+              <Typography variant="body2" color="text.secondary">Test each action directly via curl. Replace YOUR_JWT with your auth token.</Typography>
+            </Box>
+            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+              <Box sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderRadius: "var(--radius)", padding: "0.75rem", fontFamily: "JetBrains Mono, monospace", fontSize: "10px", lineHeight: "1.625", overflowX: "auto", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                <Box>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--foreground))", fontWeight: "600", fontSize: "0.75rem", lineHeight: "1rem", marginBottom: "0.25rem" }}># Test credentials</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", wordBreak: "break-all" }}>curl -X POST {functionsUrl}/hikvision-sync \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -H "Authorization: Bearer YOUR_JWT" \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -H "Content-Type: application/json" \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -d '{`{"action":"test-credentials"}`}'</Typography>
+                </Box>
+                <Box>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--foreground))", fontWeight: "600", fontSize: "0.75rem", lineHeight: "1rem", marginBottom: "0.25rem" }}># Demo test (no device needed)</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", wordBreak: "break-all" }}>curl -X POST {functionsUrl}/hikvision-sync \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -H "Authorization: Bearer YOUR_JWT" \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -H "Content-Type: application/json" \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -d '{`{"action":"demo-test"}`}'</Typography>
+                </Box>
+                <Box>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--foreground))", fontWeight: "600", fontSize: "0.75rem", lineHeight: "1rem", marginBottom: "0.25rem" }}># Backfill attendance (ISAPI)</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", wordBreak: "break-all" }}>curl -X POST {functionsUrl}/hikvision-sync \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -H "Authorization: Bearer YOUR_JWT" \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -H "Content-Type: application/json" \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -d '{`{"action":"backfill-attendance","device_id":"YOUR_DEVICE_ID","start_time":"2026-04-01T00:00:00","end_time":"2026-04-06T23:59:59"}`}'</Typography>
+                </Box>
+                <Box>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--foreground))", fontWeight: "600", fontSize: "0.75rem", lineHeight: "1rem", marginBottom: "0.25rem" }}># Test webhook (simulate Hik push)</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", wordBreak: "break-all" }}>curl -X POST {webhookUrl} \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -H "Content-Type: application/json" \</Typography>
+                  <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>  -d '{`{"events":[{"deviceSerial":"DS-K1T341AM","alarmData":{"eventType":"AccessControllerEvent","dateTime":"2026-04-06T09:00:00+05:30","AccessControllerEvent":{"employeeNoString":"1001","name":"Test","attendanceStatus":"checkIn","serialNo":"999999","currentVerifyMode":"faceRecognition"}}}]}`}'</Typography>
+                </Box>
+              </Box>
             </CardContent>
           </Card>
 
           {/* Sync Actions per device */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sync Actions</CardTitle>
-              <CardDescription>Run sync operations per device.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {savedDevices.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No saved devices. Go back to Step 3.</p>
-              ) : (
-                savedDevices.map(d => (
-                  <div key={d.id} className="border border-border rounded-xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-sm">{d.name}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{d.device_serial} · {d.device_model || "Unknown model"}</p>
-                      </div>
-                      <Badge className={d.status === "active" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}>{d.status}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Sync Actions</Typography>
+              <Typography variant="body2" color="text.secondary">Run sync operations per device.</Typography>
+            </Box>
+            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+              {savedDevices.length === 0 ? (<Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>No saved devices. Go back to Step 3.</Typography>) : (savedDevices.map(d => (<Box key={d.id} sx={{ borderWidth: "1px", borderColor: "hsl(var(--border))", borderRadius: "0.75rem", padding: "1rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <Box>
+                        <Typography component="p" variant="body1" sx={{ fontWeight: "500", fontSize: "0.875rem", lineHeight: "1.25rem" }}>{d.name}</Typography>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", fontFamily: "JetBrains Mono, monospace" }}>{d.device_serial} · {d.device_model || "Unknown model"}</Typography>
+                      </Box>
+                      <StatusChip label={d.status} sx={d.status === "active" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}/>
+                    </Box>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
                       {[
-                        { action: "sync-employees", label: "Sync Employees (ISAPI)", icon: User },
-                        { action: "sync-attendance", label: "Poll Attendance (MQ)", icon: Clock },
-                        { action: "full-sync", label: "Full Sync", icon: RefreshCw },
-                      ].map(btn => {
-                        const isRunning = syncingAction === `${d.id}-${btn.action}`;
-                        const result = syncResults[`${d.id}-${btn.action}`];
-                        return (
-                          <div key={btn.action} className="flex flex-col items-start">
-                            <Button size="sm" variant="outline"
-                              onClick={() => runDeviceSync(d.id, d.device_serial || d.ip_address, btn.action)}
-                              disabled={!!syncingAction}
-                            >
-                              {isRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <btn.icon className="h-3.5 w-3.5 mr-1.5" />}
+                    { action: "sync-employees", label: "Sync Employees (ISAPI)", icon: User },
+                    { action: "sync-attendance", label: "Poll Attendance (MQ)", icon: Clock },
+                    { action: "full-sync", label: "Full Sync", icon: RefreshCw },
+                ].map(btn => {
+                    const isRunning = syncingAction === `${d.id}-${btn.action}`;
+                    const result = syncResults[`${d.id}-${btn.action}`];
+                    return (<Box key={btn.action} sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                            <Button onClick={() => runDeviceSync(d.id, d.device_serial || d.ip_address, btn.action)} disabled={!!syncingAction} variant="outlined" size="small">
+                              {isRunning ? <Box component={Loader2} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem", animation: "spin 1s linear infinite" }}/> : <Box component={btn.icon} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>}
                               {btn.label}
                             </Button>
-                            {result && (
-                              <span className={`text-[10px] mt-1 ${result.success ? "text-success" : "text-destructive"}`}>
+                            {result && (<Box component="span" sx={mergeSx({ fontSize: "10px", marginTop: "0.25rem" }, result.success ? { color: "hsl(var(--success))" } : { color: "hsl(var(--destructive))" })}>
                                 {result.success ? `✓ ${result.records_synced || 0} records` : `✗ ${result.error?.substring(0, 40)}`}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                              </Box>)}
+                          </Box>);
+                })}
+                    </Box>
 
                     {/* Backfill Section */}
-                    <div className="border-t border-border pt-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Backfill Attendance (ISAPI)</p>
-                      <div className="flex items-end gap-2">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Start</Label>
-                          <Input type="datetime-local" value={backfillStart} onChange={e => setBackfillStart(e.target.value)} className="text-xs h-8 w-48" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">End</Label>
-                          <Input type="datetime-local" value={backfillEnd} onChange={e => setBackfillEnd(e.target.value)} className="text-xs h-8 w-48" />
-                        </div>
-                        <Button size="sm" variant="outline"
-                          disabled={!!syncingAction || !backfillStart || !backfillEnd}
-                          onClick={() => {
-                            const start = new Date(backfillStart).toISOString();
-                            const end = new Date(backfillEnd).toISOString();
-                            runDeviceSync(d.id, d.device_serial || d.ip_address, "backfill-attendance", { start_time: start, end_time: end });
-                          }}
-                        >
-                          {syncingAction === `${d.id}-backfill-attendance` ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Clock className="h-3.5 w-3.5 mr-1.5" />}
+                    <Box sx={{ borderTopWidth: "1px", borderColor: "hsl(var(--border))", paddingTop: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
+                      <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Backfill Attendance (ISAPI)</Typography>
+                      <Box sx={{ display: "flex", alignItems: "flex-end", gap: "0.5rem" }}>
+                        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+
+                          <TextField type="datetime-local" value={backfillStart} onChange={e => setBackfillStart(e.target.value)} label={"Start"} size="small" fullWidth sx={{ fontSize: "0.75rem", lineHeight: "1rem", height: "2rem", width: "12rem" }}/>
+                        </Box>
+                        <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+
+                          <TextField type="datetime-local" value={backfillEnd} onChange={e => setBackfillEnd(e.target.value)} label={"End"} size="small" fullWidth sx={{ fontSize: "0.75rem", lineHeight: "1rem", height: "2rem", width: "12rem" }}/>
+                        </Box>
+                        <Button disabled={!!syncingAction || !backfillStart || !backfillEnd} onClick={() => {
+                const start = new Date(backfillStart).toISOString();
+                const end = new Date(backfillEnd).toISOString();
+                runDeviceSync(d.id, d.device_serial || d.ip_address, "backfill-attendance", { start_time: start, end_time: end });
+            }} variant="outlined" size="small">
+                          {syncingAction === `${d.id}-backfill-attendance` ? <Box component={Loader2} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem", animation: "spin 1s linear infinite" }}/> : <Box component={Clock} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>}
                           Backfill
                         </Button>
-                      </div>
-                      {syncResults[`${d.id}-backfill-attendance`] && (
-                        <span className={`text-[10px] ${syncResults[`${d.id}-backfill-attendance`].success ? "text-success" : "text-destructive"}`}>
+                      </Box>
+                      {syncResults[`${d.id}-backfill-attendance`] && (<Box component="span" sx={mergeSx({ fontSize: "10px" }, syncResults[`${d.id}-backfill-attendance`].success ? { color: "hsl(var(--success))" } : { color: "hsl(var(--destructive))" })}>
                           {syncResults[`${d.id}-backfill-attendance`].success ? `✓ ${syncResults[`${d.id}-backfill-attendance`].records_synced || 0} records` : `✗ ${syncResults[`${d.id}-backfill-attendance`].error?.substring(0, 40)}`}
-                        </span>
-                      )}
-                    </div>
+                        </Box>)}
+                    </Box>
 
                     {/* MQ Poll Details */}
-                    {syncResults[`${d.id}-sync-attendance`]?.details && (
-                      <div className="border-t border-border pt-3">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">MQ Poll Details</p>
-                        <div className="bg-muted/50 rounded p-2 text-[10px] text-muted-foreground space-y-0.5">
-                          {syncResults[`${d.id}-sync-attendance`].details.map((d: string, i: number) => <p key={i}>• {d}</p>)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
+                    {syncResults[`${d.id}-sync-attendance`]?.details && (<Box sx={{ borderTopWidth: "1px", borderColor: "hsl(var(--border))", paddingTop: "0.75rem" }}>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>MQ Poll Details</Typography>
+                        <Box sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderRadius: "0.25rem", padding: "0.5rem", fontSize: "10px", color: "hsl(var(--muted-foreground))", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.125rem" } }}>
+                          {syncResults[`${d.id}-sync-attendance`].details.map((d: string, i: number) => <Typography key={i} component="p" variant="body1">• {d}</Typography>)}
+                        </Box>
+                      </Box>)}
+                  </Box>)))}
             </CardContent>
           </Card>
 
           {/* Manual Employee Mapping */}
-          <ManualEmployeeMapping savedDevices={savedDevices} />
+          <ManualEmployeeMapping savedDevices={savedDevices}/>
 
           {/* Sync Status Dashboard */}
           <HikvisionSyncDashboard />
-        </div>
-      )}
-    </div>
-  );
+        </Box>)}
+    </Box>);
 }
-
 // ─── Manual Employee Mapping ────────────────────────────────────
-function ManualEmployeeMapping({ savedDevices }: { savedDevices: Array<{ id: string; name: string; device_serial?: string }> }) {
-  const [empCode, setEmpCode] = useState("");
-  const [empName, setEmpName] = useState("");
-  const [selectedDevice, setSelectedDevice] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [mappings, setMappings] = useState<Array<{ id: string; device_employee_code: string; device_employee_name: string | null; erp_employee_id: string | null }>>([]);
+function ManualEmployeeMapping({ savedDevices }: {
+    savedDevices: Array<{
+        id: string;
+        name: string;
+        device_serial?: string;
+    }>;
+}) {
+    const [empCode, setEmpCode] = useState("");
+    const [empName, setEmpName] = useState("");
+    const [selectedDevice, setSelectedDevice] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [mappings, setMappings] = useState<Array<{
+        id: string;
+        device_employee_code: string;
+        device_employee_name: string | null;
+        erp_employee_id: string | null;
+    }>>([]);
+    const loadMappings = async () => {
+        const { data } = await supabase.from("hikvision_employee_mapping").select("id, device_employee_code, device_employee_name, erp_employee_id").order("created_at", { ascending: false }).limit(20);
+        setMappings(data || []);
+    };
+    useEffect(() => { loadMappings(); if (savedDevices.length > 0)
+        setSelectedDevice(savedDevices[0].id); }, [savedDevices]);
+    const handleAdd = async () => {
+        if (!empCode.trim()) {
+            toast.error("Employee code is required");
+            return;
+        }
+        setSaving(true);
+        try {
+            const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+                body: { action: "manual-add-employee", device_id: selectedDevice || null, employee_code: empCode.trim(), employee_name: empName.trim() || undefined },
+            });
+            if (error || !data?.success)
+                throw new Error(data?.error || error?.message || "Failed");
+            toast.success(data.message || "Employee mapped");
+            setEmpCode("");
+            setEmpName("");
+            loadMappings();
+        }
+        catch (e: any) {
+            toast.error(e.message);
+        }
+        setSaving(false);
+    };
+    return (<Card>
+      <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
+        <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Plus} sx={{ height: "1rem", width: "1rem" }}/> Manual Employee Mapping</Typography>
+        <Typography variant="body2" color="text.secondary">If cloud sync isn't available, manually enter device employee codes to link with your system. You can find these codes on the biometric device's user list.</Typography>
+      </Box>
+      <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "0.75rem" }}>
+          <Box>
 
-  const loadMappings = async () => {
-    const { data } = await supabase.from("hikvision_employee_mapping").select("id, device_employee_code, device_employee_name, erp_employee_id").order("created_at", { ascending: false }).limit(20);
-    setMappings(data || []);
-  };
+            <TextField placeholder="e.g. 1001" value={empCode} onChange={e => setEmpCode(e.target.value)} label={"Employee Code (from device)"} size="small" fullWidth/>
+          </Box>
+          <Box>
 
-  useEffect(() => { loadMappings(); if (savedDevices.length > 0) setSelectedDevice(savedDevices[0].id); }, [savedDevices]);
+            <TextField placeholder="e.g. Rajat" value={empName} onChange={e => setEmpName(e.target.value)} label={"Employee Name"} size="small" fullWidth/>
+          </Box>
+          <Box>
 
-  const handleAdd = async () => {
-    if (!empCode.trim()) { toast.error("Employee code is required"); return; }
-    setSaving(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("hikvision-sync", {
-        body: { action: "manual-add-employee", device_id: selectedDevice || null, employee_code: empCode.trim(), employee_name: empName.trim() || undefined },
-      });
-      if (error || !data?.success) throw new Error(data?.error || error?.message || "Failed");
-      toast.success(data.message || "Employee mapped");
-      setEmpCode(""); setEmpName("");
-      loadMappings();
-    } catch (e: any) { toast.error(e.message); }
-    setSaving(false);
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2"><Plus className="h-4 w-4" /> Manual Employee Mapping</CardTitle>
-        <CardDescription>If cloud sync isn't available, manually enter device employee codes to link with your system. You can find these codes on the biometric device's user list.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <Label className="text-xs">Employee Code (from device)</Label>
-            <Input placeholder="e.g. 1001" value={empCode} onChange={e => setEmpCode(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">Employee Name</Label>
-            <Input placeholder="e.g. Rajat" value={empName} onChange={e => setEmpName(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">Device</Label>
-            <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-              <SelectTrigger><SelectValue placeholder="Select device" /></SelectTrigger>
-              <SelectContent>
-                {savedDevices.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <Button size="sm" onClick={handleAdd} disabled={saving}>
-          {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1.5" />}
+            <TextField value={selectedDevice} label={"Device"} select size="small" fullWidth onChange={event => setSelectedDevice(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select device"}</MenuItem>
+                {savedDevices.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+              </TextField>
+          </Box>
+        </Box>
+        <Button onClick={handleAdd} disabled={saving} variant="contained" size="small">
+          {saving ? <Box component={Loader2} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem", animation: "spin 1s linear infinite" }}/> : <Box component={Plus} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>}
           Add Mapping
         </Button>
-        {mappings.length > 0 && (
-          <div className="border border-border rounded-lg overflow-hidden">
-            <Table>
-              <TableHeader><TableRow><TableHead className="text-xs">Code</TableHead><TableHead className="text-xs">Name</TableHead><TableHead className="text-xs">Linked</TableHead></TableRow></TableHeader>
+        {mappings.length > 0 && (<Box sx={{ borderWidth: "1px", borderColor: "hsl(var(--border))", borderRadius: "var(--radius)", overflow: "hidden" }}>
+            <DataTable columnsCount={3}>
+              <TableHead><TableRow><TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>Code</TableCell><TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>Name</TableCell><TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>Linked</TableCell></TableRow></TableHead>
               <TableBody>
-                {mappings.map(m => (
-                  <TableRow key={m.id}>
-                    <TableCell className="text-xs font-mono">{m.device_employee_code}</TableCell>
-                    <TableCell className="text-xs">{m.device_employee_name || "—"}</TableCell>
-                    <TableCell>{m.erp_employee_id ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <span className="text-xs text-muted-foreground">Not linked</span>}</TableCell>
-                  </TableRow>
-                ))}
+                {mappings.map(m => (<TableRow key={m.id}>
+                    <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontFamily: "JetBrains Mono, monospace" }}>{m.device_employee_code}</TableCell>
+                    <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{m.device_employee_name || "—"}</TableCell>
+                    <TableCell>{m.erp_employee_id ? <Box component={CheckCircle2} sx={{ height: "0.875rem", width: "0.875rem", color: "hsl(var(--success))" }}/> : <Box component="span" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Not linked</Box>}</TableCell>
+                  </TableRow>))}
               </TableBody>
-            </Table>
-          </div>
-        )}
+            </DataTable>
+          </Box>)}
       </CardContent>
-    </Card>
-  );
+    </Card>);
 }
-
 // ─── Hikvision Sync Dashboard ───────────────────────────────────
 function HikvisionSyncDashboard() {
-  const [syncLogs, setSyncLogs] = useState<Array<{ id: string; action: string; status: string; records_synced: number | null; error_message: string | null; created_at: string }>>([]);
-  const [deviceCount, setDeviceCount] = useState(0);
-  const [mappedCount, setMappedCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+    const [syncLogs, setSyncLogs] = useState<Array<{
+        id: string;
+        action: string;
+        status: string;
+        records_synced: number | null;
+        error_message: string | null;
+        created_at: string;
+    }>>([]);
+    const [deviceCount, setDeviceCount] = useState(0);
+    const [mappedCount, setMappedCount] = useState(0);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        (async () => {
+            const [logsRes, devRes, mapRes] = await Promise.all([
+                supabase.from("hikvision_sync_log").select("*").order("created_at", { ascending: false }).limit(5),
+                supabase.from("hikvision_devices").select("id", { count: "exact", head: true }),
+                supabase.from("hikvision_employee_mapping").select("id", { count: "exact", head: true }),
+            ]);
+            setSyncLogs(logsRes.data || []);
+            setDeviceCount(devRes.count || 0);
+            setMappedCount(mapRes.count || 0);
+            setLoading(false);
+        })();
+    }, []);
+    if (loading)
+        return null;
+    const lastSync = syncLogs.length > 0 ? syncLogs[0] : null;
+    return (<Card>
+      <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Sync Status Dashboard</Typography></Box>
+      <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.75rem" }}>
+          <Box sx={{ borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", padding: "0.75rem", textAlign: "center" }}>
+            <Typography component="p" variant="body1" sx={{ fontSize: "1.5rem", lineHeight: "2rem", fontWeight: "700", color: "hsl(var(--foreground))" }}>{deviceCount}</Typography>
+            <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Devices</Typography>
+          </Box>
+          <Box sx={{ borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", padding: "0.75rem", textAlign: "center" }}>
+            <Typography component="p" variant="body1" sx={{ fontSize: "1.5rem", lineHeight: "2rem", fontWeight: "700", color: "hsl(var(--foreground))" }}>{mappedCount}</Typography>
+            <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Mapped Employees</Typography>
+          </Box>
+          <Box sx={{ borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", padding: "0.75rem", textAlign: "center" }}>
+            <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", color: "hsl(var(--foreground))" }}>{lastSync ? new Date(lastSync.created_at).toLocaleString() : "Never"}</Typography>
+            <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Last Sync</Typography>
+          </Box>
+        </Box>
 
-  useEffect(() => {
-    (async () => {
-      const [logsRes, devRes, mapRes] = await Promise.all([
-        supabase.from("hikvision_sync_log").select("*").order("created_at", { ascending: false }).limit(5),
-        supabase.from("hikvision_devices").select("id", { count: "exact", head: true }),
-        supabase.from("hikvision_employee_mapping").select("id", { count: "exact", head: true }),
-      ]);
-      setSyncLogs(logsRes.data || []);
-      setDeviceCount(devRes.count || 0);
-      setMappedCount(mapRes.count || 0);
-      setLoading(false);
-    })();
-  }, []);
-
-  if (loading) return null;
-
-  const lastSync = syncLogs.length > 0 ? syncLogs[0] : null;
-
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Sync Status Dashboard</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-lg bg-muted/50 p-3 text-center">
-            <p className="text-2xl font-bold text-foreground">{deviceCount}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Devices</p>
-          </div>
-          <div className="rounded-lg bg-muted/50 p-3 text-center">
-            <p className="text-2xl font-bold text-foreground">{mappedCount}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Mapped Employees</p>
-          </div>
-          <div className="rounded-lg bg-muted/50 p-3 text-center">
-            <p className="text-sm font-medium text-foreground">{lastSync ? new Date(lastSync.created_at).toLocaleString() : "Never"}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Sync</p>
-          </div>
-        </div>
-
-        {syncLogs.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recent Sync Logs</p>
-            <div className="space-y-1.5">
-              {syncLogs.map(log => (
-                <div key={log.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${log.status === "success" ? "bg-green-500" : "bg-red-500"}`} />
-                    <span className="font-medium">{log.action}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {log.records_synced != null && <span className="text-muted-foreground">{log.records_synced} records</span>}
-                    <span className="text-muted-foreground">{new Date(log.created_at).toLocaleString()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {syncLogs.length > 0 && (<Box>
+            <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>Recent Sync Logs</Typography>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+              {syncLogs.map(log => (<Box key={log.id} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.75rem", lineHeight: "1rem", padding: "0.5rem", borderRadius: "0.25rem", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Box component="span" sx={mergeSx({ height: "0.5rem", width: "0.5rem", borderRadius: "9999px" }, log.status === "success" ? { backgroundColor: "rgb(34 197 94 / 1)" } : { backgroundColor: "rgb(239 68 68 / 1)" })}/>
+                    <Box component="span" sx={{ fontWeight: "500" }}>{log.action}</Box>
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                    {log.records_synced != null && <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>{log.records_synced} records</Box>}
+                    <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>{new Date(log.created_at).toLocaleString()}</Box>
+                  </Box>
+                </Box>))}
+            </Box>
+          </Box>)}
       </CardContent>
-    </Card>
-  );
+    </Card>);
 }
-
 // ─── Templates Tab ──────────────────────────────────────────────
 interface Template {
-  id: string; name: string; type: string; subject: string | null;
-  body: string; variables: any; is_default: boolean; created_at: string;
+    id: string;
+    name: string;
+    type: string;
+    subject: string | null;
+    body: string;
+    variables: any;
+    is_default: boolean;
+    created_at: string;
 }
-
 const typeIcons: Record<string, any> = { email: Mail, sms: MessageSquare, invoice: FileText, quotation: File };
-const typeColors: Record<string, string> = { email: "bg-primary/10 text-primary", sms: "bg-success/10 text-success", invoice: "bg-warning/10 text-warning", quotation: "bg-accent/10 text-accent" };
+const typeColors = { email: { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" }, sms: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }, invoice: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" }, quotation: { backgroundColor: "color-mix(in srgb, hsl(var(--accent)) 10%, transparent)", color: "hsl(var(--accent))" } };
 const variablesList = ["{{customer_name}}", "{{invoice_number}}", "{{quotation_number}}", "{{amount}}", "{{date}}", "{{company_name}}", "{{repair_status}}"];
-
 function TemplatesTab() {
-  const { user } = useAuth();
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("all");
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", type: "email", subject: "", body: "" });
+    const { user } = useAuth();
+    const [templates, setTemplates] = useState<Template[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [tab, setTab] = useState("all");
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const [editId, setEditId] = useState<string | null>(null);
+    const [form, setForm] = useState({ name: "", type: "email", subject: "", body: "" });
+    const fetchTemplates = async () => {
+        setLoading(true);
+        let query = supabase.from("templates").select("*").order("created_at", { ascending: false });
+        if (tab !== "all")
+            query = query.eq("type", tab as any);
+        const { data } = await query;
+        setTemplates(data || []);
+        setLoading(false);
+    };
+    useEffect(() => { fetchTemplates(); }, [tab]);
+    const openNew = () => { setEditId(null); setForm({ name: "", type: "email", subject: "", body: "" }); setSheetOpen(true); };
+    const openEdit = (t: Template) => { setEditId(t.id); setForm({ name: t.name, type: t.type, subject: t.subject || "", body: t.body }); setSheetOpen(true); };
+    const handleSave = async () => {
+        if (!form.name || !form.body) {
+            toast.error("Name and body are required");
+            return;
+        }
+        const payload = { name: form.name, type: form.type as any, subject: form.subject || null, body: form.body, created_by: user?.id };
+        if (editId) {
+            const { error } = await supabase.from("templates").update(payload).eq("id", editId);
+            if (error)
+                toast.error(error.message);
+            else
+                toast.success("Template updated");
+        }
+        else {
+            const { error } = await supabase.from("templates").insert(payload);
+            if (error)
+                toast.error(error.message);
+            else
+                toast.success("Template created");
+        }
+        setSheetOpen(false);
+        fetchTemplates();
+    };
+    const handleDelete = async (id: string) => {
+        if (!await confirmAction("Delete this template?"))
+            return;
+        const { error } = await supabase.from("templates").delete().eq("id", id);
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Deleted");
+            fetchTemplates();
+        }
+    };
+    const insertVariable = (v: string) => setForm(p => ({ ...p, body: p.body + v }));
+    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <Box sx={{ display: "flex", flexDirection: "column", "@media (min-width: 640px)": { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, gap: "1rem" }}>
+        <Box>
+          <Typography component="h2" variant="h2" sx={{ fontSize: "1.125rem", lineHeight: "1.75rem", fontWeight: "600" }}>Templates</Typography>
+          <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>Manage email, SMS, and document templates</Typography>
+        </Box>
+        <Button onClick={openNew} variant="contained"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>New Template</Button>
+      </Box>
 
-  const fetchTemplates = async () => {
-    setLoading(true);
-    let query = supabase.from("templates").select("*").order("created_at", { ascending: false });
-    if (tab !== "all") query = query.eq("type", tab as any);
-    const { data } = await query;
-    setTemplates(data || []);
-    setLoading(false);
-  };
+      <TabView value={tab} onChange={setTab}>
+        <TabBar>
+          <Tab value="all" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>All</Box>}/>
+          <Tab value="email" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Email</Box>}/>
+          <Tab value="sms" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>SMS</Box>}/>
+          <Tab value="invoice" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Invoice</Box>}/>
+          <Tab value="quotation" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Quotation</Box>}/>
+        </TabBar>
+      </TabView>
 
-  useEffect(() => { fetchTemplates(); }, [tab]);
-
-  const openNew = () => { setEditId(null); setForm({ name: "", type: "email", subject: "", body: "" }); setSheetOpen(true); };
-  const openEdit = (t: Template) => { setEditId(t.id); setForm({ name: t.name, type: t.type, subject: t.subject || "", body: t.body }); setSheetOpen(true); };
-
-  const handleSave = async () => {
-    if (!form.name || !form.body) { toast.error("Name and body are required"); return; }
-    const payload = { name: form.name, type: form.type as any, subject: form.subject || null, body: form.body, created_by: user?.id };
-    if (editId) {
-      const { error } = await supabase.from("templates").update(payload).eq("id", editId);
-      if (error) toast.error(error.message); else toast.success("Template updated");
-    } else {
-      const { error } = await supabase.from("templates").insert(payload);
-      if (error) toast.error(error.message); else toast.success("Template created");
-    }
-    setSheetOpen(false); fetchTemplates();
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this template?")) return;
-    const { error } = await supabase.from("templates").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Deleted"); fetchTemplates(); }
-  };
-
-  const insertVariable = (v: string) => setForm(p => ({ ...p, body: p.body + v }));
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">Templates</h2>
-          <p className="text-sm text-muted-foreground">Manage email, SMS, and document templates</p>
-        </div>
-        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New Template</Button>
-      </div>
-
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="email">Email</TabsTrigger>
-          <TabsTrigger value="sms">SMS</TabsTrigger>
-          <TabsTrigger value="invoice">Invoice</TabsTrigger>
-          <TabsTrigger value="quotation">Quotation</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {loading ? <p className="text-center text-muted-foreground py-12">Loading...</p> : templates.length === 0 ? (
-        <p className="text-center text-muted-foreground py-12">No templates yet. Create your first one!</p>
-      ) : (
-        <div className="grid gap-3">
+      {loading ? <Typography component="p" variant="body1" sx={{ textAlign: "center", color: "hsl(var(--muted-foreground))", paddingTop: "3rem", paddingBottom: "3rem" }}>Loading...</Typography> : templates.length === 0 ? (<Typography component="p" variant="body1" sx={{ textAlign: "center", color: "hsl(var(--muted-foreground))", paddingTop: "3rem", paddingBottom: "3rem" }}>No templates yet. Create your first one!</Typography>) : (<Box sx={{ display: "grid", gap: "0.75rem" }}>
           {templates.map(t => {
-            const Icon = typeIcons[t.type] || File;
-            return (
-              <Card key={t.id}>
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className={`p-2.5 rounded-lg ${typeColors[t.type] || "bg-muted"}`}><Icon className="h-5 w-5" /></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium">{t.name}</p>
-                    {t.subject && <p className="text-sm text-muted-foreground truncate">{t.subject}</p>}
-                  </div>
-                  <Badge variant="outline" className="capitalize">{t.type}</Badge>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(t.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                  </div>
+                const Icon = typeIcons[t.type] || File;
+                return (<Card key={t.id}>
+                <CardContent sx={{ padding: "1rem", display: "flex", alignItems: "center", gap: "1rem" }}>
+                  <Box sx={mergeSx({ padding: "0.625rem", borderRadius: "var(--radius)" }, typeColors[t.type] || { backgroundColor: "hsl(var(--muted))" })}><Box component={Icon} sx={{ height: "1.25rem", width: "1.25rem" }}/></Box>
+                  <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
+                    <Typography component="p" variant="body1" sx={{ fontWeight: "500" }}>{t.name}</Typography>
+                    {t.subject && <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.subject}</Typography>}
+                  </Box>
+                  <StatusChip label={t.type} variant="outlined" sx={{ textTransform: "capitalize" }}/>
+                  <Box sx={{ display: "flex", gap: "0.25rem" }}>
+                    <IconButton onClick={() => openEdit(t)} aria-label={"Pencil"}><Box component={Pencil} sx={{ height: "1rem", width: "1rem" }}/></IconButton>
+                    <IconButton onClick={() => handleDelete(t.id)} aria-label={"Trash2"}><Box component={Trash2} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--destructive))" }}/></IconButton>
+                  </Box>
                 </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+              </Card>);
+            })}
+        </Box>)}
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{editId ? "Edit Template" : "New Template"}</SheetTitle>
-            <SheetDescription>Create reusable message templates with variables</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="space-y-1.5"><Label>Name *</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
-            <div className="space-y-1.5">
-              <Label>Type</Label>
-              <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="sms">SMS</SelectItem>
-                  <SelectItem value="invoice">Invoice</SelectItem>
-                  <SelectItem value="quotation">Quotation</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.type === "email" && <div className="space-y-1.5"><Label>Subject</Label><Input value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} /></div>}
-            <div className="space-y-1.5">
-              <Label>Body *</Label>
-              <Textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={8} />
-              {form.type === "sms" && <p className="text-xs text-muted-foreground">{form.body.length}/160 characters</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label>Insert Variable</Label>
-              <div className="flex flex-wrap gap-1">
-                {variablesList.map(v => <Button key={v} variant="outline" size="sm" className="text-xs" onClick={() => insertVariable(v)}>{v}</Button>)}
-              </div>
-            </div>
-            <Button className="w-full" onClick={handleSave}>{editId ? "Update" : "Create"} Template</Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
+      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editId ? "Edit Template" : "New Template"} description={"Create reusable message templates with variables"} paperSx={{ overflowY: "auto" }}>
+
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} label={"Name *"} size="small" fullWidth/></Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField value={form.type} label={"Type"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, type: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+                  <MenuItem value="email">Email</MenuItem>
+                  <MenuItem value="sms">SMS</MenuItem>
+                  <MenuItem value="invoice">Invoice</MenuItem>
+                  <MenuItem value="quotation">Quotation</MenuItem>
+                </TextField>
+            </Box>
+            {form.type === "email" && <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} label={"Subject"} size="small" fullWidth/></Box>}
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={8} label={"Body *"} size="small" fullWidth multiline/>
+              {form.type === "sms" && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{form.body.length}/160 characters</Typography>}
+            </Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+              <FormLabel>Insert Variable</FormLabel>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                {variablesList.map(v => <Button key={v} onClick={() => insertVariable(v)} variant="outlined" size="small" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{v}</Button>)}
+              </Box>
+            </Box>
+            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>{editId ? "Update" : "Create"} Template</Button>
+          </Box>
+        </FormDialog>
+    </Box>);
 }
-
 // ─── Service Categories Tab ─────────────────────────────────────
 function ServiceCategoriesTab() {
-  const [categories, setCategories] = useState<{ id: string; name: string; default_charge: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", default_charge: "" });
-  const [saving, setSaving] = useState(false);
-
-  const fetchCategories = async () => {
-    setLoading(true);
-    const { data } = await supabase.from("service_charge_categories").select("*").order("name");
-    if (data) setCategories(data);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchCategories(); }, []);
-
-  const save = async () => {
-    setSaving(true);
-    const payload = { name: form.name, default_charge: parseFloat(form.default_charge) || 0 };
-    if (editId) {
-      const { error } = await supabase.from("service_charge_categories").update(payload).eq("id", editId);
-      if (error) toast.error(error.message); else { toast.success("Category updated"); setEditId(null); setForm({ name: "", default_charge: "" }); fetchCategories(); }
-    } else {
-      const { error } = await supabase.from("service_charge_categories").insert(payload);
-      if (error) toast.error(error.message); else { toast.success("Category added"); setForm({ name: "", default_charge: "" }); fetchCategories(); }
-    }
-    setSaving(false);
-  };
-
-  const deleteCategory = async (id: string) => {
-    const { error } = await supabase.from("service_charge_categories").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Deleted"); fetchCategories(); }
-  };
-
-  return (
-    <div className="space-y-6 max-w-2xl">
+    const [categories, setCategories] = useState<{
+        id: string;
+        name: string;
+        default_charge: number;
+    }[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [editId, setEditId] = useState<string | null>(null);
+    const [form, setForm] = useState({ name: "", default_charge: "" });
+    const [saving, setSaving] = useState(false);
+    const fetchCategories = async () => {
+        setLoading(true);
+        const { data } = await supabase.from("service_charge_categories").select("*").order("name");
+        if (data)
+            setCategories(data);
+        setLoading(false);
+    };
+    useEffect(() => { fetchCategories(); }, []);
+    const save = async () => {
+        setSaving(true);
+        const payload = { name: form.name, default_charge: parseFloat(form.default_charge) || 0 };
+        if (editId) {
+            const { error } = await supabase.from("service_charge_categories").update(payload).eq("id", editId);
+            if (error)
+                toast.error(error.message);
+            else {
+                toast.success("Category updated");
+                setEditId(null);
+                setForm({ name: "", default_charge: "" });
+                fetchCategories();
+            }
+        }
+        else {
+            const { error } = await supabase.from("service_charge_categories").insert(payload);
+            if (error)
+                toast.error(error.message);
+            else {
+                toast.success("Category added");
+                setForm({ name: "", default_charge: "" });
+                fetchCategories();
+            }
+        }
+        setSaving(false);
+    };
+    const deleteCategory = async (id: string) => {
+        const { error } = await supabase.from("service_charge_categories").delete().eq("id", id);
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Deleted");
+            fetchCategories();
+        }
+    };
+    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" }, maxWidth: "42rem" }}>
       <Card>
-        <CardHeader><CardTitle>{editId ? "Edit Category" : "Add Service Category"}</CardTitle><CardDescription>Set default service charges per device type</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5"><Label>Category Name</Label><Input placeholder="e.g. iPhone" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
-            <div className="space-y-1.5"><Label>Default Charge (₹)</Label><Input type="number" placeholder="e.g. 750" value={form.default_charge} onChange={e => setForm(p => ({ ...p, default_charge: e.target.value }))} /></div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={save} disabled={saving || !form.name}>{saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}{editId ? "Update" : "Add Category"}</Button>
-            {editId && <Button variant="outline" onClick={() => { setEditId(null); setForm({ name: "", default_charge: "" }); }}>Cancel</Button>}
-          </div>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>{editId ? "Edit Category" : "Add Service Category"}</Typography><Typography variant="body2" color="text.secondary">Set default service charges per device type</Typography></Box>
+        <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField placeholder="e.g. iPhone" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} label={"Category Name"} size="small" fullWidth/></Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" placeholder="e.g. 750" value={form.default_charge} onChange={e => setForm(p => ({ ...p, default_charge: e.target.value }))} label={"Default Charge (\u20B9)"} size="small" fullWidth/></Box>
+          </Box>
+          <Box sx={{ display: "flex", gap: "0.5rem" }}>
+            <Button onClick={save} disabled={saving || !form.name} variant="contained">{saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}{editId ? "Update" : "Add Category"}</Button>
+            {editId && <Button onClick={() => { setEditId(null); setForm({ name: "", default_charge: "" }); }} variant="outlined">Cancel</Button>}
+          </Box>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Existing Categories</CardTitle></CardHeader>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Existing Categories</Typography></Box>
         <CardContent>
-          {loading ? <p className="text-muted-foreground py-4 text-center text-sm">Loading...</p> : (
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead>Device Category</TableHead><TableHead>Default Charge</TableHead><TableHead className="w-24">Actions</TableHead></TableRow>
-              </TableHeader>
+          {loading ? <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", paddingTop: "1rem", paddingBottom: "1rem", textAlign: "center", fontSize: "0.875rem", lineHeight: "1.25rem" }}>Loading...</Typography> : (<DataTable columnsCount={3}>
+              <TableHead>
+                <TableRow><TableCell>Device Category</TableCell><TableCell>Default Charge</TableCell><TableCell sx={{ width: "6rem" }}>Actions</TableCell></TableRow>
+              </TableHead>
               <TableBody>
-                {categories.map(c => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.name}</TableCell>
+                {categories.map(c => (<TableRow key={c.id}>
+                    <TableCell sx={{ fontWeight: "500" }}>{c.name}</TableCell>
                     <TableCell>₹{c.default_charge.toLocaleString("en-IN")}</TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditId(c.id); setForm({ name: c.name, default_charge: String(c.default_charge) }); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteCategory(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                      </div>
+                      <Box sx={{ display: "flex", gap: "0.25rem" }}>
+                        <IconButton onClick={() => { setEditId(c.id); setForm({ name: c.name, default_charge: String(c.default_charge) }); }} aria-label={"Pencil"} sx={{ height: "1.75rem", width: "1.75rem" }}><Box component={Pencil} sx={{ height: "0.875rem", width: "0.875rem" }}/></IconButton>
+                        <IconButton onClick={() => deleteCategory(c.id)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", color: "hsl(var(--destructive))", "&:hover": { color: "hsl(var(--destructive))" } }}><Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }}/></IconButton>
+                      </Box>
                     </TableCell>
-                  </TableRow>
-                ))}
+                  </TableRow>))}
               </TableBody>
-            </Table>
-          )}
+            </DataTable>)}
         </CardContent>
       </Card>
-    </div>
-  );
+    </Box>);
 }

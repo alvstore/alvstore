@@ -1,20 +1,16 @@
-import { useState, useEffect } from "react";
-import {
-  LayoutDashboard, Users, ShoppingCart, Monitor, Package,
-  Wrench, Clock, CreditCard, BarChart3, FileText, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Home,
-  Target, ClipboardList, Receipt, UserCog,
-  Wallet, Shield, MessageCircle, CalendarDays, Zap, Truck,
-  Building2, ShoppingBag, RotateCcw, Tag,
-} from "lucide-react";
-import { NavLink } from "@/components/NavLink";
-import { useAuth } from "@/hooks/useAuth";
-import { cn } from "@/lib/utils";
+"use client";
 
-interface NavItem { title: string; url: string; icon: React.ComponentType<{ className?: string }>; }
+import { useState, useEffect } from "react";
+import { Box, Collapse, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Tooltip, Typography } from "@mui/material";
+import { ChevronLeft as CollapseIcon, ChevronRight as ExpandIcon, ExpandLess, ExpandMore, Close } from "@mui/icons-material";
+import { useLocation, Link } from "@/lib/router-compat";
+import { useAuth } from "@/hooks/useAuth";
+import { LayoutDashboard, Users, ShoppingCart, Monitor, Package, Wrench, Clock, CreditCard, BarChart3, FileText, Settings, Home, Target, ClipboardList, Receipt, UserCog, Wallet, Shield, MessageCircle, CalendarDays, Zap, Truck, Building2, ShoppingBag, RotateCcw, Tag } from "lucide-react";
+
+interface NavItem { title: string; url: string; icon: React.ComponentType<{ size?: number }>; }
 interface NavCategory { label: string; items: NavItem[]; }
 
-const adminStaffNav: NavCategory[] = [
+export const adminStaffNav: NavCategory[] = [
   { label: "Overview", items: [{ title: "Dashboard", url: "/dashboard", icon: LayoutDashboard }] },
   {
     label: "CRM",
@@ -107,123 +103,53 @@ const technicianNav: NavCategory[] = [
   ]},
 ];
 
-interface AppSidebarProps { collapsed: boolean; onToggle: () => void; }
+export function navigationFor(hasRole: (role: "admin" | "staff" | "technician" | "customer") => boolean) {
+  return hasRole("customer") ? customerNav : hasRole("technician") && !hasRole("admin") && !hasRole("staff") ? technicianNav : adminStaffNav;
+}
+interface AppSidebarProps { collapsed: boolean; onToggle: () => void; mobileOpen: boolean; onMobileClose: () => void; }
 
-export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
+export function AppSidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: AppSidebarProps) {
   const { hasRole } = useAuth();
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-
-  const navCategories = hasRole("customer")
-    ? customerNav
-    : hasRole("technician") && !hasRole("admin") && !hasRole("staff")
-    ? technicianNav
-    : adminStaffNav;
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("sidebar-expanded");
-      if (saved) setExpandedCategories(JSON.parse(saved));
-    } catch {}
-  }, []);
-
-  const toggleCategory = (label: string) => {
-    setExpandedCategories(prev => {
-      const next = { ...prev, [label]: !prev[label] };
-      localStorage.setItem("sidebar-expanded", JSON.stringify(next));
-      return next;
-    });
-  };
-
-  const isCategoryExpanded = (label: string) => expandedCategories[label] !== false;
-
-  return (
-    <aside
-      className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r border-border transition-all duration-300 ease-in-out flex flex-col",
-        "bg-sidebar",
-        collapsed ? "w-[60px]" : "w-[260px]"
-      )}
-    >
-      {/* Logo */}
-      <div className={cn(
-        "flex items-center h-16 border-b border-border shrink-0 overflow-hidden",
-        collapsed ? "justify-center px-2" : "px-5 gap-3"
-      )}>
-        <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center shrink-0">
-          <Zap className="h-4.5 w-4.5 text-primary-foreground" />
-        </div>
-        {!collapsed && (
-          <div className="flex flex-col leading-none">
-            <span className="text-sm font-bold text-foreground tracking-tight">ALVStore</span>
-            <span className="text-[9px] font-medium text-muted-foreground tracking-widest uppercase">ERP Suite</span>
-          </div>
-        )}
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto scrollbar-thin py-4 space-y-1">
-        {navCategories.map((category) => {
-          const hasMultipleItems = category.items.length > 1;
-          const expanded = isCategoryExpanded(category.label);
-
-          return (
-            <div key={category.label} className={collapsed ? "" : "px-3"}>
-              {!collapsed && (
-                hasMultipleItems ? (
-                  <button
-                    onClick={() => toggleCategory(category.label)}
-                    className="w-full flex items-center justify-between py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase hover:text-foreground/70 transition-colors"
-                  >
-                    <span>{category.label}</span>
-                    {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </button>
-                ) : (
-                  <p className="py-1.5 px-2 mb-0.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                    {category.label}
-                  </p>
-                )
-              )}
-
-              {(collapsed || !hasMultipleItems || expanded) && (
-                <div className={cn("space-y-0.5", collapsed && "flex flex-col items-center px-1.5")}>
-                  {category.items.map((item) => (
-                    <NavLink
-                      key={item.url}
-                      to={item.url}
-                      end={item.url === "/dashboard"}
-                      className={cn(
-                        "group flex items-center rounded-xl text-[13px] font-medium transition-all duration-150",
-                        collapsed
-                          ? "h-10 w-10 justify-center text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                          : "gap-3 px-3 py-2.5 w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      )}
-                      activeClassName={cn(
-                        "!text-sidebar-primary-foreground font-semibold",
-                        collapsed
-                          ? "bg-primary/10"
-                          : "bg-primary/10 shadow-[inset_3px_0_0] shadow-primary"
-                      )}
-                    >
-                      <item.icon className={cn("shrink-0", collapsed ? "h-4.5 w-4.5" : "h-4 w-4")} />
-                      {!collapsed && <span className="truncate">{item.title}</span>}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
-
-              {!collapsed && <div className="h-px bg-border my-2.5 mx-2" />}
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Collapse toggle */}
-      <button
-        onClick={onToggle}
-        className="flex items-center justify-center h-12 border-t border-border text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-all duration-150 shrink-0"
-      >
-        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-      </button>
-    </aside>
-  );
+  const { pathname } = useLocation();
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  useEffect(() => { try { const saved = localStorage.getItem("sidebar-expanded"); if (saved) setExpanded(JSON.parse(saved)); } catch {} }, []);
+  const toggleCategory = (label: string) => setExpanded(previous => {
+    const next = { ...previous, [label]: previous[label] === false };
+    try { localStorage.setItem("sidebar-expanded", JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const content = (compact: boolean, mobile = false) => <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <Box sx={{ height: 64, display: "flex", alignItems: "center", gap: 1.5, px: compact ? 2 : 2.5, flexShrink: 0, borderBottom: 1, borderColor: "divider" }}>
+      <Box sx={{ width: 34, height: 34, bgcolor: "primary.main", color: "primary.contrastText", display: "grid", placeItems: "center", borderRadius: 2 }}><Zap size={18} /></Box>
+      {!compact && <Box sx={{ flex: 1 }}><Typography variant="subtitle2" sx={{ fontWeight: 800 }}>ALVStore</Typography><Typography variant="overline" color="text.secondary" sx={{ fontSize: 9, letterSpacing: "0.18em", lineHeight: 1 }}>ERP Suite</Typography></Box>}
+      {mobile && <IconButton aria-label="Close navigation" onClick={onMobileClose}><Close fontSize="small" /></IconButton>}
+    </Box>
+    <Box component="nav" aria-label="Main navigation" sx={{ flex: 1, overflowY: "auto", py: 2, scrollbarWidth: "thin" }}>
+      {navigationFor(hasRole).map(category => <Box key={category.label} sx={{ px: 1 }}>
+        {!compact && <ListItemButton onClick={() => toggleCategory(category.label)} aria-expanded={expanded[category.label] !== false} sx={{ borderRadius: 2, py: 0.5, px: 1.5 }}>
+          <ListItemText primary={category.label} slotProps={{ primary: { variant: "overline", sx: { fontSize: 10, letterSpacing: "0.1em", color: "text.secondary" } } }} />
+          {category.items.length > 1 && (expanded[category.label] === false ? <ExpandMore fontSize="small" /> : <ExpandLess fontSize="small" />)}
+        </ListItemButton>}
+        <Collapse in={compact || expanded[category.label] !== false} timeout="auto">
+          <List disablePadding>
+            {category.items.map(item => {
+              const active = pathname === item.url || pathname.startsWith(item.url + "/");
+              const Icon = item.icon;
+              return <Tooltip key={item.url} title={compact ? item.title : ""} placement="right"><ListItemButton component={Link} to={item.url} aria-label={item.title} aria-current={active ? "page" : undefined} selected={active} onClick={mobile ? onMobileClose : undefined}
+                sx={{ borderRadius: 2, my: 0.25, minHeight: 42, px: compact ? 2 : 1.5, gap: compact ? 0 : 1.5, color: active ? "primary.main" : "text.secondary", "&.Mui-selected": { bgcolor: "action.selected", boxShadow: "inset 3px 0 0 currentColor" } }}>
+                <ListItemIcon sx={{ minWidth: 0, color: "inherit" }}><Icon size={17} /></ListItemIcon>
+                {!compact && <ListItemText primary={item.title} slotProps={{ primary: { noWrap: true, sx: { fontSize: 13, fontWeight: active ? 700 : 500 } } }} />}
+              </ListItemButton></Tooltip>;
+            })}
+          </List>
+        </Collapse>
+        {!compact && <Divider sx={{ my: 1.25, mx: 1 }} />}
+      </Box>)}
+    </Box>
+    {!mobile && <Box sx={{ borderTop: 1, borderColor: "divider", display: "flex", justifyContent: "center", p: 0.5 }}><IconButton onClick={onToggle} aria-label={compact ? "Expand navigation" : "Collapse navigation"}>{compact ? <ExpandIcon fontSize="small" /> : <CollapseIcon fontSize="small" />}</IconButton></Box>}
+  </Box>;
+  return <>
+    <Drawer variant="permanent" sx={{ display: { xs: "none", md: "block" }, "& .MuiDrawer-paper": { width: collapsed ? 68 : 260, transition: "width .25s", boxSizing: "border-box", bgcolor: "background.paper" } }}>{content(collapsed)}</Drawer>
+    <Drawer variant="temporary" open={mobileOpen} onClose={onMobileClose} slotProps={{ paper: { sx: { width: 280, maxWidth: "90vw" } } }} sx={{ display: { md: "none" } }}>{content(false, true)}</Drawer>
+  </>;
 }

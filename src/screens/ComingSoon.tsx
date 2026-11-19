@@ -1,19 +1,13 @@
+"use client";
+
+import { Box } from "@mui/material";
+import { AnimatedPage, PageHeader } from "@/components/mui";
 import { useLocation } from "@/lib/router-compat";
 import { Construction } from "lucide-react";
-
 export default function ComingSoon() {
-  const location = useLocation();
-  const pageName = location.pathname.slice(1).replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) || "Module";
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4 animate-fade-in">
-      <div className="p-4 rounded-2xl bg-muted">
-        <Construction className="h-10 w-10 text-muted-foreground" />
-      </div>
-      <h1 className="text-2xl font-bold">{pageName}</h1>
-      <p className="text-muted-foreground max-w-md">
-        This module is coming soon. We're building something amazing for you!
-      </p>
-    </div>
-  );
+    const location = useLocation();
+    const pageName = location.pathname.slice(1).replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) || "Module";
+    return <AnimatedPage><PageHeader title={pageName} subtitle={"This module is coming soon. We're building something amazing for you!"} actions={<><Box sx={{ padding: "1rem", borderRadius: "1rem", backgroundColor: "hsl(var(--muted))" }}>
+        <Box component={Construction} sx={{ height: "2.5rem", width: "2.5rem", color: "hsl(var(--muted-foreground))" }}/>
+      </Box></>}/></AnimatedPage>;
 }

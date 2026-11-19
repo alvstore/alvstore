@@ -25,7 +25,7 @@ async function loadUser(userId: string, email: string): Promise<AuthedUser | nul
   return { id: rows[0].id, email: rows[0].email ?? email, roles: roles.map((r: { role: string }) => r.role) };
 }
 
-/** Populates req.user when a valid Bearer token is present; never rejects. */
+/** Populates req.user when a valid Bearer token is present; DB failures are forwarded. */
 export async function attachUser(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (header?.startsWith("Bearer ")) {
