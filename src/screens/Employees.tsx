@@ -1,450 +1,364 @@
+"use client";
+
+import { Avatar, Box, Button, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, Search, User, Pencil, Loader2, UserCog, ShieldCheck, AlertTriangle, Link2 } from "lucide-react";
-import { toast } from "sonner";
 import { AvatarUpload } from "@/components/AvatarUpload";
-
 type AppRole = "admin" | "staff" | "technician" | "customer";
-
 interface Employee {
-  id: string;
-  user_id: string | null;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  role: string;
-  department: string | null;
-  designation: string | null;
-  salary: number;
-  joining_date: string | null;
-  status: string;
-  created_at: string;
-  avatar_url: string | null;
-  device_employee_code: string | null;
+    id: string;
+    user_id: string | null;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    role: string;
+    department: string | null;
+    designation: string | null;
+    salary: number;
+    joining_date: string | null;
+    status: string;
+    created_at: string;
+    avatar_url: string | null;
+    device_employee_code: string | null;
 }
-
 const emptyForm = {
-  name: "", email: "", phone: "", role: "staff", department: "", designation: "",
-  salary: "0", joining_date: "", password: "", employee_type: "internal", createLogin: true,
+    name: "", email: "", phone: "", role: "staff", department: "", designation: "",
+    salary: "0", joining_date: "", password: "", employee_type: "internal", createLogin: true,
 };
-
-const roleColors: Record<string, string> = {
-  admin: "bg-destructive/10 text-destructive",
-  staff: "bg-primary/10 text-primary",
-  technician: "bg-warning/10 text-warning",
+const roleColors = {
+    admin: { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))" },
+    staff: { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" },
+    technician: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" },
 };
-
 export default function Employees() {
-  const { hasRole } = useAuth();
-  const isAdmin = hasRole("admin");
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [linkingId, setLinkingId] = useState<string | null>(null);
-  const [linkForm, setLinkForm] = useState({ email: "", password: "" });
-  const [linkSheetOpen, setLinkSheetOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-
-  const fetchEmployees = async () => {
-    setLoading(true);
-    let query = supabase.from("employees").select("*").neq("role", "technician").order("created_at", { ascending: false });
-    if (roleFilter !== "all") query = query.eq("role", roleFilter);
-    if (search) query = query.ilike("name", `%${search}%`);
-    const { data, error } = await query;
-    if (error) toast.error(error.message);
-    else setEmployees(data || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchEmployees(); }, [search, roleFilter]);
-
-  const openNew = () => { setEditId(null); setForm(emptyForm); setSheetOpen(true); };
-  const openEdit = (e: Employee) => {
-    setEditId(e.id);
-    setForm({
-      name: e.name, email: e.email || "", phone: e.phone || "", role: e.role,
-      department: e.department || "", designation: e.designation || "",
-      salary: String(e.salary), joining_date: e.joining_date || "", password: "",
-      employee_type: (e as any).employee_type || "internal",
-      createLogin: false, // editing — no login toggle needed
-    });
-    setSheetOpen(true);
-  };
-
-  const openLinkAccount = (e: Employee) => {
-    setLinkingId(e.id);
-    setLinkForm({ email: e.email || "", password: "" });
-    setLinkSheetOpen(true);
-  };
-
-  const handleLinkAccount = async () => {
-    if (!linkingId) return;
-    if (!linkForm.email || !linkForm.password) {
-      toast.error("Email and password are required");
-      return;
-    }
-    if (linkForm.password.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    setSaving(true);
-    try {
-      const emp = employees.find(e => e.id === linkingId);
-      const { data, error } = await supabase.functions.invoke("manage-staff", {
-        body: { action: "create", email: linkForm.email, password: linkForm.password, full_name: emp?.name || "", phone: emp?.phone || "", role: (emp?.role || "staff") as AppRole },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      
-      const userId = data?.user_id;
-      if (userId) {
-        await supabase.from("employees").update({ user_id: userId, email: linkForm.email } as any).eq("id", linkingId);
-      }
-      toast.success("Login account linked successfully");
-      setLinkSheetOpen(false);
-      fetchEmployees();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to link account");
-    }
-    setSaving(false);
-  };
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { toast.error("Name is required"); return; }
-    
-    // Validate login fields when creating with login
-    if (!editId && form.createLogin) {
-      if (!form.email) { toast.error("Email is required for login account"); return; }
-      if (!form.password || form.password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
-    }
-    
-    setSaving(true);
-    try {
-      if (editId) {
-        const { error } = await supabase.from("employees").update({
-          name: form.name, phone: form.phone || null, email: form.email || null,
-          role: form.role, department: form.department || null,
-          designation: form.designation || null,
-          salary: parseFloat(form.salary) || 0,
-          joining_date: form.joining_date || null,
-          employee_type: form.employee_type,
-        } as any).eq("id", editId);
-        if (error) throw error;
-
-        const emp = employees.find(e => e.id === editId);
-        if (emp?.user_id && form.password) {
-          await supabase.functions.invoke("manage-staff", {
-            body: { action: "update", user_id: emp.user_id, full_name: form.name, phone: form.phone, role: form.role as AppRole, password: form.password },
-          });
-        } else if (emp?.user_id) {
-          await supabase.functions.invoke("manage-staff", {
-            body: { action: "update", user_id: emp.user_id, full_name: form.name, phone: form.phone, role: form.role as AppRole },
-          });
+    const { hasRole } = useAuth();
+    const isAdmin = hasRole("admin");
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [roleFilter, setRoleFilter] = useState("all");
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const [editId, setEditId] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [linkingId, setLinkingId] = useState<string | null>(null);
+    const [linkForm, setLinkForm] = useState({ email: "", password: "" });
+    const [linkSheetOpen, setLinkSheetOpen] = useState(false);
+    const [form, setForm] = useState(emptyForm);
+    const fetchEmployees = async () => {
+        setLoading(true);
+        let query = supabase.from("employees").select("*").neq("role", "technician").order("created_at", { ascending: false });
+        if (roleFilter !== "all")
+            query = query.eq("role", roleFilter);
+        if (search)
+            query = query.ilike("name", `%${search}%`);
+        const { data, error } = await query;
+        if (error)
+            toast.error(error.message);
+        else
+            setEmployees(data || []);
+        setLoading(false);
+    };
+    useEffect(() => { fetchEmployees(); }, [search, roleFilter]);
+    const openNew = () => { setEditId(null); setForm(emptyForm); setSheetOpen(true); };
+    const openEdit = (e: Employee) => {
+        setEditId(e.id);
+        setForm({
+            name: e.name, email: e.email || "", phone: e.phone || "", role: e.role,
+            department: e.department || "", designation: e.designation || "",
+            salary: String(e.salary), joining_date: e.joining_date || "", password: "",
+            employee_type: (e as any).employee_type || "internal",
+            createLogin: false, // editing — no login toggle needed
+        });
+        setSheetOpen(true);
+    };
+    const openLinkAccount = (e: Employee) => {
+        setLinkingId(e.id);
+        setLinkForm({ email: e.email || "", password: "" });
+        setLinkSheetOpen(true);
+    };
+    const handleLinkAccount = async () => {
+        if (!linkingId)
+            return;
+        if (!linkForm.email || !linkForm.password) {
+            toast.error("Email and password are required");
+            return;
         }
-        toast.success("Employee updated");
-      } else {
-        let userId: string | null = null;
-        if (form.createLogin && form.email && form.password) {
-          const { data, error } = await supabase.functions.invoke("manage-staff", {
-            body: { action: "create", email: form.email, password: form.password, full_name: form.name, phone: form.phone, role: form.role as AppRole },
-          });
-          if (error) throw error;
-          if (data?.error) throw new Error(data.error);
-          userId = data?.user_id || null;
+        if (linkForm.password.length < 6) {
+            toast.error("Password must be at least 6 characters");
+            return;
         }
-        const { error } = await supabase.from("employees").insert({
-          user_id: userId, name: form.name, phone: form.phone || null, email: form.email || null,
-          role: form.role, department: form.department || null, designation: form.designation || null,
-          salary: parseFloat(form.salary) || 0, joining_date: form.joining_date || null,
-          employee_type: form.employee_type,
-        } as any);
-        if (error) throw error;
-        toast.success("Employee created");
-      }
-      setSheetOpen(false);
-      fetchEmployees();
-    } catch (err: any) {
-      toast.error(err.message || "Operation failed");
-    }
-    setSaving(false);
-  };
-
-  const kpiStats = {
-    total: employees.length,
-    active: employees.filter(e => e.status === "active").length,
-    technicians: employees.filter(e => e.role === "technician").length,
-    withLogin: employees.filter(e => e.user_id).length,
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Employees</h1>
-          <p className="text-muted-foreground">Manage your team members</p>
-        </div>
-        {isAdmin && <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Employee</Button>}
-      </div>
+        setSaving(true);
+        try {
+            const emp = employees.find(e => e.id === linkingId);
+            const { data, error } = await supabase.functions.invoke("manage-staff", {
+                body: { action: "create", email: linkForm.email, password: linkForm.password, full_name: emp?.name || "", phone: emp?.phone || "", role: (emp?.role || "staff") as AppRole },
+            });
+            if (error)
+                throw error;
+            if (data?.error)
+                throw new Error(data.error);
+            const userId = data?.user_id;
+            if (userId) {
+                await supabase.from("employees").update({ user_id: userId, email: linkForm.email } as any).eq("id", linkingId);
+            }
+            toast.success("Login account linked successfully");
+            setLinkSheetOpen(false);
+            fetchEmployees();
+        }
+        catch (err: any) {
+            toast.error(err.message || "Failed to link account");
+        }
+        setSaving(false);
+    };
+    const handleSave = async () => {
+        if (!form.name.trim()) {
+            toast.error("Name is required");
+            return;
+        }
+        // Validate login fields when creating with login
+        if (!editId && form.createLogin) {
+            if (!form.email) {
+                toast.error("Email is required for login account");
+                return;
+            }
+            if (!form.password || form.password.length < 6) {
+                toast.error("Password must be at least 6 characters");
+                return;
+            }
+        }
+        setSaving(true);
+        try {
+            if (editId) {
+                const { error } = await supabase.from("employees").update({
+                    name: form.name, phone: form.phone || null, email: form.email || null,
+                    role: form.role, department: form.department || null,
+                    designation: form.designation || null,
+                    salary: parseFloat(form.salary) || 0,
+                    joining_date: form.joining_date || null,
+                    employee_type: form.employee_type,
+                } as any).eq("id", editId);
+                if (error)
+                    throw error;
+                const emp = employees.find(e => e.id === editId);
+                if (emp?.user_id && form.password) {
+                    await supabase.functions.invoke("manage-staff", {
+                        body: { action: "update", user_id: emp.user_id, full_name: form.name, phone: form.phone, role: form.role as AppRole, password: form.password },
+                    });
+                }
+                else if (emp?.user_id) {
+                    await supabase.functions.invoke("manage-staff", {
+                        body: { action: "update", user_id: emp.user_id, full_name: form.name, phone: form.phone, role: form.role as AppRole },
+                    });
+                }
+                toast.success("Employee updated");
+            }
+            else {
+                let userId: string | null = null;
+                if (form.createLogin && form.email && form.password) {
+                    const { data, error } = await supabase.functions.invoke("manage-staff", {
+                        body: { action: "create", email: form.email, password: form.password, full_name: form.name, phone: form.phone, role: form.role as AppRole },
+                    });
+                    if (error)
+                        throw error;
+                    if (data?.error)
+                        throw new Error(data.error);
+                    userId = data?.user_id || null;
+                }
+                const { error } = await supabase.from("employees").insert({
+                    user_id: userId, name: form.name, phone: form.phone || null, email: form.email || null,
+                    role: form.role, department: form.department || null, designation: form.designation || null,
+                    salary: parseFloat(form.salary) || 0, joining_date: form.joining_date || null,
+                    employee_type: form.employee_type,
+                } as any);
+                if (error)
+                    throw error;
+                toast.success("Employee created");
+            }
+            setSheetOpen(false);
+            fetchEmployees();
+        }
+        catch (err: any) {
+            toast.error(err.message || "Operation failed");
+        }
+        setSaving(false);
+    };
+    const kpiStats = {
+        total: employees.length,
+        active: employees.filter(e => e.status === "active").length,
+        technicians: employees.filter(e => e.role === "technician").length,
+        withLogin: employees.filter(e => e.user_id).length,
+    };
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={"Employees"} subtitle={"Manage your team members"} actions={<>{isAdmin && <Button onClick={openNew} variant="contained"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Add Employee</Button>}</>}/>
 
       {/* KPI */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card><CardContent className="p-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10"><UserCog className="h-5 w-5 text-primary" /></div>
-          <div><p className="text-2xl font-bold">{kpiStats.total}</p><p className="text-xs text-muted-foreground">Total</p></div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-success/10"><User className="h-5 w-5 text-success" /></div>
-          <div><p className="text-2xl font-bold">{kpiStats.active}</p><p className="text-xs text-muted-foreground">Active</p></div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-warning/10"><User className="h-5 w-5 text-warning" /></div>
-          <div><p className="text-2xl font-bold">{kpiStats.technicians}</p><p className="text-xs text-muted-foreground">Technicians</p></div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-info/10"><ShieldCheck className="h-5 w-5 text-info" /></div>
-          <div><p className="text-2xl font-bold">{kpiStats.withLogin}</p><p className="text-xs text-muted-foreground">With Login</p></div>
-        </CardContent></Card>
-      </div>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }, gap: "1rem" }}>
+        <StatCard label={"Total"} value={kpiStats.total} icon={<Box component={UserCog} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--primary))" }}/>} accent="primary"/>
+        <StatCard label={"Active"} value={kpiStats.active} icon={<Box component={User} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--success))" }}/>} accent="success"/>
+        <StatCard label={"Technicians"} value={kpiStats.technicians} icon={<Box component={User} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--warning))" }}/>} accent="warning"/>
+        <StatCard label={"With Login"} value={kpiStats.withLogin} icon={<Box component={ShieldCheck} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--info))" }}/>} accent="info"/>
+      </Box>
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by name..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="staff">Staff</SelectItem>
-            <SelectItem value="technician">Technician</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <Box sx={{ display: "flex", gap: "0.75rem" }}>
+        <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search by name..." sx={{ flex: "1 1 0%", maxWidth: "24rem" }}/>
+        <TextField value={roleFilter} select size="small" fullWidth onChange={event => setRoleFilter(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "150px" }}>
+            <MenuItem value="all">All Roles</MenuItem>
+            <MenuItem value="admin">Admin</MenuItem>
+            <MenuItem value="staff">Staff</MenuItem>
+            <MenuItem value="technician">Technician</MenuItem>
+          </TextField>
+      </Box>
 
       {/* Table */}
-      {loading ? <p className="text-center text-muted-foreground py-12">Loading...</p> : (
-        <div className="rounded-lg border bg-card">
-          <Table>
-            <TableHeader>
+      {loading ? <Typography component="p" variant="body1" sx={{ textAlign: "center", color: "hsl(var(--muted-foreground))", paddingTop: "3rem", paddingBottom: "3rem" }}>Loading...</Typography> : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
+          <DataTable columnsCount={8} empty={employees.length === 0} emptyMessage={"No employees found"}>
+            <TableHead>
               <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead className="hidden sm:table-cell">Contact</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead className="hidden md:table-cell">Department</TableHead>
-                <TableHead className="text-right hidden lg:table-cell">Salary</TableHead>
-                <TableHead>Login</TableHead>
-                <TableHead>Status</TableHead>
-                {isAdmin && <TableHead className="w-24">Actions</TableHead>}
+                <TableCell>Employee</TableCell>
+                <TableCell sx={{ display: "none", "@media (min-width: 640px)": { display: "table-cell" } }}>Contact</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell sx={{ display: "none", "@media (min-width: 768px)": { display: "table-cell" } }}>Department</TableCell>
+                <TableCell sx={{ textAlign: "right", display: "none", "@media (min-width: 1024px)": { display: "table-cell" } }}>Salary</TableCell>
+                <TableCell>Login</TableCell>
+                <TableCell>Status</TableCell>
+                {isAdmin && <TableCell sx={{ width: "6rem" }}>Actions</TableCell>}
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {employees.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No employees found</TableCell></TableRow>
-              ) : employees.map(e => (
-                <TableRow key={e.id}>
+            </TableHead>
+            <TableBody>{employees.map(e => (<TableRow key={e.id}>
                   <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        {e.avatar_url ? <AvatarImage src={e.avatar_url} alt={e.name} /> : null}
-                        <AvatarFallback className="text-xs">{e.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <span className="font-medium">{e.name}</span>
-                        {e.device_employee_code && (
-                          <span className="block text-xs text-muted-foreground font-mono">{e.device_employee_code}</span>
-                        )}
-                      </div>
-                    </div>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      <Avatar src={e.avatar_url ?? undefined} alt={e.name} sx={mergeSx({ height: "2rem", width: "2rem" }, { fontSize: "0.75rem", lineHeight: "1rem" })}>{e.name.slice(0, 2).toUpperCase()}</Avatar>
+                      <Box>
+                        <Box component="span" sx={{ fontWeight: "500" }}>{e.name}</Box>
+                        {e.device_employee_code && (<Box component="span" sx={{ display: "block", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", fontFamily: "JetBrains Mono, monospace" }}>{e.device_employee_code}</Box>)}
+                      </Box>
+                    </Box>
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{e.phone || e.email || "—"}</TableCell>
+                  <TableCell sx={{ display: "none", "@media (min-width: 640px)": { display: "table-cell" }, fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>{e.phone || e.email || "—"}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Badge className={roleColors[e.role] || "bg-muted text-muted-foreground"}>{e.role}</Badge>
-                      {(e as any).employee_type === "external" && (
-                        <Badge variant="outline" className="text-[10px] border-warning/40 text-warning">External</Badge>
-                      )}
-                    </div>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                      <StatusChip label={e.role} sx={roleColors[e.role] || { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}/>
+                      {(e as any).employee_type === "external" && (<StatusChip label={"External"} variant="outlined" sx={{ fontSize: "10px", borderColor: "color-mix(in srgb, hsl(var(--warning)) 40%, transparent)", color: "hsl(var(--warning))" }}/>)}
+                    </Box>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm">{e.department || "—"}</TableCell>
-                  <TableCell className="text-right hidden lg:table-cell">₹{e.salary.toLocaleString()}</TableCell>
+                  <TableCell sx={{ display: "none", "@media (min-width: 768px)": { display: "table-cell" }, fontSize: "0.875rem", lineHeight: "1.25rem" }}>{e.department || "—"}</TableCell>
+                  <TableCell sx={{ textAlign: "right", display: "none", "@media (min-width: 1024px)": { display: "table-cell" } }}>₹{e.salary.toLocaleString()}</TableCell>
                   <TableCell>
-                    {e.user_id ? (
-                      <div className="flex items-center gap-1 text-success">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        <span className="text-[11px] font-medium">Linked</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-warning">
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        <span className="text-[11px] font-medium">No Login</span>
-                      </div>
-                    )}
+                    {e.user_id ? (<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "hsl(var(--success))" }}>
+                        <Box component={ShieldCheck} sx={{ height: "0.875rem", width: "0.875rem" }}/>
+                        <Box component="span" sx={{ fontSize: "11px", fontWeight: "500" }}>Linked</Box>
+                      </Box>) : (<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem", color: "hsl(var(--warning))" }}>
+                        <Box component={AlertTriangle} sx={{ height: "0.875rem", width: "0.875rem" }}/>
+                        <Box component="span" sx={{ fontSize: "11px", fontWeight: "500" }}>No Login</Box>
+                      </Box>)}
                   </TableCell>
-                  <TableCell><Badge variant={e.status === "active" ? "default" : "secondary"}>{e.status}</Badge></TableCell>
-                  {isAdmin && (
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(e)} title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        {!e.user_id && (
-                          <Button variant="ghost" size="icon" onClick={() => openLinkAccount(e)} title="Link Login Account" className="text-warning hover:text-warning">
-                            <Link2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                  <TableCell><StatusChip label={e.status}/></TableCell>
+                  {isAdmin && (<TableCell>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                        <IconButton onClick={() => openEdit(e)} title="Edit" aria-label={"Edit"}>
+                          <Box component={Pencil} sx={{ height: "1rem", width: "1rem" }}/>
+                        </IconButton>
+                        {!e.user_id && (<IconButton onClick={() => openLinkAccount(e)} title="Link Login Account" aria-label={"Link Login Account"} sx={{ color: "hsl(var(--warning))", "&:hover": { color: "hsl(var(--warning))" } }}>
+                            <Box component={Link2} sx={{ height: "1rem", width: "1rem" }}/>
+                          </IconButton>)}
+                      </Box>
+                    </TableCell>)}
+                </TableRow>))}</TableBody>
+          </DataTable>
+        </Box>)}
 
       {/* Add/Edit Sheet */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="overflow-y-auto sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>{editId ? "Edit Employee" : "Add Employee"}</SheetTitle>
-            <SheetDescription>{editId ? "Update employee details" : "Create a new employee with optional login account"}</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="flex items-center gap-4">
-              <AvatarUpload
-                currentUrl={editId ? employees.find(e => e.id === editId)?.avatar_url : undefined}
-                name={form.name}
-                folder="employees"
-                entityId={editId || undefined}
-                onUploaded={async (url) => {
-                  if (editId) {
-                    await supabase.from("employees").update({ avatar_url: url } as any).eq("id", editId);
-                    fetchEmployees();
-                  }
-                }}
-              />
-              <div className="flex-1 space-y-1.5"><Label>Full Name *</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Email {form.createLogin && !editId ? "*" : ""}</Label><Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Phone</Label><Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Role *</Label>
-                <Select value={form.role} onValueChange={v => setForm(p => ({ ...p, role: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="staff">Staff</SelectItem>
-                    <SelectItem value="technician">Technician</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Type</Label>
-                <Select value={form.employee_type} onValueChange={v => setForm(p => ({ ...p, employee_type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="internal">Internal</SelectItem>
-                    <SelectItem value="external">External / Outsourced</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Department</Label><Input value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Designation</Label><Input value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Joining Date</Label><Input type="date" value={form.joining_date} onChange={e => setForm(p => ({ ...p, joining_date: e.target.value }))} /></div>
-              <div className="space-y-1.5"><Label>Salary</Label><Input type="number" value={form.salary} onChange={e => setForm(p => ({ ...p, salary: e.target.value }))} /></div>
-            </div>
+      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editId ? "Edit Employee" : "Add Employee"} description={editId ? "Update employee details" : "Create a new employee with optional login account"} paperSx={{ overflowY: "auto", "@media (min-width: 640px)": { maxWidth: "32rem" } }}>
+
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+              <AvatarUpload currentUrl={editId ? employees.find(e => e.id === editId)?.avatar_url : undefined} name={form.name} folder="employees" entityId={editId || undefined} onUploaded={async (url) => {
+        if (editId) {
+            await supabase.from("employees").update({ avatar_url: url } as any).eq("id", editId);
+            fetchEmployees();
+        }
+    }}/>
+              <Box sx={{ flex: "1 1 0%", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} label={"Full Name *"} size="small" fullWidth/></Box>
+            </Box>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} label={<>Email {form.createLogin && !editId ? "*" : ""}</>} size="small" fullWidth/></Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} label={"Phone"} size="small" fullWidth/></Box>
+            </Box>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                <TextField value={form.role} label={"Role *"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, role: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+                    <MenuItem value="admin">Admin</MenuItem>
+                    <MenuItem value="staff">Staff</MenuItem>
+                    <MenuItem value="technician">Technician</MenuItem>
+                  </TextField>
+              </Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                <TextField value={form.employee_type} label={"Type"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, employee_type: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+                    <MenuItem value="internal">Internal</MenuItem>
+                    <MenuItem value="external">External / Outsourced</MenuItem>
+                  </TextField>
+              </Box>
+            </Box>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} label={"Department"} size="small" fullWidth/></Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} label={"Designation"} size="small" fullWidth/></Box>
+            </Box>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.joining_date} onChange={e => setForm(p => ({ ...p, joining_date: e.target.value }))} label={"Joining Date"} size="small" fullWidth/></Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.salary} onChange={e => setForm(p => ({ ...p, salary: e.target.value }))} label={"Salary"} size="small" fullWidth/></Box>
+            </Box>
 
             {/* Create with Login toggle - only for new employees */}
-            {!editId && (
-              <div className="rounded-xl border border-border p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-sm font-semibold">Create with Login</Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">Required for Chat, Tasks & system access</p>
-                  </div>
-                  <Switch
-                    checked={form.createLogin}
-                    onCheckedChange={v => setForm(p => ({ ...p, createLogin: v }))}
-                  />
-                </div>
-                {!form.createLogin && (
-                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20">
-                    <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-                    <p className="text-xs text-warning">Employees without login credentials cannot access Chat, Tasks, or other system features.</p>
-                  </div>
-                )}
-              </div>
-            )}
+            {!editId && (<Box sx={{ borderRadius: "0.75rem", borderWidth: "1px", borderColor: "hsl(var(--border))", padding: "1rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <Box>
+                    <FormLabel sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}>Create with Login</FormLabel>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.125rem" }}>Required for Chat, Tasks & system access</Typography>
+                  </Box>
+                  <Switch checked={form.createLogin} onChange={(event, checked) => (v => setForm(p => ({ ...p, createLogin: v })))(checked)}/>
+                </Box>
+                {!form.createLogin && (<Box sx={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", padding: "0.625rem", borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--warning)) 20%, transparent)" }}>
+                    <Box component={AlertTriangle} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--warning))", flexShrink: "0", marginTop: "0.125rem" }}/>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--warning))" }}>Employees without login credentials cannot access Chat, Tasks, or other system features.</Typography>
+                  </Box>)}
+              </Box>)}
 
             {/* Password field */}
-            {(form.createLogin || editId) && (
-              <div className="space-y-1.5">
-                <Label>Password {!editId && form.createLogin ? "*" : "(optional)"}</Label>
-                <Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder={editId ? "Leave blank to keep" : "Min 6 chars"} />
-              </div>
-            )}
+            {(form.createLogin || editId) && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-            <Button className="w-full" onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <TextField type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder={editId ? "Leave blank to keep" : "Min 6 chars"} label={<>Password {!editId && form.createLogin ? "*" : "(optional)"}</>} size="small" fullWidth/>
+              </Box>)}
+
+            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
+              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
               {editId ? "Update Employee" : "Create Employee"}
             </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
+          </Box>
+        </FormDialog>
 
       {/* Link Account Sheet */}
-      <Sheet open={linkSheetOpen} onOpenChange={setLinkSheetOpen}>
-        <SheetContent className="sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>Link Login Account</SheetTitle>
-            <SheetDescription>Create a login account for this employee so they can access Chat, Tasks, and other features.</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="space-y-1.5">
-              <Label>Email *</Label>
-              <Input type="email" value={linkForm.email} onChange={e => setLinkForm(p => ({ ...p, email: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Password *</Label>
-              <Input type="password" value={linkForm.password} onChange={e => setLinkForm(p => ({ ...p, password: e.target.value }))} placeholder="Min 6 characters" />
-            </div>
-            <Button className="w-full" onClick={handleLinkAccount} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+      <FormDialog open={linkSheetOpen} onClose={() => setLinkSheetOpen(false)} title={"Link Login Account"} description={"Create a login account for this employee so they can access Chat, Tasks, and other features."} paperSx={{ "@media (min-width: 640px)": { maxWidth: "28rem" } }}>
+
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField type="email" value={linkForm.email} onChange={e => setLinkForm(p => ({ ...p, email: e.target.value }))} label={"Email *"} size="small" fullWidth/>
+            </Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField type="password" value={linkForm.password} onChange={e => setLinkForm(p => ({ ...p, password: e.target.value }))} placeholder="Min 6 characters" label={"Password *"} size="small" fullWidth/>
+            </Box>
+            <Button onClick={handleLinkAccount} disabled={saving} variant="contained" sx={{ width: "100%" }}>
+              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
               Link Account
             </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
+          </Box>
+        </FormDialog>
+    </Box></AnimatedPage>;
 }

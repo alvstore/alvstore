@@ -3,17 +3,19 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "ALV Store backend — Express + Prisma + PostgreSQL (replaces Supabase)",
+  "description": "ALV Store backend \u2014 Express + Prisma + PostgreSQL (replaces Supabase)",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "db:dev": "tsx tools/dev-db.ts",
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
-    "db:bootstrap": "tsx tools/bootstrap-db.ts",
-    "db:introspect": "tsx tools/introspect.ts",
     "db:seed": "tsx tools/seed.ts",
-    "db:setup": "tsx tools/bootstrap-db.ts && tsx tools/introspect.ts && sh tools/prisma-cli.sh generate && tsx tools/seed.ts",
-    "prisma:generate": "sh tools/prisma-cli.sh generate"
+    "db:setup": "tsx tools/setup-db.ts",
+    "prisma:generate": "sh tools/prisma-cli.sh generate && tsx tools/schema-meta.ts",
+    "db:push": "sh tools/prisma-cli.sh db push",
+    "db:meta": "tsx tools/schema-meta.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:db": "RUN_DB_INTEGRATION=1 tsx --test --test-concurrency=1 tests/database-lifecycle.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^6.8.2",
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.4",
     "@electric-sql/pglite-socket": "^0.0.10",
+    "@prisma/internals": "^6.19.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",

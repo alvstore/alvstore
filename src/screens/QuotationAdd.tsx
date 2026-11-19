@@ -1,454 +1,441 @@
+"use client";
+
+import { Box, Button, Card, CardContent, Divider, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { AnimatedPage, DataTable, PageHeader, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Send, Eye, Save, Trash2, Plus, Copy } from "lucide-react";
-import { toast } from "sonner";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
-
-interface Product { id: string; name: string; description: string | null; selling_price: number | null; gst_percentage: number | null; image_url?: string | null; }
-interface Customer { id: string; name: string; email: string | null; phone: string | null; address: string | null; gst_number: string | null; shipping_address?: string | null; shipping_city?: string | null; shipping_state?: string | null; shipping_pincode?: string | null; }
-interface BusinessSettings { company_name: string | null; company_address: string | null; company_phone: string | null; company_email: string | null; gst_number: string | null; logo_url: string | null; bank_name?: string | null; bank_account_number?: string | null; bank_ifsc?: string | null; bank_branch?: string | null; bank_upi_id?: string | null; }
-
+interface Product {
+    id: string;
+    name: string;
+    description: string | null;
+    selling_price: number | null;
+    gst_percentage: number | null;
+    image_url?: string | null;
+}
+interface Customer {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    gst_number: string | null;
+    shipping_address?: string | null;
+    shipping_city?: string | null;
+    shipping_state?: string | null;
+    shipping_pincode?: string | null;
+}
+interface BusinessSettings {
+    company_name: string | null;
+    company_address: string | null;
+    company_phone: string | null;
+    company_email: string | null;
+    gst_number: string | null;
+    logo_url: string | null;
+    bank_name?: string | null;
+    bank_account_number?: string | null;
+    bank_ifsc?: string | null;
+    bank_branch?: string | null;
+    bank_upi_id?: string | null;
+}
 export default function QuotationAdd() {
-  const { user } = useAuth();
-  const { id: editId } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
-  const [business, setBusiness] = useState<BusinessSettings | null>(null);
-  const [saving, setSaving] = useState(false);
-  const isEditing = !!editId;
-
-  const [customerId, setCustomerId] = useState("");
-  const [validUntil, setValidUntil] = useState("");
-  const [dateIssued] = useState(new Date().toISOString().split("T")[0]);
-  const [notes, setNotes] = useState("");
-  const [terms, setTerms] = useState("1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
-  const [salesperson, setSalesperson] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState("");
-  const [items, setItems] = useState<DocumentItem[]>([]);
-  const [gstInclusive, setGstInclusive] = useState(false);
-  const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
-  const [discountValue, setDiscountValue] = useState(0);
-  const [showTerms, setShowTerms] = useState(true);
-  const [showClientNotes, setShowClientNotes] = useState(true);
-
-  useEffect(() => {
-    Promise.all([
-      supabase.from("customers").select("id, name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode").order("name"),
-      supabase.from("products").select("id, name, description, selling_price, gst_percentage, image_url").order("name"),
-      supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url, bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single(),
-      supabase.from("employees").select("id, name").in("role", ["admin", "staff"]).eq("status", "active").order("name"),
-    ]).then(([c, p, b, e]) => {
-      setCustomers(c.data || []);
-      setProducts(p.data || []);
-      if (b.data) setBusiness(b.data);
-      setEmployees(e.data || []);
-    });
-  }, []);
-
-  // Load existing quotation for editing
-  useEffect(() => {
-    if (!editId) return;
-    const loadQuotation = async () => {
-      const { data: q } = await supabase.from("quotations").select("*").eq("id", editId).single();
-      if (q) {
-        setCustomerId(q.customer_id || "");
-        setValidUntil(q.valid_until || "");
-        setNotes(q.notes || "");
-        setTerms(q.terms || "1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
-        setGstInclusive(q.gst_inclusive || false);
-        setDiscountType((q.discount_type as "percentage" | "fixed") || "percentage");
-        setDiscountValue(q.discount_value || 0);
-      }
-      const { data: itms } = await supabase.from("quotation_items").select("*").eq("quotation_id", editId);
-      if (itms) {
-        setItems(itms.map((i: any) => ({
-          id: i.id, product_id: i.product_id, product_name: i.product_name,
-          description: i.description || "", hsn_code: i.hsn_code || "",
-          quantity: i.quantity, unit_price: i.unit_price,
-          discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-          gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
-        })));
-      }
+    const { user } = useAuth();
+    const { id: editId } = useParams<{
+        id: string;
+    }>();
+    const navigate = useNavigate();
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [employees, setEmployees] = useState<{
+        id: string;
+        name: string;
+    }[]>([]);
+    const [business, setBusiness] = useState<BusinessSettings | null>(null);
+    const [saving, setSaving] = useState(false);
+    const isEditing = !!editId;
+    const [customerId, setCustomerId] = useState("");
+    const [validUntil, setValidUntil] = useState("");
+    const [dateIssued] = useState(new Date().toISOString().split("T")[0]);
+    const [notes, setNotes] = useState("");
+    const [terms, setTerms] = useState("1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
+    const [salesperson, setSalesperson] = useState("");
+    const [paymentTerms, setPaymentTerms] = useState("");
+    const [items, setItems] = useState<DocumentItem[]>([]);
+    const [gstInclusive, setGstInclusive] = useState(false);
+    const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
+    const [discountValue, setDiscountValue] = useState(0);
+    const [showTerms, setShowTerms] = useState(true);
+    const [showClientNotes, setShowClientNotes] = useState(true);
+    useEffect(() => {
+        Promise.all([
+            supabase.from("customers").select("id, name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode").order("name"),
+            supabase.from("products").select("id, name, description, selling_price, gst_percentage, image_url").order("name"),
+            supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url, bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single(),
+            supabase.from("employees").select("id, name").in("role", ["admin", "staff"]).eq("status", "active").order("name"),
+        ]).then(([c, p, b, e]) => {
+            setCustomers(c.data || []);
+            setProducts(p.data || []);
+            if (b.data)
+                setBusiness(b.data);
+            setEmployees(e.data || []);
+        });
+    }, []);
+    // Load existing quotation for editing
+    useEffect(() => {
+        if (!editId)
+            return;
+        const loadQuotation = async () => {
+            const { data: q } = await supabase.from("quotations").select("*").eq("id", editId).single();
+            if (q) {
+                setCustomerId(q.customer_id || "");
+                setValidUntil(q.valid_until || "");
+                setNotes(q.notes || "");
+                setTerms(q.terms || "1. Prices are inclusive of GST.\n2. Quotation valid for 30 days.");
+                setGstInclusive(q.gst_inclusive || false);
+                setDiscountType((q.discount_type as "percentage" | "fixed") || "percentage");
+                setDiscountValue(q.discount_value || 0);
+            }
+            const { data: itms } = await supabase.from("quotation_items").select("*").eq("quotation_id", editId);
+            if (itms) {
+                setItems(itms.map((i: any) => ({
+                    id: i.id, product_id: i.product_id, product_name: i.product_name,
+                    description: i.description || "", hsn_code: i.hsn_code || "",
+                    quantity: i.quantity, unit_price: i.unit_price,
+                    discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
+                    gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+                })));
+            }
+        };
+        loadQuotation();
+    }, [editId]);
+    const selectedCustomer = customerId ? customers.find(c => c.id === customerId) : null;
+    const totals = calculateTotals(items, gstInclusive, discountType, discountValue);
+    const addItem = (productId: string) => {
+        const product = products.find(p => p.id === productId);
+        if (!product)
+            return;
+        setItems([...items, {
+                product_id: product.id, product_name: product.name,
+                description: product.description || "", hsn_code: "",
+                quantity: 1, unit_price: product.selling_price || 0,
+                discount_type: "percentage", discount_value: 0,
+                gst_percentage: product.gst_percentage || 18, gst_enabled: true,
+                total: product.selling_price || 0,
+                image_url: product.image_url || null,
+            }]);
     };
-    loadQuotation();
-  }, [editId]);
+    const updateItem = (idx: number, updates: Partial<DocumentItem>) => {
+        setItems(items.map((item, i) => {
+            if (i !== idx)
+                return item;
+            const updated = { ...item, ...updates };
+            updated.total = calcItemTotal(updated);
+            return updated;
+        }));
+    };
+    const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
+    const handleSave = async () => {
+        if (!customerId) {
+            toast.error("Select a customer");
+            return;
+        }
+        if (items.length === 0) {
+            toast.error("Add at least one item");
+            return;
+        }
+        setSaving(true);
+        if (isEditing) {
+            // Update existing quotation
+            const { error: qErr } = await supabase.from("quotations").update({
+                customer_id: customerId, subtotal: totals.itemSubtotal,
+                gst_amount: totals.gstAmount, total: totals.grandTotal,
+                notes: notes || null, terms: terms || null, valid_until: validUntil || null,
+                discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
+                payment_terms: paymentTerms || null,
+            } as any).eq("id", editId);
+            if (qErr) {
+                toast.error(qErr.message);
+                setSaving(false);
+                return;
+            }
+            // Delete old items and insert new
+            await supabase.from("quotation_items").delete().eq("quotation_id", editId);
+            const qItems = items.map(i => ({
+                quotation_id: editId, product_id: i.product_id, product_name: i.product_name,
+                quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
+                total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
+                discount_type: i.discount_type, discount_value: i.discount_value,
+                image_url: i.image_url || null,
+            }));
+            await supabase.from("quotation_items").insert(qItems);
+            setSaving(false);
+            toast.success("Quotation updated");
+            navigate(`/sales/${editId}`);
+        }
+        else {
+            // Create new
+            const { data: q, error: qErr } = await supabase.from("quotations").insert({
+                quotation_number: "", customer_id: customerId,
+                subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount, total: totals.grandTotal,
+                notes: notes || null, terms: terms || null, valid_until: validUntil || null,
+                discount_type: discountType, discount_value: discountValue,
+                gst_inclusive: gstInclusive, created_by: user?.id,
+                payment_terms: paymentTerms || null,
+            } as any).select().single();
+            if (qErr) {
+                toast.error(qErr.message);
+                setSaving(false);
+                return;
+            }
+            const qItems = items.map(i => ({
+                quotation_id: q.id, product_id: i.product_id, product_name: i.product_name,
+                quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
+                total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
+                discount_type: i.discount_type, discount_value: i.discount_value,
+                image_url: i.image_url || null,
+            }));
+            const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
+            setSaving(false);
+            if (iErr)
+                toast.error(iErr.message);
+            else {
+                toast.success("Quotation created — " + q.quotation_number);
+                navigate(`/sales/${q.id}`);
+            }
+        }
+    };
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={isEditing ? "Edit Quotation" : "Add Quotation"} subtitle={isEditing ? "Update quotation details" : "Create a professional quotation"} actions={<><IconButton onClick={() => navigate("/sales")} aria-label={"Arrow Left"}>
+          <Box component={ArrowLeft} sx={{ height: "1.25rem", width: "1.25rem" }}/>
+        </IconButton></>}/>
 
-  const selectedCustomer = customerId ? customers.find(c => c.id === customerId) : null;
-  const totals = calculateTotals(items, gstInclusive, discountType, discountValue);
-
-  const addItem = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-    setItems([...items, {
-      product_id: product.id, product_name: product.name,
-      description: product.description || "", hsn_code: "",
-      quantity: 1, unit_price: product.selling_price || 0,
-      discount_type: "percentage", discount_value: 0,
-      gst_percentage: product.gst_percentage || 18, gst_enabled: true,
-      total: product.selling_price || 0,
-      image_url: product.image_url || null,
-    }]);
-  };
-
-  const updateItem = (idx: number, updates: Partial<DocumentItem>) => {
-    setItems(items.map((item, i) => {
-      if (i !== idx) return item;
-      const updated = { ...item, ...updates };
-      updated.total = calcItemTotal(updated);
-      return updated;
-    }));
-  };
-
-  const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-
-  const handleSave = async () => {
-    if (!customerId) { toast.error("Select a customer"); return; }
-    if (items.length === 0) { toast.error("Add at least one item"); return; }
-    setSaving(true);
-
-    if (isEditing) {
-      // Update existing quotation
-      const { error: qErr } = await supabase.from("quotations").update({
-        customer_id: customerId, subtotal: totals.itemSubtotal,
-        gst_amount: totals.gstAmount, total: totals.grandTotal,
-        notes: notes || null, terms: terms || null, valid_until: validUntil || null,
-        discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
-        payment_terms: paymentTerms || null,
-      } as any).eq("id", editId);
-      if (qErr) { toast.error(qErr.message); setSaving(false); return; }
-
-      // Delete old items and insert new
-      await supabase.from("quotation_items").delete().eq("quotation_id", editId);
-      const qItems = items.map(i => ({
-        quotation_id: editId, product_id: i.product_id, product_name: i.product_name,
-        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
-        total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
-        discount_type: i.discount_type, discount_value: i.discount_value,
-        image_url: i.image_url || null,
-      }));
-      await supabase.from("quotation_items").insert(qItems);
-      setSaving(false);
-      toast.success("Quotation updated");
-      navigate(`/sales/${editId}`);
-    } else {
-      // Create new
-      const { data: q, error: qErr } = await supabase.from("quotations").insert({
-        quotation_number: "", customer_id: customerId,
-        subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount, total: totals.grandTotal,
-        notes: notes || null, terms: terms || null, valid_until: validUntil || null,
-        discount_type: discountType, discount_value: discountValue,
-        gst_inclusive: gstInclusive, created_by: user?.id,
-        payment_terms: paymentTerms || null,
-      } as any).select().single();
-      if (qErr) { toast.error(qErr.message); setSaving(false); return; }
-
-      const qItems = items.map(i => ({
-        quotation_id: q.id, product_id: i.product_id, product_name: i.product_name,
-        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
-        total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
-        discount_type: i.discount_type, discount_value: i.discount_value,
-        image_url: i.image_url || null,
-      }));
-      const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
-      setSaving(false);
-      if (iErr) toast.error(iErr.message);
-      else { toast.success("Quotation created — " + q.quotation_number); navigate(`/sales/${q.id}`); }
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/sales")}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{isEditing ? "Edit Quotation" : "Add Quotation"}</h1>
-          <p className="text-sm text-muted-foreground">{isEditing ? "Update quotation details" : "Create a professional quotation"}</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
         {/* Left Column */}
-        <div className="lg:col-span-8 space-y-6">
-          <Card className="border-border/50 shadow-sm">
-            <CardContent className="p-6 space-y-6">
-              <div className="flex flex-col sm:flex-row justify-between gap-4">
-                <div>
-                  {business?.logo_url && <img src={business.logo_url} alt="Logo" className="h-10 mb-2" />}
-                  <p className="font-bold text-foreground">{business?.company_name || "Your Company"}</p>
-                  <p className="text-xs text-muted-foreground">{business?.company_address}</p>
-                  <p className="text-xs text-muted-foreground">{business?.company_phone} · {business?.company_email}</p>
-                  {business?.gst_number && <p className="text-xs text-muted-foreground">GSTIN: {business.gst_number}</p>}
-                </div>
-                <div className="text-right space-y-2">
-                  <h2 className="text-2xl font-bold text-primary">Quotation</h2>
-                  <p className="text-xs text-muted-foreground"># Auto-generated</p>
-                </div>
-              </div>
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 8 / span 8" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" }}>
+            <CardContent sx={{ padding: "1.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+              <Box sx={{ display: "flex", flexDirection: "column", "@media (min-width: 640px)": { flexDirection: "row" }, justifyContent: "space-between", gap: "1rem" }}>
+                <Box>
+                  {business?.logo_url && <Box src={business.logo_url} alt="Logo" component="img" sx={{ height: "2.5rem", marginBottom: "0.5rem" }}/>}
+                  <Typography component="p" variant="body1" sx={{ fontWeight: "700", color: "hsl(var(--foreground))" }}>{business?.company_name || "Your Company"}</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{business?.company_address}</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{business?.company_phone} · {business?.company_email}</Typography>
+                  {business?.gst_number && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>GSTIN: {business.gst_number}</Typography>}
+                </Box>
+                <Box sx={{ textAlign: "right", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
+                  <Typography component="h2" variant="h2" sx={{ fontSize: "1.5rem", lineHeight: "2rem", fontWeight: "700", color: "hsl(var(--primary))" }}>Quotation</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}># Auto-generated</Typography>
+                </Box>
+              </Box>
 
-              <Separator />
+              <Divider />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Date Issued</Label>
-                    <Input type="date" value={dateIssued} readOnly className="bg-muted/30" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Valid Until</Label>
-                    <Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Quotation To</Label>
-                    <Select value={customerId} onValueChange={setCustomerId}>
-                      <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                      <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  {selectedCustomer && (
-                    <div className="space-y-3">
-                      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Bill To</p>
-                        <p className="text-sm font-medium text-foreground">{selectedCustomer.name}</p>
-                        {selectedCustomer.phone && <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>}
-                        {selectedCustomer.email && <p className="text-xs text-muted-foreground">{selectedCustomer.email}</p>}
-                        {selectedCustomer.address && <p className="text-xs text-muted-foreground">{selectedCustomer.address}</p>}
-                        {selectedCustomer.gst_number && <p className="text-xs text-muted-foreground">GSTIN: {selectedCustomer.gst_number}</p>}
-                      </div>
-                      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-0.5">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Ship To</p>
-                          {!selectedCustomer.shipping_address && (
-                            <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] gap-1 px-2"
-                              onClick={() => {
-                                toast.success("Shipping = Billing address");
-                              }}>
-                              <Copy className="h-3 w-3" /> Same as Billing
-                            </Button>
-                          )}
-                        </div>
-                        {selectedCustomer.shipping_address ? (
-                          <>
-                            <p className="text-xs text-muted-foreground">{selectedCustomer.shipping_address}</p>
-                            {selectedCustomer.shipping_city && <p className="text-xs text-muted-foreground">{selectedCustomer.shipping_city}{selectedCustomer.shipping_state ? `, ${selectedCustomer.shipping_state}` : ""} {selectedCustomer.shipping_pincode || ""}</p>}
-                          </>
-                        ) : (
-                          <p className="text-xs text-muted-foreground italic">Same as billing address</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1.5rem" }}>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+                  <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-              <Separator />
+                    <TextField type="date" value={dateIssued} label={"Date Issued"} size="small" fullWidth slotProps={{ htmlInput: { readOnly: true } }} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}/>
+                  </Box>
+                  <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                    <TextField type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} label={"Valid Until"} size="small" fullWidth/>
+                  </Box>
+                </Box>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+                  <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                    <TextField value={customerId} label={"Quotation To"} select size="small" fullWidth onChange={event => setCustomerId(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select customer"}</MenuItem>{customers.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</TextField>
+                  </Box>
+                  {selectedCustomer && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", padding: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.125rem" } }}>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Bill To</Typography>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", color: "hsl(var(--foreground))" }}>{selectedCustomer.name}</Typography>
+                        {selectedCustomer.phone && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.phone}</Typography>}
+                        {selectedCustomer.email && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.email}</Typography>}
+                        {selectedCustomer.address && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.address}</Typography>}
+                        {selectedCustomer.gst_number && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>GSTIN: {selectedCustomer.gst_number}</Typography>}
+                      </Box>
+                      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", padding: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.125rem" } }}>
+                        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                          <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))" }}>Ship To</Typography>
+                          {!selectedCustomer.shipping_address && (<Button type="button" onClick={() => {
+                toast.success("Shipping = Billing address");
+            }} variant="text" size="small" sx={{ height: "1.5rem", fontSize: "10px", gap: "0.25rem", paddingLeft: "0.5rem", paddingRight: "0.5rem" }}>
+                              <Box component={Copy} sx={{ height: "0.75rem", width: "0.75rem" }}/> Same as Billing
+                            </Button>)}
+                        </Box>
+                        {selectedCustomer.shipping_address ? (<>
+                            <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.shipping_address}</Typography>
+                            {selectedCustomer.shipping_city && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.shipping_city}{selectedCustomer.shipping_state ? `, ${selectedCustomer.shipping_state}` : ""} {selectedCustomer.shipping_pincode || ""}</Typography>}
+                          </>) : (<Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", fontStyle: "italic" }}>Same as billing address</Typography>)}
+                      </Box>
+                    </Box>)}
+                </Box>
+              </Box>
+
+              <Divider />
 
               {/* Items */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold text-foreground">Line Items</Label>
-                  <Select onValueChange={addItem}>
-                    <SelectTrigger className="w-[200px] h-9 text-xs">
-                      <SelectValue placeholder="+ Add Item" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map(p => (
-                        <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} — ₹{p.selling_price}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
-                {items.length === 0 ? (
-                  <div className="rounded-lg border-2 border-dashed border-border p-8 text-center">
-                    <Plus className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-                    <p className="text-sm text-muted-foreground">Add items to your quotation</p>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-border overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-muted/50 border-b border-border">
-                          <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Item</th>
-                          <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-24">Cost</th>
-                          <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">Qty</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-24">Price</th>
-                          <th className="w-10"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item, idx) => (
-                          <tr key={idx} className="border-b border-border/50 last:border-0">
-                            <td className="px-4 py-3">
-                              <p className="font-medium text-foreground">{item.product_name}</p>
-                              <Input placeholder="Description" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })}
-                                className="h-7 text-xs mt-1 border-0 px-0 bg-transparent shadow-none focus-visible:ring-0" />
-                            </td>
-                            <td className="px-3 py-3">
-                              <Input type="number" className="h-8 text-sm text-right" value={item.unit_price}
-                                onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} />
-                            </td>
-                            <td className="px-3 py-3">
-                              <Input type="number" min="1" className="h-8 text-sm text-right" value={item.quantity}
-                                onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} />
-                            </td>
-                            <td className="px-4 py-3 text-right font-semibold text-foreground">₹{item.total.toFixed(2)}</td>
-                            <td className="pr-2 py-3">
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeItem(idx)}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                  <TextField label={"Line Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "200px", height: "2.25rem", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add Item"}</MenuItem>
+                      {products.map(p => (<MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{p.name} — ₹{p.selling_price}</MenuItem>))}
+                    </TextField>
+                </Box>
 
-              <Separator />
+                {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>
+                    <Box component={Plus} sx={{ height: "2rem", width: "2rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 40%, transparent)", marginBottom: "0.5rem" }}/>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>Add items to your quotation</Typography>
+                  </Box>) : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", overflow: "hidden" }}>
+                    <DataTable columnsCount={5} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                      <TableHead>
+                        <TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderBottomWidth: "1px", borderColor: "hsl(var(--border))" }}>
+                          <TableCell sx={{ textAlign: "left", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Item</TableCell>
+                          <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "6rem" }}>Cost</TableCell>
+                          <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "5rem" }}>Qty</TableCell>
+                          <TableCell sx={{ textAlign: "right", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "6rem" }}>Price</TableCell>
+                          <TableCell sx={{ width: "2.5rem" }}/>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {items.map((item, idx) => (<TableRow key={idx} sx={{ borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "&:last-child": { borderWidth: "0px" } }}>
+                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
+                              <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{item.product_name}</Typography>
+                              <TextField placeholder="Description" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Description" } }} sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem", marginTop: "0.25rem", borderWidth: "0px", paddingLeft: "0px", paddingRight: "0px", backgroundColor: "transparent", "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", "&:focus-visible": { "--alv-ring-offset-shadow": "var(--alv-ring-inset) 0 0 0 var(--alv-ring-offset-width) var(--alv-ring-offset-color)", "--alv-ring-shadow": "var(--alv-ring-inset) 0 0 0 calc(0px + var(--alv-ring-offset-width)) var(--alv-ring-color)", boxShadow: "var(--alv-ring-offset-shadow), var(--alv-ring-shadow), var(--alv-shadow, 0 0 #0000)" } }}/>
+                            </TableCell>
+                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
+                              <TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/>
+                            </TableCell>
+                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
+                              <TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { min: "1", "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/>
+                            </TableCell>
+                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", textAlign: "right", fontWeight: "600", color: "hsl(var(--foreground))" }}>₹{item.total.toFixed(2)}</TableCell>
+                            <TableCell sx={{ paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
+                              <IconButton onClick={() => removeItem(idx)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}>
+                                <Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }}/>
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>))}
+                      </TableBody>
+                    </DataTable>
+                  </Box>)}
+              </Box>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Salesperson</Label>
-                  <Select value={salesperson} onValueChange={setSalesperson}>
-                    <SelectTrigger><SelectValue placeholder="Select salesperson" /></SelectTrigger>
-                    <SelectContent>
-                      {employees.map(e => <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Payment Terms</Label>
-                  <Select value={paymentTerms} onValueChange={setPaymentTerms}>
-                    <SelectTrigger><SelectValue placeholder="Select terms" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
-                      <SelectItem value="net_7">Net 7</SelectItem>
-                      <SelectItem value="net_15">Net 15</SelectItem>
-                      <SelectItem value="net_30">Net 30</SelectItem>
-                      <SelectItem value="net_45">Net 45</SelectItem>
-                      <SelectItem value="net_60">Net 60</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Notes</Label>
-                  <Textarea placeholder="Internal notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} />
-                </div>
-              </div>
+              <Divider />
 
-              {showTerms && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Terms & Conditions</Label>
-                  <Textarea value={terms} onChange={e => setTerms(e.target.value)} rows={3} />
-                </div>
-              )}
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField value={salesperson} label={"Salesperson"} select size="small" fullWidth onChange={event => setSalesperson(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select salesperson"}</MenuItem>
+                      {employees.map(e => <MenuItem key={e.id} value={e.name}>{e.name}</MenuItem>)}
+                    </TextField>
+                </Box>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField value={paymentTerms} label={"Payment Terms"} select size="small" fullWidth onChange={event => setPaymentTerms(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select terms"}</MenuItem>
+                      <MenuItem value="due_on_receipt">Due on Receipt</MenuItem>
+                      <MenuItem value="net_7">Net 7</MenuItem>
+                      <MenuItem value="net_15">Net 15</MenuItem>
+                      <MenuItem value="net_30">Net 30</MenuItem>
+                      <MenuItem value="net_45">Net 45</MenuItem>
+                      <MenuItem value="net_60">Net 60</MenuItem>
+                    </TextField>
+                </Box>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField placeholder="Internal notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} label={"Notes"} size="small" fullWidth multiline/>
+                </Box>
+              </Box>
+
+              {showTerms && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField value={terms} onChange={e => setTerms(e.target.value)} rows={3} label={"Terms & Conditions"} size="small" fullWidth multiline/>
+                </Box>)}
 
               {/* Totals */}
-              <div className="flex justify-end">
-                <div className="w-full max-w-xs space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-medium">₹{totals.itemSubtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground text-xs">Discount</span>
-                    <div className="flex gap-1 items-center">
-                      <Input type="number" className="h-7 w-16 text-xs text-right" value={discountValue}
-                        onChange={e => setDiscountValue(parseFloat(e.target.value) || 0)} />
-                      <Select value={discountType} onValueChange={v => setDiscountType(v as "percentage" | "fixed")}>
-                        <SelectTrigger className="h-7 w-12 text-xs px-1"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="percentage" className="text-xs">%</SelectItem>
-                          <SelectItem value="fixed" className="text-xs">₹</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  {totals.globalDiscount > 0 && (
-                    <div className="flex justify-between text-success">
-                      <span>Discount</span><span>-₹{totals.globalDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <Separator />
-                  <div className="flex justify-between text-xs"><span className="text-muted-foreground">CGST</span><span>₹{totals.cgst.toFixed(2)}</span></div>
-                  <div className="flex justify-between text-xs"><span className="text-muted-foreground">SGST</span><span>₹{totals.sgst.toFixed(2)}</span></div>
-                  <Separator />
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-semibold text-foreground">Total</span>
-                    <span className="text-xl font-bold text-foreground">₹{totals.grandTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
+              <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                <Box sx={{ width: "100%", maxWidth: "20rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" }, fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Subtotal</Box>
+                    <Box component="span" sx={{ fontWeight: "500" }}>₹{totals.itemSubtotal.toFixed(2)}</Box>
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+                    <Box component="span" sx={{ color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem" }}>Discount</Box>
+                    <Box sx={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+                      <TextField type="number" value={discountValue} onChange={e => setDiscountValue(parseFloat(e.target.value) || 0)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "1.75rem", width: "4rem", fontSize: "0.75rem", lineHeight: "1rem", textAlign: "right" }}/>
+                      <TextField value={discountType} select size="small" fullWidth onChange={event => (v => setDiscountType(v as "percentage" | "fixed"))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ height: "1.75rem", width: "3rem", fontSize: "0.75rem", lineHeight: "1rem", paddingLeft: "0.25rem", paddingRight: "0.25rem" }}>
+                          <MenuItem value="percentage" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>%</MenuItem>
+                          <MenuItem value="fixed" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>₹</MenuItem>
+                        </TextField>
+                    </Box>
+                  </Box>
+                  {totals.globalDiscount > 0 && (<Box sx={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--success))" }}>
+                      <Box component="span">Discount</Box><Box component="span">-₹{totals.globalDiscount.toFixed(2)}</Box>
+                    </Box>)}
+                  <Divider />
+                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", lineHeight: "1rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>CGST</Box><Box component="span">₹{totals.cgst.toFixed(2)}</Box></Box>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", lineHeight: "1rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>SGST</Box><Box component="span">₹{totals.sgst.toFixed(2)}</Box></Box>
+                  <Divider />
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <Box component="span" sx={{ fontWeight: "600", color: "hsl(var(--foreground))" }}>Total</Box>
+                    <Box component="span" sx={{ fontSize: "1.25rem", lineHeight: "1.75rem", fontWeight: "700", color: "hsl(var(--foreground))" }}>₹{totals.grandTotal.toFixed(2)}</Box>
+                  </Box>
+                </Box>
+              </Box>
 
               {/* Bank Details */}
-              {business?.bank_name && (
-                <div className="rounded-lg border border-border bg-muted/20 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                    <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{business.bank_name}</span>
-                    {business.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{business.bank_account_number}</span></>}
-                    {business.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{business.bank_ifsc}</span></>}
-                    {business.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{business.bank_branch}</span></>}
-                    {business.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{business.bank_upi_id}</span></>}
-                  </div>
-                </div>
-              )}
+              {business?.bank_name && (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", padding: "1rem" }}>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Bank Details for Payment</Typography>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: "1.5rem", rowGap: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem" }}>
+                    <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Bank</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{business.bank_name}</Box>
+                    {business.bank_account_number && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Account No.</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{business.bank_account_number}</Box></>}
+                    {business.bank_ifsc && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>IFSC</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{business.bank_ifsc}</Box></>}
+                    {business.bank_branch && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Branch</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{business.bank_branch}</Box></>}
+                    {business.bank_upi_id && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>UPI ID</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{business.bank_upi_id}</Box></>}
+                  </Box>
+                </Box>)}
             </CardContent>
           </Card>
-        </div>
+        </Box>
 
         {/* Right Sidebar */}
-        <div className="lg:col-span-4 space-y-4">
-          <Card className="border-border/50 shadow-sm sticky top-6">
-            <CardContent className="p-5 space-y-3">
-              <Button className="w-full" onClick={handleSave} disabled={saving}>
-                <Send className="h-4 w-4 mr-2" />{saving ? "Saving..." : "Send Quotation"}
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", position: "sticky", top: "1.5rem" }}>
+            <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+              <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
+                <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>{saving ? "Saving..." : "Send Quotation"}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate("/sales")}>
-                <Eye className="h-4 w-4 mr-2" />Preview
+              <Button onClick={() => navigate("/sales")} variant="outlined" sx={{ width: "100%" }}>
+                <Box component={Eye} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Preview
               </Button>
-              <Button variant="outline" className="w-full" onClick={handleSave} disabled={saving}>
-                <Save className="h-4 w-4 mr-2" />Save
+              <Button onClick={handleSave} disabled={saving} variant="outlined" sx={{ width: "100%" }}>
+                <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Save
               </Button>
 
-              <Separator />
+              <Divider />
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">GST Inclusive</Label>
-                  <Switch checked={gstInclusive} onCheckedChange={setGstInclusive} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Terms & Conditions</Label>
-                  <Switch checked={showTerms} onCheckedChange={setShowTerms} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Client Notes</Label>
-                  <Switch checked={showClientNotes} onCheckedChange={setShowClientNotes} />
-                </div>
-              </div>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>GST Inclusive</FormLabel>
+                  <Switch checked={gstInclusive} onChange={(event, checked) => setGstInclusive(checked)}/>
+                </Box>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Terms & Conditions</FormLabel>
+                  <Switch checked={showTerms} onChange={(event, checked) => setShowTerms(checked)}/>
+                </Box>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Client Notes</FormLabel>
+                  <Switch checked={showClientNotes} onChange={(event, checked) => setShowClientNotes(checked)}/>
+                </Box>
+              </Box>
             </CardContent>
           </Card>
-        </div>
-      </div>
-    </div>
-  );
+        </Box>
+      </Box>
+    </Box></AnimatedPage>;
 }

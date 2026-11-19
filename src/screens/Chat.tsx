@@ -1,602 +1,565 @@
+"use client";
+
+import { Avatar, Box, Button, ButtonBase, Card, IconButton, MenuItem, Tab, TextField, Typography } from "@mui/material";
+import { AnimatedPage, FormDialog, PageHeader, SearchToolbar, StatusChip, TabBar, TabView, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, Send, Plus, Search, Phone, Check, CheckCheck, Clock, UserPlus, Users, Paperclip, Image as ImageIcon, FileText, X } from "lucide-react";
-import { toast } from "sonner";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
-
 interface Conversation {
-  id: string; type: string; title: string | null; participant_ids: string[];
-  last_message: string | null; last_message_at: string | null; created_at: string;
-  channel: string | null; whatsapp_phone: string | null;
+    id: string;
+    type: string;
+    title: string | null;
+    participant_ids: string[];
+    last_message: string | null;
+    last_message_at: string | null;
+    created_at: string;
+    channel: string | null;
+    whatsapp_phone: string | null;
 }
-
 interface Message {
-  id: string; conversation_id: string; sender_id: string; content: string;
-  read_at: string | null; created_at: string; channel: string | null;
-  delivery_status: string | null; whatsapp_message_id: string | null;
-  file_url?: string | null; file_name?: string | null; file_type?: string | null;
-  delivered_at?: string | null;
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    content: string;
+    read_at: string | null;
+    created_at: string;
+    channel: string | null;
+    delivery_status: string | null;
+    whatsapp_message_id: string | null;
+    file_url?: string | null;
+    file_name?: string | null;
+    file_type?: string | null;
+    delivered_at?: string | null;
 }
-
 interface ProfileMap {
-  [userId: string]: { full_name: string | null; avatar_url: string | null };
+    [userId: string]: {
+        full_name: string | null;
+        avatar_url: string | null;
+    };
 }
-
 interface ContactEntry {
-  user_id: string; full_name: string | null; role?: string; phone?: string | null;
-  has_login: boolean; employee_type?: string;
+    user_id: string;
+    full_name: string | null;
+    role?: string;
+    phone?: string | null;
+    has_login: boolean;
+    employee_type?: string;
 }
-
 export default function Chat() {
-  const { user } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedConvo, setSelectedConvo] = useState<string | null>(null);
-  const [messageText, setMessageText] = useState("");
-  const [searchText, setSearchText] = useState("");
-  const [profiles, setProfiles] = useState<ProfileMap>({});
-  const [newSheetOpen, setNewSheetOpen] = useState(false);
-  const [allContacts, setAllContacts] = useState<ContactEntry[]>([]);
-  const [waContacts, setWaContacts] = useState<{ name: string; phone: string }[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState("");
-  const [mobileShowChat, setMobileShowChat] = useState(false);
-  const [channelFilter, setChannelFilter] = useState<"all" | "internal" | "whatsapp">("all");
-  const [waPhone, setWaPhone] = useState("");
-  const [waName, setWaName] = useState("");
-  const [newChatType, setNewChatType] = useState<"internal" | "whatsapp">("internal");
-  const [sendingWa, setSendingWa] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [pendingFile, setPendingFile] = useState<{ file: File; preview?: string } | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const fetchConversations = useCallback(async () => {
-    if (!user) return;
-    const { data, error } = await supabase
-      .from("chat_conversations").select("*")
-      .order("last_message_at", { ascending: false, nullsFirst: false });
-    if (!error && data) setConversations(data as Conversation[]);
-  }, [user]);
-
-  const fetchMessages = useCallback(async (convoId: string) => {
-    const { data, error } = await supabase
-      .from("chat_messages").select("*")
-      .eq("conversation_id", convoId).order("created_at", { ascending: true });
-    if (!error && data) setMessages(data as Message[]);
-  }, []);
-
-  const fetchProfiles = useCallback(async (userIds: string[]) => {
-    const missing = userIds.filter(id => !profiles[id]);
-    if (missing.length === 0) return;
-    const { data } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", missing);
-    if (data) {
-      const map: ProfileMap = { ...profiles };
-      data.forEach(p => { map[p.user_id] = { full_name: p.full_name, avatar_url: p.avatar_url }; });
-      setProfiles(map);
-    }
-  }, [profiles]);
-
-  const fetchAllContacts = useCallback(async () => {
-    const [{ data: profilesData }, { data: rolesData }, { data: employeesData }, { data: customersData }] = await Promise.all([
-      supabase.from("profiles").select("user_id, full_name"),
-      supabase.from("user_roles").select("user_id, role"),
-      supabase.from("employees").select("id, name, user_id, role, phone, employee_type").eq("status", "active"),
-      supabase.from("customers").select("id, name, phone").not("phone", "is", null).limit(50),
-    ]);
-
-    const rolesMap: Record<string, string> = {};
-    rolesData?.forEach(r => { rolesMap[r.user_id] = r.role; });
-
-    const contactMap = new Map<string, ContactEntry>();
-    profilesData?.filter(p => p.user_id !== user?.id).forEach(p => {
-      contactMap.set(p.user_id, {
-        user_id: p.user_id, full_name: p.full_name || "User",
-        role: rolesMap[p.user_id] || "staff", has_login: true,
-      });
-    });
-
-    employeesData?.forEach(emp => {
-      if (emp.user_id && emp.user_id !== user?.id && !contactMap.has(emp.user_id)) {
-        contactMap.set(emp.user_id, {
-          user_id: emp.user_id, full_name: emp.name, role: emp.role || "staff",
-          phone: emp.phone, has_login: true, employee_type: emp.employee_type || "internal",
+    const { user } = useAuth();
+    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [selectedConvo, setSelectedConvo] = useState<string | null>(null);
+    const [messageText, setMessageText] = useState("");
+    const [searchText, setSearchText] = useState("");
+    const [profiles, setProfiles] = useState<ProfileMap>({});
+    const [newSheetOpen, setNewSheetOpen] = useState(false);
+    const [allContacts, setAllContacts] = useState<ContactEntry[]>([]);
+    const [waContacts, setWaContacts] = useState<{
+        name: string;
+        phone: string;
+    }[]>([]);
+    const [selectedUserId, setSelectedUserId] = useState("");
+    const [mobileShowChat, setMobileShowChat] = useState(false);
+    const [channelFilter, setChannelFilter] = useState<"all" | "internal" | "whatsapp">("all");
+    const [waPhone, setWaPhone] = useState("");
+    const [waName, setWaName] = useState("");
+    const [newChatType, setNewChatType] = useState<"internal" | "whatsapp">("internal");
+    const [sendingWa, setSendingWa] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [pendingFile, setPendingFile] = useState<{
+        file: File;
+        preview?: string;
+    } | null>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const fetchConversations = useCallback(async () => {
+        if (!user)
+            return;
+        const { data, error } = await supabase
+            .from("chat_conversations").select("*")
+            .order("last_message_at", { ascending: false, nullsFirst: false });
+        if (!error && data)
+            setConversations(data as Conversation[]);
+    }, [user]);
+    const fetchMessages = useCallback(async (convoId: string) => {
+        const { data, error } = await supabase
+            .from("chat_messages").select("*")
+            .eq("conversation_id", convoId).order("created_at", { ascending: true });
+        if (!error && data)
+            setMessages(data as Message[]);
+    }, []);
+    const fetchProfiles = useCallback(async (userIds: string[]) => {
+        const missing = userIds.filter(id => !profiles[id]);
+        if (missing.length === 0)
+            return;
+        const { data } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", missing);
+        if (data) {
+            const map: ProfileMap = { ...profiles };
+            data.forEach(p => { map[p.user_id] = { full_name: p.full_name, avatar_url: p.avatar_url }; });
+            setProfiles(map);
+        }
+    }, [profiles]);
+    const fetchAllContacts = useCallback(async () => {
+        const [{ data: profilesData }, { data: rolesData }, { data: employeesData }, { data: customersData }] = await Promise.all([
+            supabase.from("profiles").select("user_id, full_name"),
+            supabase.from("user_roles").select("user_id, role"),
+            supabase.from("employees").select("id, name, user_id, role, phone, employee_type").eq("status", "active"),
+            supabase.from("customers").select("id, name, phone").not("phone", "is", null).limit(50),
+        ]);
+        const rolesMap: Record<string, string> = {};
+        rolesData?.forEach(r => { rolesMap[r.user_id] = r.role; });
+        const contactMap = new Map<string, ContactEntry>();
+        profilesData?.filter(p => p.user_id !== user?.id).forEach(p => {
+            contactMap.set(p.user_id, {
+                user_id: p.user_id, full_name: p.full_name || "User",
+                role: rolesMap[p.user_id] || "staff", has_login: true,
+            });
         });
-      }
-    });
-
-    setAllContacts(Array.from(contactMap.values()));
-
-    const waSuggestions: { name: string; phone: string }[] = [];
-    employeesData?.forEach(emp => { if (emp.phone) waSuggestions.push({ name: emp.name, phone: emp.phone }); });
-    customersData?.forEach(c => { if (c.phone) waSuggestions.push({ name: c.name, phone: c.phone }); });
-    setWaContacts(waSuggestions);
-  }, [user]);
-
-  useEffect(() => { fetchConversations(); }, [fetchConversations]);
-
-  useEffect(() => {
-    const allIds = new Set<string>();
-    conversations.forEach(c => c.participant_ids.forEach(id => allIds.add(id)));
-    messages.forEach(m => { if (m.sender_id) allIds.add(m.sender_id); });
-    if (allIds.size > 0) fetchProfiles(Array.from(allIds));
-  }, [conversations, messages]);
-
-  // Mark messages as read when viewing a conversation
-  const markMessagesRead = useCallback(async (convoId: string) => {
-    if (!user) return;
-    await supabase.from("chat_messages")
-      .update({ read_at: new Date().toISOString() } as any)
-      .eq("conversation_id", convoId)
-      .neq("sender_id", user.id)
-      .is("read_at", null);
-  }, [user]);
-
-  const selectConvo = (id: string) => {
-    setSelectedConvo(id);
-    setMobileShowChat(true);
-    fetchMessages(id);
-    markMessagesRead(id);
-  };
-
-  // Poll for new messages (replaces Supabase realtime subscription)
-  useEffect(() => {
-    if (!selectedConvo) return;
-    const interval = setInterval(() => {
-      fetchMessages(selectedConvo);
-      fetchConversations();
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [selectedConvo, fetchConversations, fetchMessages]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // File upload handler
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast.error("File size must be under 10MB"); return; }
-    const isImage = file.type.startsWith("image/");
-    const preview = isImage ? URL.createObjectURL(file) : undefined;
-    setPendingFile({ file, preview });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const uploadAndSend = async (file: File) => {
-    if (!selectedConvo || !user) return null;
-    setUploading(true);
-    try {
-      const ext = file.name.split(".").pop();
-      const path = `chat/${selectedConvo}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage.from("chat-files").upload(path, file);
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from("chat-files").getPublicUrl(path);
-      return { url: urlData.publicUrl, name: file.name, type: file.type };
-    } catch (err: any) {
-      toast.error("Upload failed: " + err.message);
-      return null;
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const sendMessage = async () => {
-    if ((!messageText.trim() && !pendingFile) || !selectedConvo || !user) return;
-    const content = messageText.trim() || (pendingFile ? `📎 ${pendingFile.file.name}` : "");
-    setMessageText("");
-
-    let fileData: { url: string; name: string; type: string } | null = null;
-    if (pendingFile) {
-      fileData = await uploadAndSend(pendingFile.file);
-      setPendingFile(null);
-    }
-
-    const convo = conversations.find(c => c.id === selectedConvo);
-    const isWhatsApp = convo?.channel === "whatsapp";
-
-    if (isWhatsApp && convo?.whatsapp_phone) {
-      setSendingWa(true);
-      try {
-        const { data, error } = await supabase.functions.invoke("send-whatsapp", {
-          body: { to: convo.whatsapp_phone, message: content, conversation_id: selectedConvo, sender_id: user.id },
+        employeesData?.forEach(emp => {
+            if (emp.user_id && emp.user_id !== user?.id && !contactMap.has(emp.user_id)) {
+                contactMap.set(emp.user_id, {
+                    user_id: emp.user_id, full_name: emp.name, role: emp.role || "staff",
+                    phone: emp.phone, has_login: true, employee_type: emp.employee_type || "internal",
+                });
+            }
         });
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || "Send failed");
-      } catch (err: any) {
-        toast.error(err.message || "WhatsApp send failed");
-        setMessageText(content);
-      } finally { setSendingWa(false); }
-      await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
-    } else {
-      const insertPayload: any = {
-        conversation_id: selectedConvo, sender_id: user.id, content, channel: "internal",
-      };
-      if (fileData) {
-        insertPayload.file_url = fileData.url;
-        insertPayload.file_name = fileData.name;
-        insertPayload.file_type = fileData.type;
-      }
-      const { error } = await supabase.from("chat_messages").insert(insertPayload);
-      if (error) { toast.error("Failed to send"); return; }
-      await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
-    }
-  };
+        setAllContacts(Array.from(contactMap.values()));
+        const waSuggestions: {
+            name: string;
+            phone: string;
+        }[] = [];
+        employeesData?.forEach(emp => { if (emp.phone)
+            waSuggestions.push({ name: emp.name, phone: emp.phone }); });
+        customersData?.forEach(c => { if (c.phone)
+            waSuggestions.push({ name: c.name, phone: c.phone }); });
+        setWaContacts(waSuggestions);
+    }, [user]);
+    useEffect(() => { fetchConversations(); }, [fetchConversations]);
+    useEffect(() => {
+        const allIds = new Set<string>();
+        conversations.forEach(c => c.participant_ids.forEach(id => allIds.add(id)));
+        messages.forEach(m => { if (m.sender_id)
+            allIds.add(m.sender_id); });
+        if (allIds.size > 0)
+            fetchProfiles(Array.from(allIds));
+    }, [conversations, messages]);
+    // Mark messages as read when viewing a conversation
+    const markMessagesRead = useCallback(async (convoId: string) => {
+        if (!user)
+            return;
+        await supabase.from("chat_messages")
+            .update({ read_at: new Date().toISOString() } as any)
+            .eq("conversation_id", convoId)
+            .neq("sender_id", user.id)
+            .is("read_at", null);
+    }, [user]);
+    const selectConvo = (id: string) => {
+        setSelectedConvo(id);
+        setMobileShowChat(true);
+        fetchMessages(id);
+        markMessagesRead(id);
+    };
+    // Poll for new messages (replaces Supabase realtime subscription)
+    useEffect(() => {
+        if (!selectedConvo)
+            return;
+        const interval = setInterval(() => {
+            fetchMessages(selectedConvo);
+            fetchConversations();
+        }, 4000);
+        return () => clearInterval(interval);
+    }, [selectedConvo, fetchConversations, fetchMessages]);
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+    // File upload handler
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file)
+            return;
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error("File size must be under 10MB");
+            return;
+        }
+        const isImage = file.type.startsWith("image/");
+        const preview = isImage ? URL.createObjectURL(file) : undefined;
+        setPendingFile({ file, preview });
+        if (fileInputRef.current)
+            fileInputRef.current.value = "";
+    };
+    const uploadAndSend = async (file: File) => {
+        if (!selectedConvo || !user)
+            return null;
+        setUploading(true);
+        try {
+            const ext = file.name.split(".").pop();
+            const path = `chat/${selectedConvo}/${Date.now()}_${file.name}`;
+            const { error: uploadError } = await supabase.storage.from("chat-files").upload(path, file);
+            if (uploadError)
+                throw uploadError;
+            const { data: urlData } = supabase.storage.from("chat-files").getPublicUrl(path);
+            return { url: urlData.publicUrl, name: file.name, type: file.type };
+        }
+        catch (err: any) {
+            toast.error("Upload failed: " + err.message);
+            return null;
+        }
+        finally {
+            setUploading(false);
+        }
+    };
+    const sendMessage = async () => {
+        if ((!messageText.trim() && !pendingFile) || !selectedConvo || !user)
+            return;
+        const content = messageText.trim() || (pendingFile ? `📎 ${pendingFile.file.name}` : "");
+        setMessageText("");
+        let fileData: {
+            url: string;
+            name: string;
+            type: string;
+        } | null = null;
+        if (pendingFile) {
+            fileData = await uploadAndSend(pendingFile.file);
+            setPendingFile(null);
+        }
+        const convo = conversations.find(c => c.id === selectedConvo);
+        const isWhatsApp = convo?.channel === "whatsapp";
+        if (isWhatsApp && convo?.whatsapp_phone) {
+            setSendingWa(true);
+            try {
+                const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+                    body: { to: convo.whatsapp_phone, message: content, conversation_id: selectedConvo, sender_id: user.id },
+                });
+                if (error)
+                    throw error;
+                if (!data?.success)
+                    throw new Error(data?.error || "Send failed");
+            }
+            catch (err: any) {
+                toast.error(err.message || "WhatsApp send failed");
+                setMessageText(content);
+            }
+            finally {
+                setSendingWa(false);
+            }
+            await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
+        }
+        else {
+            const insertPayload: any = {
+                conversation_id: selectedConvo, sender_id: user.id, content, channel: "internal",
+            };
+            if (fileData) {
+                insertPayload.file_url = fileData.url;
+                insertPayload.file_name = fileData.name;
+                insertPayload.file_type = fileData.type;
+            }
+            const { error } = await supabase.from("chat_messages").insert(insertPayload);
+            if (error) {
+                toast.error("Failed to send");
+                return;
+            }
+            await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
+        }
+    };
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    };
+    const createConversation = async () => {
+        if (!user)
+            return;
+        if (newChatType === "whatsapp") {
+            if (!waPhone.trim()) {
+                toast.error("Enter phone number");
+                return;
+            }
+            const { data, error } = await supabase.from("chat_conversations").insert({
+                type: "whatsapp", channel: "whatsapp", participant_ids: [user.id],
+                created_by: user.id, title: waName || waPhone,
+                whatsapp_phone: waPhone.replace(/\D/g, ""),
+            }).select().single();
+            if (error) {
+                toast.error(error.message);
+                return;
+            }
+            setNewSheetOpen(false);
+            setWaPhone("");
+            setWaName("");
+            fetchConversations();
+            if (data)
+                selectConvo(data.id);
+            return;
+        }
+        if (!selectedUserId)
+            return;
+        const existing = conversations.find(c => c.channel !== "whatsapp" && c.participant_ids.length === 2 &&
+            c.participant_ids.includes(user.id) && c.participant_ids.includes(selectedUserId));
+        if (existing) {
+            selectConvo(existing.id);
+            setNewSheetOpen(false);
+            setSelectedUserId("");
+            return;
+        }
+        const { data, error } = await supabase.from("chat_conversations").insert({
+            type: "internal", channel: "internal", participant_ids: [user.id, selectedUserId], created_by: user.id,
+        }).select().single();
+        if (error) {
+            toast.error(error.message);
+            return;
+        }
+        setNewSheetOpen(false);
+        setSelectedUserId("");
+        fetchConversations();
+        if (data)
+            selectConvo(data.id);
+    };
+    const getConvoName = (c: Conversation) => {
+        if (c.title)
+            return c.title;
+        const otherId = c.participant_ids.find(id => id !== user?.id);
+        if (otherId && profiles[otherId])
+            return profiles[otherId].full_name || "User";
+        return "Conversation";
+    };
+    const getInitials = (name: string) => name.slice(0, 2).toUpperCase();
+    const DeliveryIcon = ({ msg }: {
+        msg: Message;
+    }) => {
+        const isMe = msg.sender_id === user?.id;
+        if (!isMe)
+            return null;
+        if (msg.read_at)
+            return <Box component={CheckCheck} sx={{ height: "0.75rem", width: "0.75rem", color: "hsl(var(--info))" }}/>;
+        if (msg.delivered_at)
+            return <Box component={CheckCheck} sx={{ height: "0.75rem", width: "0.75rem", color: "hsl(var(--muted-foreground))" }}/>;
+        return <Box component={Check} sx={{ height: "0.75rem", width: "0.75rem", color: "hsl(var(--muted-foreground))" }}/>;
+    };
+    const filteredConvos = conversations.filter(c => {
+        if (channelFilter !== "all" && (c.channel || "internal") !== channelFilter)
+            return false;
+        if (!searchText)
+            return true;
+        return getConvoName(c).toLowerCase().includes(searchText.toLowerCase());
+    });
+    const selectedConversation = conversations.find(c => c.id === selectedConvo);
+    const isImageFile = (type?: string | null) => type?.startsWith("image/");
+    const FilePreview = ({ msg }: {
+        msg: Message;
+    }) => {
+        if (!msg.file_url)
+            return null;
+        if (isImageFile(msg.file_type)) {
+            return (<Box href={msg.file_url} target="_blank" rel="noopener noreferrer" component="a" sx={mergeSx({ color: "inherit", textDecoration: "none" }, { display: "block", marginTop: "0.25rem" })}>
+          <Box src={msg.file_url} alt={msg.file_name || "Image"} component="img" sx={{ maxWidth: "220px", borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}/>
+        </Box>);
+        }
+        return (<Box href={msg.file_url} target="_blank" rel="noopener noreferrer" component="a" sx={mergeSx({ color: "inherit", textDecoration: "none" }, { display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", "&:hover": { backgroundColor: "hsl(var(--muted))" }, transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", fontSize: "0.75rem", lineHeight: "1rem" })}>
+        <Box component={FileText} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))", flexShrink: "0" }}/>
+        <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "160px" }}>{msg.file_name || "File"}</Box>
+      </Box>);
+    };
+    return <AnimatedPage><Box sx={{ height: "calc(100vh - 5rem)", display: "flex", flexDirection: "column" }}>
+      <PageHeader title={"Chat"} subtitle={"Team & customer messaging"} actions={<><Button onClick={() => { fetchAllContacts(); setNewChatType("internal"); setNewSheetOpen(true); }} variant="contained">
+          <Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>New Chat
+        </Button></>}/>
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  };
-
-  const createConversation = async () => {
-    if (!user) return;
-    if (newChatType === "whatsapp") {
-      if (!waPhone.trim()) { toast.error("Enter phone number"); return; }
-      const { data, error } = await supabase.from("chat_conversations").insert({
-        type: "whatsapp", channel: "whatsapp", participant_ids: [user.id],
-        created_by: user.id, title: waName || waPhone,
-        whatsapp_phone: waPhone.replace(/\D/g, ""),
-      }).select().single();
-      if (error) { toast.error(error.message); return; }
-      setNewSheetOpen(false); setWaPhone(""); setWaName("");
-      fetchConversations();
-      if (data) selectConvo(data.id);
-      return;
-    }
-    if (!selectedUserId) return;
-    const existing = conversations.find(c =>
-      c.channel !== "whatsapp" && c.participant_ids.length === 2 &&
-      c.participant_ids.includes(user.id) && c.participant_ids.includes(selectedUserId)
-    );
-    if (existing) { selectConvo(existing.id); setNewSheetOpen(false); setSelectedUserId(""); return; }
-    const { data, error } = await supabase.from("chat_conversations").insert({
-      type: "internal", channel: "internal", participant_ids: [user.id, selectedUserId], created_by: user.id,
-    }).select().single();
-    if (error) { toast.error(error.message); return; }
-    setNewSheetOpen(false); setSelectedUserId("");
-    fetchConversations();
-    if (data) selectConvo(data.id);
-  };
-
-  const getConvoName = (c: Conversation) => {
-    if (c.title) return c.title;
-    const otherId = c.participant_ids.find(id => id !== user?.id);
-    if (otherId && profiles[otherId]) return profiles[otherId].full_name || "User";
-    return "Conversation";
-  };
-
-  const getInitials = (name: string) => name.slice(0, 2).toUpperCase();
-
-  const DeliveryIcon = ({ msg }: { msg: Message }) => {
-    const isMe = msg.sender_id === user?.id;
-    if (!isMe) return null;
-    if (msg.read_at) return <CheckCheck className="h-3 w-3 text-info" />;
-    if (msg.delivered_at) return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
-    return <Check className="h-3 w-3 text-muted-foreground" />;
-  };
-
-  const filteredConvos = conversations.filter(c => {
-    if (channelFilter !== "all" && (c.channel || "internal") !== channelFilter) return false;
-    if (!searchText) return true;
-    return getConvoName(c).toLowerCase().includes(searchText.toLowerCase());
-  });
-
-  const selectedConversation = conversations.find(c => c.id === selectedConvo);
-
-  const isImageFile = (type?: string | null) => type?.startsWith("image/");
-
-  const FilePreview = ({ msg }: { msg: Message }) => {
-    if (!msg.file_url) return null;
-    if (isImageFile(msg.file_type)) {
-      return (
-        <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="block mt-1">
-          <img src={msg.file_url} alt={msg.file_name || "Image"} className="max-w-[220px] rounded-lg border border-border/50" />
-        </a>
-      );
-    }
-    return (
-      <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
-        className="flex items-center gap-2 mt-1 px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-xs">
-        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="truncate max-w-[160px]">{msg.file_name || "File"}</span>
-      </a>
-    );
-  };
-
-  return (
-    <div className="h-[calc(100vh-5rem)] flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Chat</h1>
-          <p className="text-muted-foreground text-sm">Team & customer messaging</p>
-        </div>
-        <Button onClick={() => { fetchAllContacts(); setNewChatType("internal"); setNewSheetOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />New Chat
-        </Button>
-      </div>
-
-      <Card className="flex-1 flex overflow-hidden border-border/50">
+      <Card sx={{ flex: "1 1 0%", display: "flex", overflow: "hidden", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
         {/* Left Panel */}
-        <div className={cn(
-          "w-full md:w-80 border-r border-border/50 flex flex-col bg-card",
-          mobileShowChat ? "hidden md:flex" : "flex"
-        )}>
-          <div className="p-3 border-b border-border/50 space-y-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search conversations..." className="pl-9 h-9" value={searchText} onChange={e => setSearchText(e.target.value)} />
-            </div>
-            <Tabs value={channelFilter} onValueChange={v => setChannelFilter(v as any)}>
-              <TabsList className="w-full h-8">
-                <TabsTrigger value="all" className="text-xs flex-1">All</TabsTrigger>
-                <TabsTrigger value="internal" className="text-xs flex-1"><MessageCircle className="h-3 w-3 mr-1" />Internal</TabsTrigger>
-                <TabsTrigger value="whatsapp" className="text-xs flex-1"><Phone className="h-3 w-3 mr-1" />WhatsApp</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+        <Box sx={mergeSx({ width: "100%", "@media (min-width: 768px)": { width: "20rem" }, borderRightWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", display: "flex", flexDirection: "column", backgroundColor: "hsl(var(--card))" }, mobileShowChat ? { display: "none", "@media (min-width: 768px)": { display: "flex" } } : { display: "flex" })}>
+          <Box sx={{ padding: "0.75rem", borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
+            <SearchToolbar onSearch={query => setSearchText(query)} value={searchText} placeholder="Search conversations..."/>
+            <TabView value={channelFilter} onChange={v => setChannelFilter(v as any)}>
+              <TabBar sx={{ width: "100%", height: "2rem" }}>
+                <Tab value="all" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>All</Box>} sx={{ fontSize: "0.75rem", lineHeight: "1rem", flex: "1 1 0%" }}/>
+                <Tab value="internal" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={MessageCircle} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Internal</Box>} sx={{ fontSize: "0.75rem", lineHeight: "1rem", flex: "1 1 0%" }}/>
+                <Tab value="whatsapp" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Phone} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>WhatsApp</Box>} sx={{ fontSize: "0.75rem", lineHeight: "1rem", flex: "1 1 0%" }}/>
+              </TabBar>
+            </TabView>
+          </Box>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            {filteredConvos.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-sm">
-                <MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p>No conversations yet</p>
-                <p className="text-xs mt-1">Click "New Chat" to start messaging</p>
-              </div>
-            ) : filteredConvos.map(c => (
-              <button
-                key={c.id} onClick={() => selectConvo(c.id)}
-                className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors border-b border-border/30",
-                  selectedConvo === c.id && "bg-primary/5 border-l-2 border-l-primary"
-                )}
-              >
-                <Avatar className="h-10 w-10 shrink-0">
-                  <AvatarFallback className={cn("text-xs font-semibold",
-                    c.channel === "whatsapp" ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
-                  )}>
-                    {c.channel === "whatsapp" ? <Phone className="h-4 w-4" /> : getInitials(getConvoName(c))}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium truncate">{getConvoName(c)}</p>
-                      {c.channel === "whatsapp" && (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 text-success border-success/30">WA</Badge>
-                      )}
-                    </div>
-                    {c.last_message_at && (
-                      <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+          <Box sx={{ flex: "1 1 0%", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent", "&::-webkit-scrollbar": { width: "5px", height: "5px" }, "&::-webkit-scrollbar-track": { background: "transparent" }, "&::-webkit-scrollbar-thumb": { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "99px" } }}>
+            {filteredConvos.length === 0 ? (<Box sx={{ textAlign: "center", paddingTop: "3rem", paddingBottom: "3rem", color: "hsl(var(--muted-foreground))", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                <Box component={MessageCircle} sx={{ height: "2.5rem", width: "2.5rem", marginLeft: "auto", marginRight: "auto", marginBottom: "0.75rem", opacity: "0.3" }}/>
+                <Typography component="p" variant="body1">No conversations yet</Typography>
+                <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", marginTop: "0.25rem" }}>Click "New Chat" to start messaging</Typography>
+              </Box>) : filteredConvos.map(c => (<ButtonBase key={c.id} onClick={() => selectConvo(c.id)} type="button" sx={mergeSx({ width: "100%", display: "flex", alignItems: "center", gap: "0.75rem", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", textAlign: "left", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)" }, transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 30%, transparent)" }, selectedConvo === c.id && { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)", borderLeftWidth: "2px", borderLeftColor: "hsl(var(--primary))" })}>
+                <Avatar sx={mergeSx({ height: "2.5rem", width: "2.5rem", flexShrink: "0" }, mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600" }, c.channel === "whatsapp" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" }))}>
+                    {c.channel === "whatsapp" ? <Box component={Phone} sx={{ height: "1rem", width: "1rem" }}/> : getInitials(getConvoName(c))}
+                  </Avatar>
+                <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                      <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getConvoName(c)}</Typography>
+                      {c.channel === "whatsapp" && (<StatusChip label={"WA"} variant="outlined" sx={{ fontSize: "9px", paddingLeft: "0.25rem", paddingRight: "0.25rem", paddingTop: "0px", paddingBottom: "0px", color: "hsl(var(--success))", borderColor: "color-mix(in srgb, hsl(var(--success)) 30%, transparent)" }}/>)}
+                    </Box>
+                    {c.last_message_at && (<Box component="span" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))", flexShrink: "0", marginLeft: "0.5rem" }}>
                         {format(new Date(c.last_message_at), "HH:mm")}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">{c.last_message || "No messages yet"}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+                      </Box>)}
+                  </Box>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "0.125rem" }}>{c.last_message || "No messages yet"}</Typography>
+                </Box>
+              </ButtonBase>))}
+          </Box>
+        </Box>
 
         {/* Right Panel */}
-        <div className={cn("flex-1 flex flex-col bg-background/50", !mobileShowChat ? "hidden md:flex" : "flex")}>
-          {!selectedConvo ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              <div className="text-center">
-                <MessageCircle className="h-16 w-16 mx-auto mb-4 opacity-20" />
-                <p className="text-lg font-medium">Select a conversation</p>
-                <p className="text-sm mt-1">Choose a chat to start messaging</p>
-              </div>
-            </div>
-          ) : (
-            <>
+        <Box sx={mergeSx({ flex: "1 1 0%", display: "flex", flexDirection: "column", backgroundColor: "color-mix(in srgb, hsl(var(--background)) 50%, transparent)" }, !mobileShowChat ? { display: "none", "@media (min-width: 768px)": { display: "flex" } } : { display: "flex" })}>
+          {!selectedConvo ? (<Box sx={{ flex: "1 1 0%", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--muted-foreground))" }}>
+              <Box sx={{ textAlign: "center" }}>
+                <Box component={MessageCircle} sx={{ height: "4rem", width: "4rem", marginLeft: "auto", marginRight: "auto", marginBottom: "1rem", opacity: "0.2" }}/>
+                <Typography component="p" variant="body1" sx={{ fontSize: "1.125rem", lineHeight: "1.75rem", fontWeight: "500" }}>Select a conversation</Typography>
+                <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", marginTop: "0.25rem" }}>Choose a chat to start messaging</Typography>
+              </Box>
+            </Box>) : (<>
               {/* Chat Header */}
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50 bg-card">
-                <Button variant="ghost" size="sm" className="md:hidden" onClick={() => setMobileShowChat(false)}>←</Button>
-                <Avatar className="h-9 w-9">
-                  <AvatarFallback className={cn("text-xs font-semibold",
-                    selectedConversation?.channel === "whatsapp" ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
-                  )}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", backgroundColor: "hsl(var(--card))" }}>
+                <Button onClick={() => setMobileShowChat(false)} variant="text" size="small" sx={{ "@media (min-width: 768px)": { display: "none" } }}>←</Button>
+                <Avatar sx={mergeSx({ height: "2.25rem", width: "2.25rem" }, mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600" }, selectedConversation?.channel === "whatsapp" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" }))}>
                     {selectedConversation?.channel === "whatsapp"
-                      ? <Phone className="h-4 w-4" />
-                      : getInitials(selectedConversation ? getConvoName(selectedConversation) : "?")}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold">{selectedConversation ? getConvoName(selectedConversation) : "Chat"}</p>
-                    {selectedConversation?.channel === "whatsapp" && (
-                      <Badge variant="outline" className="text-[10px] text-success border-success/30">WhatsApp</Badge>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
+                ? <Box component={Phone} sx={{ height: "1rem", width: "1rem" }}/> : getInitials(selectedConversation ? getConvoName(selectedConversation) : "?")}
+                  </Avatar>
+                <Box sx={{ flex: "1 1 0%" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}>{selectedConversation ? getConvoName(selectedConversation) : "Chat"}</Typography>
+                    {selectedConversation?.channel === "whatsapp" && (<StatusChip label={"WhatsApp"} variant="outlined" sx={{ fontSize: "10px", color: "hsl(var(--success))", borderColor: "color-mix(in srgb, hsl(var(--success)) 30%, transparent)" }}/>)}
+                  </Box>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "11px", color: "hsl(var(--muted-foreground))" }}>
                     {selectedConversation?.channel === "whatsapp" ? selectedConversation.whatsapp_phone : "Internal"}
-                  </p>
-                </div>
-              </div>
+                  </Typography>
+                </Box>
+              </Box>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-3">
+              <Box sx={{ flex: "1 1 0%", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent", "&::-webkit-scrollbar": { width: "5px", height: "5px" }, "&::-webkit-scrollbar-track": { background: "transparent" }, "&::-webkit-scrollbar-thumb": { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "99px" }, padding: "1rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
                 {messages.map(msg => {
-                  const isMe = msg.sender_id === user?.id;
-                  const senderName = msg.sender_id ? (profiles[msg.sender_id]?.full_name || "User") : "System";
-                  const isWaMsg = msg.channel === "whatsapp";
-                  return (
-                    <div key={msg.id} className={cn("flex", isMe ? "justify-end" : "justify-start")}>
-                      <div className={cn("flex gap-2 max-w-[75%]", isMe && "flex-row-reverse")}>
-                        {!isMe && (
-                          <Avatar className="h-7 w-7 mt-1 shrink-0">
-                            <AvatarFallback className={cn("text-[10px]", isWaMsg ? "bg-success/10 text-success" : "bg-muted")}>
-                              {isWaMsg ? <Phone className="h-3 w-3" /> : getInitials(senderName)}
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
-                        <div>
-                          {!isMe && <p className="text-[10px] text-muted-foreground mb-0.5 ml-1">{senderName}</p>}
-                          <div className={cn("rounded-2xl px-3.5 py-2 text-sm",
-                            isMe ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"
-                          )}>
+                const isMe = msg.sender_id === user?.id;
+                const senderName = msg.sender_id ? (profiles[msg.sender_id]?.full_name || "User") : "System";
+                const isWaMsg = msg.channel === "whatsapp";
+                return (<Box key={msg.id} sx={mergeSx({ display: "flex" }, isMe ? { justifyContent: "flex-end" } : { justifyContent: "flex-start" })}>
+                      <Box sx={mergeSx({ display: "flex", gap: "0.5rem", maxWidth: "75%" }, isMe && { flexDirection: "row-reverse" })}>
+                        {!isMe && (<Avatar sx={mergeSx({ height: "1.75rem", width: "1.75rem", marginTop: "0.25rem", flexShrink: "0" }, mergeSx({ fontSize: "10px" }, isWaMsg ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--muted))" }))}>
+                              {isWaMsg ? <Box component={Phone} sx={{ height: "0.75rem", width: "0.75rem" }}/> : getInitials(senderName)}
+                            </Avatar>)}
+                        <Box>
+                          {!isMe && <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))", marginBottom: "0.125rem", marginLeft: "0.25rem" }}>{senderName}</Typography>}
+                          <Box sx={mergeSx({ borderRadius: "1rem", paddingLeft: "0.875rem", paddingRight: "0.875rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", fontSize: "0.875rem", lineHeight: "1.25rem" }, isMe ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))", borderBottomRightRadius: "calc(var(--radius) - 2px)" } : { backgroundColor: "hsl(var(--muted))", borderBottomLeftRadius: "calc(var(--radius) - 2px)" })}>
                             {msg.content && !msg.content.startsWith("📎") && msg.content}
                             {msg.content?.startsWith("📎") && !msg.file_url && msg.content}
-                            <FilePreview msg={msg} />
-                          </div>
-                          <div className={cn("flex items-center gap-1 mt-0.5", isMe ? "justify-end mr-1" : "ml-1")}>
-                            <span className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), "HH:mm")}</span>
-                            <DeliveryIcon msg={msg} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
+                            <FilePreview msg={msg}/>
+                          </Box>
+                          <Box sx={mergeSx({ display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.125rem" }, isMe ? { justifyContent: "flex-end", marginRight: "0.25rem" } : { marginLeft: "0.25rem" })}>
+                            <Box component="span" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))" }}>{format(new Date(msg.created_at), "HH:mm")}</Box>
+                            <Box msg={msg} component={DeliveryIcon}/>
+                          </Box>
+                        </Box>
+                      </Box>
+                    </Box>);
+            })}
+                <Box ref={messagesEndRef}/>
+              </Box>
 
               {/* Pending file preview */}
-              {pendingFile && (
-                <div className="px-4 py-2 border-t border-border/50 bg-muted/30 flex items-center gap-3">
-                  {pendingFile.preview ? (
-                    <img src={pendingFile.preview} alt="Preview" className="h-12 w-12 rounded-lg object-cover border border-border" />
-                  ) : (
-                    <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate">{pendingFile.file.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{(pendingFile.file.size / 1024).toFixed(1)} KB</p>
-                  </div>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPendingFile(null)}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
+              {pendingFile && (<Box sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", borderTopWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  {pendingFile.preview ? (<Box src={pendingFile.preview} alt="Preview" component="img" sx={{ height: "3rem", width: "3rem", borderRadius: "var(--radius)", objectFit: "cover", borderWidth: "1px", borderColor: "hsl(var(--border))" }}/>) : (<Box sx={{ height: "3rem", width: "3rem", borderRadius: "var(--radius)", backgroundColor: "hsl(var(--muted))", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Box component={FileText} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--muted-foreground))" }}/>
+                    </Box>)}
+                  <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.file.name}</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))" }}>{(pendingFile.file.size / 1024).toFixed(1)} KB</Typography>
+                  </Box>
+                  <IconButton onClick={() => setPendingFile(null)} aria-label={"X"} sx={{ height: "1.75rem", width: "1.75rem" }}>
+                    <Box component={X} sx={{ height: "0.875rem", width: "0.875rem" }}/>
+                  </IconButton>
+                </Box>)}
 
               {/* Input Bar */}
-              <div className="p-3 border-t border-border/50 bg-card">
-                <div className="flex gap-2 items-center">
-                  <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv,.txt" onChange={handleFileSelect} />
-                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
-                    onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                    <Paperclip className="h-4 w-4" />
+              <Box sx={{ padding: "0.75rem", borderTopWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", backgroundColor: "hsl(var(--card))" }}>
+                <Box sx={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <Box ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xlsx,.csv,.txt" onChange={handleFileSelect} component="input" sx={{ display: "none" }}/>
+                  <IconButton onClick={() => fileInputRef.current?.click()} disabled={uploading} aria-label={"Paperclip"} sx={{ height: "2.25rem", width: "2.25rem", flexShrink: "0", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
+                    <Box component={Paperclip} sx={{ height: "1rem", width: "1rem" }}/>
+                  </IconButton>
+                  <TextField placeholder={selectedConversation?.channel === "whatsapp" ? "Type a WhatsApp message..." : "Type a message..."} value={messageText} onChange={e => setMessageText(e.target.value)} onKeyDown={handleKeyPress} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": selectedConversation?.channel === "whatsapp" ? "Type a WhatsApp message..." : "Type a message..." } }} sx={{ flex: "1 1 0%" }}/>
+                  <Button onClick={sendMessage} disabled={(!messageText.trim() && !pendingFile) || sendingWa || uploading} variant="contained">
+                    <Box component={Send} sx={{ height: "1rem", width: "1rem" }}/>
                   </Button>
-                  <Input
-                    placeholder={selectedConversation?.channel === "whatsapp" ? "Type a WhatsApp message..." : "Type a message..."}
-                    value={messageText} onChange={e => setMessageText(e.target.value)}
-                    onKeyDown={handleKeyPress} className="flex-1"
-                  />
-                  <Button onClick={sendMessage} disabled={(!messageText.trim() && !pendingFile) || sendingWa || uploading}>
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+                </Box>
+              </Box>
+            </>)}
+        </Box>
       </Card>
 
       {/* New Conversation Sheet */}
-      <Sheet open={newSheetOpen} onOpenChange={setNewSheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>New Conversation</SheetTitle>
-            <SheetDescription>Start an internal or WhatsApp chat</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <Tabs value={newChatType} onValueChange={v => setNewChatType(v as any)}>
-              <TabsList className="w-full">
-                <TabsTrigger value="internal" className="flex-1"><MessageCircle className="h-3.5 w-3.5 mr-1.5" />Internal</TabsTrigger>
-                <TabsTrigger value="whatsapp" className="flex-1"><Phone className="h-3.5 w-3.5 mr-1.5" />WhatsApp</TabsTrigger>
-              </TabsList>
-            </Tabs>
+      <FormDialog open={newSheetOpen} onClose={() => setNewSheetOpen(false)} title={"New Conversation"} description={"Start an internal or WhatsApp chat"}>
 
-            {newChatType === "internal" ? (
-              <>
-                {allContacts.length === 0 ? (
-                  <div className="text-center py-8 space-y-3">
-                    <Users className="h-12 w-12 mx-auto text-muted-foreground/30" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">No contacts available</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Add employees with login accounts in<br />
-                        <span className="font-medium">Settings → Employees</span> to enable internal chat
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                      <SelectTrigger><SelectValue placeholder="Select team member" /></SelectTrigger>
-                      <SelectContent>
-                        {allContacts.map(p => (
-                          <SelectItem key={p.user_id} value={p.user_id}>
-                            <div className="flex items-center gap-2">
-                              <span>{p.full_name || "User"}</span>
-                              <Badge variant="outline" className="text-[10px] px-1 py-0 capitalize">{p.role || "staff"}</Badge>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button className="w-full" onClick={createConversation} disabled={!selectedUserId}>
-                      <MessageCircle className="h-4 w-4 mr-2" />Start Chat
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+            <TabView value={newChatType} onChange={v => setNewChatType(v as any)}>
+              <TabBar sx={{ width: "100%" }}>
+                <Tab value="internal" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={MessageCircle} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>Internal</Box>} sx={{ flex: "1 1 0%" }}/>
+                <Tab value="whatsapp" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Phone} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>WhatsApp</Box>} sx={{ flex: "1 1 0%" }}/>
+              </TabBar>
+            </TabView>
+
+            {newChatType === "internal" ? (<>
+                {allContacts.length === 0 ? (<Box sx={{ textAlign: "center", paddingTop: "2rem", paddingBottom: "2rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                    <Box component={Users} sx={{ height: "3rem", width: "3rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 30%, transparent)" }}/>
+                    <Box>
+                      <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", color: "hsl(var(--foreground))" }}>No contacts available</Typography>
+                      <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>
+                        Add employees with login accounts in<Box component="br"/>
+                        <Box component="span" sx={{ fontWeight: "500" }}>Settings → Employees</Box> to enable internal chat
+                      </Typography>
+                    </Box>
+                  </Box>) : (<>
+                    <TextField value={selectedUserId} select size="small" fullWidth onChange={event => setSelectedUserId(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select team member"}</MenuItem>
+                        {allContacts.map(p => (<MenuItem key={p.user_id} value={p.user_id}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <Box component="span">{p.full_name || "User"}</Box>
+                              <StatusChip label={p.role || "staff"} variant="outlined" sx={{ fontSize: "10px", paddingLeft: "0.25rem", paddingRight: "0.25rem", paddingTop: "0px", paddingBottom: "0px", textTransform: "capitalize" }}/>
+                            </Box>
+                          </MenuItem>))}
+                      </TextField>
+                    <Button onClick={createConversation} disabled={!selectedUserId} variant="contained" sx={{ width: "100%" }}>
+                      <Box component={MessageCircle} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Start Chat
                     </Button>
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                {waContacts.length > 0 && (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Quick Select Contact</label>
-                    <Select onValueChange={(v) => {
-                      const contact = waContacts.find(c => c.phone === v);
-                      if (contact) { setWaPhone(contact.phone); setWaName(contact.name); }
-                    }}>
-                      <SelectTrigger><SelectValue placeholder="Select from contacts" /></SelectTrigger>
-                      <SelectContent>
-                        {waContacts.map((c, i) => (
-                          <SelectItem key={`${c.phone}-${i}`} value={c.phone}>
-                            <div className="flex items-center gap-2">
-                              <span>{c.name}</span>
-                              <span className="text-xs text-muted-foreground">{c.phone}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Contact Name</label>
-                  <Input placeholder="Customer name" value={waName} onChange={e => setWaName(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">WhatsApp Phone *</label>
-                  <Input placeholder="+91 98765 43210" value={waPhone} onChange={e => setWaPhone(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Include country code (e.g. 919876543210)</p>
-                </div>
-                <Button className="w-full" onClick={createConversation} disabled={!waPhone.trim()}>
-                  <Phone className="h-4 w-4 mr-2" />Start WhatsApp Chat
+                  </>)}
+              </>) : (<>
+                {waContacts.length > 0 && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                    <TextField label={"Quick Select Contact"} select size="small" fullWidth value="" onChange={event => ((v) => {
+                const contact = waContacts.find(c => c.phone === v);
+                if (contact) {
+                    setWaPhone(contact.phone);
+                    setWaName(contact.name);
+                }
+            })(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select from contacts"}</MenuItem>
+                        {waContacts.map((c, i) => (<MenuItem key={`${c.phone}-${i}`} value={c.phone}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <Box component="span">{c.name}</Box>
+                              <Box component="span" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{c.phone}</Box>
+                            </Box>
+                          </MenuItem>))}
+                      </TextField>
+                  </Box>)}
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField placeholder="Customer name" value={waName} onChange={e => setWaName(e.target.value)} label={"Contact Name"} size="small" fullWidth/>
+                </Box>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField placeholder="+91 98765 43210" value={waPhone} onChange={e => setWaPhone(e.target.value)} label={"WhatsApp Phone *"} size="small" fullWidth/>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Include country code (e.g. 919876543210)</Typography>
+                </Box>
+                <Button onClick={createConversation} disabled={!waPhone.trim()} variant="contained" sx={{ width: "100%" }}>
+                  <Box component={Phone} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Start WhatsApp Chat
                 </Button>
-              </>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
+              </>)}
+          </Box>
+        </FormDialog>
+    </Box></AnimatedPage>;
 }

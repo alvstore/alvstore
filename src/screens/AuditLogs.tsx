@@ -1,139 +1,102 @@
+"use client";
+
+import { Box, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField } from "@mui/material";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Search, Shield } from "lucide-react";
-import { toast } from "sonner";
-
 interface AuditEntry {
-  id: string;
-  action: string;
-  module: string | null;
-  entity_type: string | null;
-  entity_id: string | null;
-  details: string | null;
-  staff_name: string | null;
-  user_role: string | null;
-  created_at: string;
+    id: string;
+    action: string;
+    module: string | null;
+    entity_type: string | null;
+    entity_id: string | null;
+    details: string | null;
+    staff_name: string | null;
+    user_role: string | null;
+    created_at: string;
 }
-
 export default function AuditLogs() {
-  const [logs, setLogs] = useState<AuditEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [moduleFilter, setModuleFilter] = useState("all");
+    const [logs, setLogs] = useState<AuditEntry[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [moduleFilter, setModuleFilter] = useState("all");
+    const fetchLogs = async () => {
+        setLoading(true);
+        // Combine from both audit tables
+        const [finRes, sysRes] = await Promise.all([
+            supabase.from("finance_audit_log").select("id, action, entity_type, entity_id, details, staff_name, user_role, created_at").order("created_at", { ascending: false }).limit(200),
+            supabase.from("system_audit_log").select("id, action, module, entity_type, entity_id, details, staff_name, user_role, created_at").order("created_at", { ascending: false }).limit(200),
+        ]);
+        const finLogs: AuditEntry[] = (finRes.data || []).map(l => ({ ...l, module: "finance" }));
+        const sysLogs: AuditEntry[] = (sysRes.data || []).map(l => ({ ...l, module: l.module || "system" }));
+        let combined = [...finLogs, ...sysLogs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        if (moduleFilter !== "all")
+            combined = combined.filter(l => l.module === moduleFilter);
+        if (search) {
+            const q = search.toLowerCase();
+            combined = combined.filter(l => l.action.toLowerCase().includes(q) ||
+                l.details?.toLowerCase().includes(q) ||
+                l.staff_name?.toLowerCase().includes(q) ||
+                l.user_role?.toLowerCase().includes(q) ||
+                l.entity_type?.toLowerCase().includes(q) ||
+                l.entity_id?.toLowerCase().includes(q) ||
+                l.module?.toLowerCase().includes(q) ||
+                new Date(l.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }).toLowerCase().includes(q));
+        }
+        setLogs(combined);
+        setLoading(false);
+    };
+    useEffect(() => { fetchLogs(); }, [search, moduleFilter]);
+    const moduleColors = {
+        finance: { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" },
+        crm: { backgroundColor: "color-mix(in srgb, hsl(var(--info)) 10%, transparent)", color: "hsl(var(--info))" },
+        sales: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" },
+        repair: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" },
+        system: { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" },
+        hrm: { backgroundColor: "color-mix(in srgb, hsl(var(--accent)) 10%, transparent)", color: "hsl(var(--accent-foreground))" },
+    };
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={"Audit Logs"} subtitle={"Immutable record of all system actions"}/>
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    // Combine from both audit tables
-    const [finRes, sysRes] = await Promise.all([
-      supabase.from("finance_audit_log").select("id, action, entity_type, entity_id, details, staff_name, user_role, created_at").order("created_at", { ascending: false }).limit(200),
-      supabase.from("system_audit_log").select("id, action, module, entity_type, entity_id, details, staff_name, user_role, created_at").order("created_at", { ascending: false }).limit(200),
-    ]);
+      <Box sx={{ display: "flex", flexDirection: "column", "@media (min-width: 640px)": { flexDirection: "row" }, gap: "0.75rem" }}>
+        <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search actions..." sx={{ flex: "1 1 0%", maxWidth: "24rem" }}/>
+        <TextField value={moduleFilter} select size="small" fullWidth onChange={event => setModuleFilter(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "160px" }}>
+            <MenuItem value="all">All Modules</MenuItem>
+            <MenuItem value="finance">Finance</MenuItem>
+            <MenuItem value="crm">CRM</MenuItem>
+            <MenuItem value="sales">Sales</MenuItem>
+            <MenuItem value="repair">Repair</MenuItem>
+            <MenuItem value="hrm">HRM</MenuItem>
+            <MenuItem value="system">System</MenuItem>
+          </TextField>
+      </Box>
 
-    const finLogs: AuditEntry[] = (finRes.data || []).map(l => ({ ...l, module: "finance" }));
-    const sysLogs: AuditEntry[] = (sysRes.data || []).map(l => ({ ...l, module: l.module || "system" }));
-
-    let combined = [...finLogs, ...sysLogs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    if (moduleFilter !== "all") combined = combined.filter(l => l.module === moduleFilter);
-    if (search) {
-      const q = search.toLowerCase();
-      combined = combined.filter(l =>
-        l.action.toLowerCase().includes(q) ||
-        l.details?.toLowerCase().includes(q) ||
-        l.staff_name?.toLowerCase().includes(q) ||
-        l.user_role?.toLowerCase().includes(q) ||
-        l.entity_type?.toLowerCase().includes(q) ||
-        l.entity_id?.toLowerCase().includes(q) ||
-        l.module?.toLowerCase().includes(q) ||
-        new Date(l.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }).toLowerCase().includes(q)
-      );
-    }
-
-    setLogs(combined);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchLogs(); }, [search, moduleFilter]);
-
-  const moduleColors: Record<string, string> = {
-    finance: "bg-primary/10 text-primary",
-    crm: "bg-info/10 text-info",
-    sales: "bg-success/10 text-success",
-    repair: "bg-warning/10 text-warning",
-    system: "bg-muted text-muted-foreground",
-    hrm: "bg-accent/10 text-accent-foreground",
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Audit Logs</h1>
-        <p className="text-muted-foreground">Immutable record of all system actions</p>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search actions..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <Select value={moduleFilter} onValueChange={setModuleFilter}>
-          <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Modules</SelectItem>
-            <SelectItem value="finance">Finance</SelectItem>
-            <SelectItem value="crm">CRM</SelectItem>
-            <SelectItem value="sales">Sales</SelectItem>
-            <SelectItem value="repair">Repair</SelectItem>
-            <SelectItem value="hrm">HRM</SelectItem>
-            <SelectItem value="system">System</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
+      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
+        <DataTable columnsCount={5} loading={loading} empty={logs.length === 0} emptyMessage={<>
+                <Box component={Shield} sx={{ height: "2.5rem", width: "2.5rem", marginLeft: "auto", marginRight: "auto", marginBottom: "0.5rem", opacity: "0.3" }}/>No audit logs found
+              </>}>
+          <TableHead>
             <TableRow>
-              <TableHead>Timestamp</TableHead>
-              <TableHead>Module</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead className="hidden sm:table-cell">Staff</TableHead>
-              <TableHead className="hidden md:table-cell">Details</TableHead>
+              <TableCell>Timestamp</TableCell>
+              <TableCell>Module</TableCell>
+              <TableCell>Action</TableCell>
+              <TableCell sx={{ display: "none", "@media (min-width: 640px)": { display: "table-cell" } }}>Staff</TableCell>
+              <TableCell sx={{ display: "none", "@media (min-width: 768px)": { display: "table-cell" } }}>Details</TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
-            ) : logs.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                <Shield className="h-10 w-10 mx-auto mb-2 opacity-30" />No audit logs found
-              </TableCell></TableRow>
-            ) : logs.map(l => (
-              <TableRow key={l.id}>
-                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+          </TableHead>
+          <TableBody>{logs.map(l => (<TableRow key={l.id}>
+                <TableCell sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>
                   {new Date(l.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
                 </TableCell>
                 <TableCell>
-                  <Badge className={moduleColors[l.module || "system"] || "bg-muted text-muted-foreground"}>
-                    {l.module || "system"}
-                  </Badge>
+                  <StatusChip label={l.module || "system"} sx={moduleColors[l.module || "system"] || { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}/>
                 </TableCell>
-                <TableCell className="font-medium">{l.action}</TableCell>
-                <TableCell className="hidden sm:table-cell text-sm">{l.staff_name || "—"}</TableCell>
-                <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-[300px] truncate">{l.details || "—"}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
+                <TableCell sx={{ fontWeight: "500" }}>{l.action}</TableCell>
+                <TableCell sx={{ display: "none", "@media (min-width: 640px)": { display: "table-cell" }, fontSize: "0.875rem", lineHeight: "1.25rem" }}>{l.staff_name || "—"}</TableCell>
+                <TableCell sx={{ display: "none", "@media (min-width: 768px)": { display: "table-cell" }, fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.details || "—"}</TableCell>
+              </TableRow>))}</TableBody>
+        </DataTable>
+      </Box>
+    </Box></AnimatedPage>;
 }

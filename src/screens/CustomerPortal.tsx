@@ -1,292 +1,220 @@
+"use client";
+
+import { Alert, Box, Button, Card, CardContent, Tab, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { AnimatedPage, DataTable, PageHeader, StatCard, StatusChip, TabBar, TabPanel, TabView, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  FileText, Wrench, CreditCard, Check, X,
-  AlertCircle, CheckCircle2, Loader2, Eye,
-} from "lucide-react";
-import { toast } from "sonner";
-
+import { FileText, Wrench, CreditCard, Check, X, AlertCircle, CheckCircle2, Loader2, Eye, } from "lucide-react";
 interface CustomerRecord {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
 }
-
 export default function CustomerPortal() {
-  const { user } = useAuth();
-  const [customer, setCustomer] = useState<CustomerRecord | null>(null);
-  const [quotations, setQuotations] = useState<any[]>([]);
-  const [jobSheets, setJobSheets] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      const { data: cust } = await supabase
-        .from("customers")
-        .select("id, name, email, phone")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!cust) { setLoading(false); return; }
-      setCustomer(cust);
-
-      const [qRes, jRes, pRes] = await Promise.all([
-        supabase.from("quotations").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
-        supabase.from("job_sheets").select("id, job_number, device_brand, device_model, status, priority, estimated_cost, final_cost, total_amount, payment_status, problem_description, created_at, public_token").eq("customer_id", cust.id).order("created_at", { ascending: false }),
-        supabase.from("payments").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
-      ]);
-
-      setQuotations(qRes.data || []);
-      setJobSheets((jRes.data as any) || []);
-      setPayments(pRes.data || []);
-      setLoading(false);
+    const { user } = useAuth();
+    const [customer, setCustomer] = useState<CustomerRecord | null>(null);
+    const [quotations, setQuotations] = useState<any[]>([]);
+    const [jobSheets, setJobSheets] = useState<any[]>([]);
+    const [payments, setPayments] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
+    const [retry, setRetry] = useState(0);
+    const userId = user?.id;
+    useEffect(() => {
+        if (!userId) return;
+        let active = true;
+        const load = async () => {
+            setLoading(true); setLoadError("");
+            try {
+                const { data: cust, error } = await supabase.from("customers")
+                    .select("id, name, email, phone").eq("user_id", userId).maybeSingle();
+                if (error) throw new Error(error.message);
+                if (!active) return;
+                setCustomer(cust);
+                // An unlinked staff/admin account is a valid empty state, not a 406.
+                if (!cust) return;
+                const results = await Promise.all([
+                    supabase.from("quotations").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
+                    supabase.from("job_sheets").select("id, job_number, device_brand, device_model, status, priority, estimated_cost, final_cost, total_amount, payment_status, problem_description, created_at, public_token").eq("customer_id", cust.id).order("created_at", { ascending: false }),
+                    supabase.from("payments").select("*").eq("customer_id", cust.id).order("created_at", { ascending: false }),
+                ]);
+                for (const result of results) if (result.error) throw new Error(result.error.message);
+                if (!active) return;
+                setQuotations(results[0].data ?? []);
+                setJobSheets(results[1].data ?? []);
+                setPayments(results[2].data ?? []);
+            } catch (error) {
+                if (active) setLoadError(error instanceof Error ? error.message : "Your records could not be loaded.");
+            } finally { if (active) setLoading(false); }
+        };
+        void load();
+        return () => { active = false; };
+    }, [userId, retry]);
+    const respondQuotation = async (id: string, status: "accepted" | "rejected") => {
+        const { error } = await supabase.from("quotations").update({ status }).eq("id", id);
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success(`Quotation ${status}`);
+            setQuotations(prev => prev.map(q => q.id === id ? { ...q, status } : q));
+        }
     };
-    load();
-  }, [user]);
-
-  const respondQuotation = async (id: string, status: "accepted" | "rejected") => {
-    const { error } = await supabase.from("quotations").update({ status }).eq("id", id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success(`Quotation ${status}`);
-      setQuotations(prev => prev.map(q => q.id === id ? { ...q, status } : q));
+    const statusColor = (s: string) => {
+        const map = {
+            draft: { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" },
+            sent: { backgroundColor: "color-mix(in srgb, hsl(var(--info)) 10%, transparent)", color: "hsl(var(--info))" },
+            accepted: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" },
+            rejected: { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))" },
+            pending: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" },
+            created: { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" },
+            pending_approval: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" },
+            approved: { backgroundColor: "color-mix(in srgb, hsl(var(--info)) 10%, transparent)", color: "hsl(var(--info))" },
+            assigned: { backgroundColor: "color-mix(in srgb, hsl(var(--info)) 10%, transparent)", color: "hsl(var(--info))" },
+            in_progress: { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" },
+            waiting_parts: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" },
+            repair_completed: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" },
+            quality_check: { backgroundColor: "color-mix(in srgb, hsl(var(--accent)) 10%, transparent)", color: "hsl(var(--accent-foreground))" },
+            invoice_generated: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" },
+            completed: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" },
+            delivered: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" },
+        };
+        return map[s] || { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" };
+    };
+    if (loading) {
+        return <AnimatedPage><Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", paddingTop: "5rem", paddingBottom: "5rem" }}>
+        <Box component={Loader2} sx={{ height: "2rem", width: "2rem", animation: "spin 1s linear infinite", color: "hsl(var(--primary))" }}/>
+      </Box></AnimatedPage>;
     }
-  };
-
-  const statusColor = (s: string) => {
-    const map: Record<string, string> = {
-      draft: "bg-muted text-muted-foreground",
-      sent: "bg-info/10 text-info",
-      accepted: "bg-success/10 text-success",
-      rejected: "bg-destructive/10 text-destructive",
-      pending: "bg-warning/10 text-warning",
-      created: "bg-muted text-muted-foreground",
-      pending_approval: "bg-warning/10 text-warning",
-      approved: "bg-info/10 text-info",
-      assigned: "bg-info/10 text-info",
-      in_progress: "bg-primary/10 text-primary",
-      waiting_parts: "bg-warning/10 text-warning",
-      repair_completed: "bg-success/10 text-success",
-      quality_check: "bg-accent/10 text-accent-foreground",
-      invoice_generated: "bg-success/10 text-success",
-      completed: "bg-success/10 text-success",
-      delivered: "bg-success/10 text-success",
-    };
-    return map[s] || "bg-muted text-muted-foreground";
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!customer) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <div>
-          <h2 className="text-lg font-semibold">No Customer Profile Linked</h2>
-          <p className="text-muted-foreground text-sm mt-1">
+    if (loadError) {
+        return <AnimatedPage><Alert severity="error" action={<Button color="inherit" size="small" onClick={() => setRetry(value => value + 1)}>Retry</Button>}>{loadError}</Alert></AnimatedPage>;
+    }
+    if (!customer) {
+        return <AnimatedPage><Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: "5rem", paddingBottom: "5rem", textAlign: "center", gap: "1rem" }}>
+        <Box component={AlertCircle} sx={{ height: "3rem", width: "3rem", color: "hsl(var(--muted-foreground))" }}/>
+        <Box>
+          <Typography component="h2" variant="h2" sx={{ fontSize: "1.125rem", lineHeight: "1.75rem", fontWeight: "600" }}>No Customer Profile Linked</Typography>
+          <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", fontSize: "0.875rem", lineHeight: "1.25rem", marginTop: "0.25rem" }}>
             Your account hasn't been linked to a customer profile yet. Please contact the admin.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Welcome, {customer.name}</h1>
-        <p className="text-muted-foreground">View your quotations, repairs, and payments</p>
-      </div>
+          </Typography>
+        </Box>
+      </Box></AnimatedPage>;
+    }
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={<>Welcome, {customer.name}</>} subtitle={"View your quotations, repairs, and payments"}/>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <FileText className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{quotations.length}</p>
-              <p className="text-xs text-muted-foreground">Quotations</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="p-2 rounded-lg bg-warning/10">
-              <Wrench className="h-5 w-5 text-warning" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{jobSheets.filter(r => !["delivered", "rejected"].includes(r.status)).length}</p>
-              <p className="text-xs text-muted-foreground">Active Repairs</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="p-2 rounded-lg bg-success/10">
-              <CreditCard className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">₹{payments.filter(p => p.status === "completed").reduce((s: number, p: any) => s + p.amount, 0).toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Total Paid</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
+        <StatCard label={"Quotations"} value={quotations.length} icon={<Box component={FileText} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--primary))" }}/>} accent="primary"/>
+        <StatCard label={"Active Repairs"} value={jobSheets.filter(r => !["delivered", "rejected"].includes(r.status)).length} icon={<Box component={Wrench} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--warning))" }}/>} accent="warning"/>
+        <StatCard label={"Total Paid"} value={payments.filter(p => p.status === "completed").reduce((s: number, p: any) => s + p.amount, 0)} formatter={amount => "\u20B9" + amount.toLocaleString()} icon={<Box component={CreditCard} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--success))" }}/>} accent="success"/>
+      </Box>
 
-      <Tabs defaultValue="quotations" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="quotations"><FileText className="h-4 w-4 mr-1.5" />Quotations</TabsTrigger>
-          <TabsTrigger value="repairs"><Wrench className="h-4 w-4 mr-1.5" />Repairs</TabsTrigger>
-          <TabsTrigger value="payments"><CreditCard className="h-4 w-4 mr-1.5" />Payments</TabsTrigger>
-        </TabsList>
+      <TabView defaultValue="quotations" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+        <TabBar>
+          <Tab value="quotations" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={FileText} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>Quotations</Box>}/>
+          <Tab value="repairs" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Wrench} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>Repairs</Box>}/>
+          <Tab value="payments" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={CreditCard} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>Payments</Box>}/>
+        </TabBar>
 
-        <TabsContent value="quotations">
+        <TabPanel value="quotations">
           <Card>
-            <CardHeader><CardTitle>Your Quotations</CardTitle></CardHeader>
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Your Quotations</Typography></Box>
             <CardContent>
-              {quotations.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No quotations found.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
+              {quotations.length === 0 ? (<Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", paddingTop: "1.5rem", paddingBottom: "1.5rem", textAlign: "center" }}>No quotations found.</Typography>) : (<DataTable columnsCount={5}>
+                  <TableHead>
                     <TableRow>
-                      <TableHead>Number</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableCell>Number</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Total</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Actions</TableCell>
                     </TableRow>
-                  </TableHeader>
+                  </TableHead>
                   <TableBody>
-                    {quotations.map(q => (
-                      <TableRow key={q.id}>
-                        <TableCell className="font-medium">{q.quotation_number}</TableCell>
+                    {quotations.map(q => (<TableRow key={q.id}>
+                        <TableCell sx={{ fontWeight: "500" }}>{q.quotation_number}</TableCell>
                         <TableCell>{new Date(q.created_at).toLocaleDateString("en-IN")}</TableCell>
                         <TableCell>₹{q.total?.toLocaleString()}</TableCell>
-                        <TableCell><Badge className={statusColor(q.status)}>{q.status}</Badge></TableCell>
+                        <TableCell><StatusChip label={q.status} sx={statusColor(q.status)}/></TableCell>
                         <TableCell>
-                          {(q.status === "sent" || q.status === "draft") && (
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" onClick={() => respondQuotation(q.id, "accepted")}>
-                                <Check className="h-3 w-3 mr-1" />Accept
+                          {(q.status === "sent" || q.status === "draft") && (<Box sx={{ display: "flex", gap: "0.5rem" }}>
+                              <Button onClick={() => respondQuotation(q.id, "accepted")} variant="outlined" size="small">
+                                <Box component={Check} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Accept
                               </Button>
-                              <Button size="sm" variant="ghost" onClick={() => respondQuotation(q.id, "rejected")}>
-                                <X className="h-3 w-3 mr-1" />Reject
+                              <Button onClick={() => respondQuotation(q.id, "rejected")} variant="text" size="small">
+                                <Box component={X} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Reject
                               </Button>
-                            </div>
-                          )}
-                          {q.status === "accepted" && <Badge className="bg-success/10 text-success"><CheckCircle2 className="h-3 w-3 mr-1" />Accepted</Badge>}
+                            </Box>)}
+                          {q.status === "accepted" && <StatusChip label={<><Box component={CheckCircle2} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Accepted</>} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }}/>}
                         </TableCell>
-                      </TableRow>
-                    ))}
+                      </TableRow>))}
                   </TableBody>
-                </Table>
-              )}
+                </DataTable>)}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabPanel>
 
-        <TabsContent value="repairs">
+        <TabPanel value="repairs">
           <Card>
-            <CardHeader><CardTitle>Your Repairs</CardTitle></CardHeader>
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Your Repairs</Typography></Box>
             <CardContent>
-              {jobSheets.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No repairs found.</p>
-              ) : (
-                <div className="space-y-4">
-                  {jobSheets.map(r => (
-                    <div key={r.id} className="flex items-start gap-4 p-4 rounded-lg border bg-card">
-                      <div className="p-2 rounded-lg bg-muted">
-                        <Wrench className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium">{r.job_number}</p>
-                          <Badge className={statusColor(r.status)}>{r.status.replace(/_/g, " ")}</Badge>
-                          <Badge variant="outline" className="capitalize">{r.priority}</Badge>
-                          {r.payment_status && (
-                            <Badge className={statusColor(r.payment_status === "paid" ? "completed" : r.payment_status === "partial" ? "pending" : "rejected")}>
-                              {r.payment_status}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1">{r.device_brand} {r.device_model || ""}</p>
-                        <p className="text-sm mt-1">{r.problem_description}</p>
-                        <div className="flex gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-                          <span>Created: {new Date(r.created_at).toLocaleDateString("en-IN")}</span>
-                          {r.total_amount ? (
-                            <span className="font-medium text-foreground">Total: ₹{Number(r.total_amount).toLocaleString()}</span>
-                          ) : r.estimated_cost ? (
-                            <span>Est. Cost: ₹{r.estimated_cost}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      {r.public_token && (
-                        <Button variant="outline" size="sm" onClick={() => window.open(`/job/public/${r.public_token}`, "_blank")}>
-                          <Eye className="h-3.5 w-3.5 mr-1" />View
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {jobSheets.length === 0 ? (<Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", paddingTop: "1.5rem", paddingBottom: "1.5rem", textAlign: "center" }}>No repairs found.</Typography>) : (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+                  {jobSheets.map(r => (<Box key={r.id} sx={{ display: "flex", alignItems: "flex-start", gap: "1rem", padding: "1rem", borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
+                      <Box sx={{ padding: "0.5rem", borderRadius: "var(--radius)", backgroundColor: "hsl(var(--muted))" }}>
+                        <Box component={Wrench} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--muted-foreground))" }}/>
+                      </Box>
+                      <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <Typography component="p" variant="body1" sx={{ fontWeight: "500" }}>{r.job_number}</Typography>
+                          <StatusChip label={r.status.replace(/_/g, " ")} sx={statusColor(r.status)}/>
+                          <StatusChip label={r.priority} variant="outlined" sx={{ textTransform: "capitalize" }}/>
+                          {r.payment_status && (<StatusChip label={r.payment_status} sx={statusColor(r.payment_status === "paid" ? "completed" : r.payment_status === "partial" ? "pending" : "rejected")}/>)}
+                        </Box>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>{r.device_brand} {r.device_model || ""}</Typography>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", marginTop: "0.25rem" }}>{r.problem_description}</Typography>
+                        <Box sx={{ display: "flex", gap: "1rem", marginTop: "0.5rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", flexWrap: "wrap" }}>
+                          <Box component="span">Created: {new Date(r.created_at).toLocaleDateString("en-IN")}</Box>
+                          {r.total_amount ? (<Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>Total: ₹{Number(r.total_amount).toLocaleString()}</Box>) : r.estimated_cost ? (<Box component="span">Est. Cost: ₹{r.estimated_cost}</Box>) : null}
+                        </Box>
+                      </Box>
+                      {r.public_token && (<Button onClick={() => window.open(`/job/public/${r.public_token}`, "_blank")} variant="outlined" size="small">
+                          <Box component={Eye} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.25rem" }}/>View
+                        </Button>)}
+                    </Box>))}
+                </Box>)}
             </CardContent>
           </Card>
-        </TabsContent>
+        </TabPanel>
 
-        <TabsContent value="payments">
+        <TabPanel value="payments">
           <Card>
-            <CardHeader><CardTitle>Your Payments</CardTitle></CardHeader>
+            <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Your Payments</Typography></Box>
             <CardContent>
-              {payments.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No payments found.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
+              {payments.length === 0 ? (<Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", paddingTop: "1.5rem", paddingBottom: "1.5rem", textAlign: "center" }}>No payments found.</Typography>) : (<DataTable columnsCount={5}>
+                  <TableHead>
                     <TableRow>
-                      <TableHead>Payment #</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Method</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableCell>Payment #</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Method</TableCell>
+                      <TableCell>Status</TableCell>
                     </TableRow>
-                  </TableHeader>
+                  </TableHead>
                   <TableBody>
-                    {payments.map(p => (
-                      <TableRow key={p.id}>
-                        <TableCell className="font-medium">{p.payment_number}</TableCell>
+                    {payments.map(p => (<TableRow key={p.id}>
+                        <TableCell sx={{ fontWeight: "500" }}>{p.payment_number}</TableCell>
                         <TableCell>{new Date(p.created_at).toLocaleDateString("en-IN")}</TableCell>
                         <TableCell>₹{p.amount?.toLocaleString()}</TableCell>
-                        <TableCell className="capitalize">{p.payment_method}</TableCell>
-                        <TableCell><Badge className={statusColor(p.status)}>{p.status}</Badge></TableCell>
-                      </TableRow>
-                    ))}
+                        <TableCell sx={{ textTransform: "capitalize" }}>{p.payment_method}</TableCell>
+                        <TableCell><StatusChip label={p.status} sx={statusColor(p.status)}/></TableCell>
+                      </TableRow>))}
                   </TableBody>
-                </Table>
-              )}
+                </DataTable>)}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+        </TabPanel>
+      </TabView>
+    </Box></AnimatedPage>;
 }

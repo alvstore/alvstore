@@ -1,3 +1,5 @@
+import { isDatabaseUnavailable } from "../lib/api-errors.js";
+import { asyncHandler } from "../lib/async-handler.js";
 import { Router } from "express";
 import { executeDataQuery, QueryError, type DataQueryPayload } from "../lib/queryEngine.js";
 import metaJson from "../generated/schema-meta.json" with { type: "json" };
@@ -66,7 +68,7 @@ dataRouter.get("/tables", (_req, res) => {
 });
 
 // Single generic endpoint consumed by the frontend client shim.
-dataRouter.post("/query", async (req, res) => {
+dataRouter.post("/query", asyncHandler(async (req, res) => {
   const payload = req.body as DataQueryPayload;
   if (!payload || typeof payload.table !== "string" || typeof payload.op !== "string") {
     res.status(400).json({ error: { message: "table and op are required" } });
@@ -90,9 +92,10 @@ dataRouter.post("/query", async (req, res) => {
   }
 
   try {
-    const result = await executeDataQuery(payload);
+    const result = await executeDataQuery(payload, req.user?.id);
     res.json({ data: result.data, count: result.count });
   } catch (err) {
+    if (isDatabaseUnavailable(err)) throw err;
     if (err instanceof QueryError) {
       res.status(err.status).json({ error: { message: err.message, code: err.code } });
       return;
@@ -102,4 +105,4 @@ dataRouter.post("/query", async (req, res) => {
     const status = e.code === "P2002" ? 409 : 400;
     res.status(status).json({ error: { message: e.message, code: e.code } });
   }
-});
+}));

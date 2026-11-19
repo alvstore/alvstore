@@ -1,7 +1,11 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
 const API = process.env.API_SERVER_URL ?? "http://127.0.0.1:4000";
+
+class AuthenticationUnavailable extends CredentialsSignin {
+  code = "service_unavailable";
+}
 
 /**
  * Auth.js (NextAuth v5) with a credentials provider backed by our own
@@ -12,33 +16,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
   /**
-   * The app runs behind a TLS-terminating preview proxy (https://*.e2b.app →
-   * http://localhost:3000). Auth.js auto-enables `__Host-`/`__Secure-` Secure
-   * cookies when it detects HTTPS (via X-Forwarded-Proto), but those Secure,
-   * prefix-locked cookies do not reliably round-trip through the proxy, which
-   * breaks the credentials sign-in with `MissingCSRF`. Forcing stable, plain,
-   * non-Secure cookie names keeps the CSRF + session cookies identical over
-   * both HTTP and HTTPS, so login works locally and through the preview proxy.
+   * Embedded previews need Secure + SameSite=None AND partitioned (CHIPS)
+   * cookies when third-party cookies are blocked. CSRF validation stays on.
+   * Fresh host-only names avoid collisions with legacy unpartitioned cookies,
+   * including on sign-out. Sessions are isolated by the top-level site.
+   * Use HTTPS outside localhost (`npm run dev:https` for local TLS).
    */
   cookies: {
     sessionToken: {
-      name: "authjs.session-token",
-      options: { httpOnly: true, sameSite: "lax", path: "/", secure: false },
+      name: "__Host-alv.session-token",
+      options: { httpOnly: true, sameSite: "none", path: "/", secure: true, partitioned: true },
     },
     csrfToken: {
-      name: "authjs.csrf-token",
-      options: { httpOnly: true, sameSite: "lax", path: "/", secure: false },
+      name: "__Host-alv.csrf-token",
+      options: { httpOnly: true, sameSite: "none", path: "/", secure: true, partitioned: true },
     },
     callbackUrl: {
-      name: "authjs.callback-url",
-      options: { httpOnly: false, sameSite: "lax", path: "/", secure: false },
+      name: "__Host-alv.callback-url",
+      options: { httpOnly: false, sameSite: "none", path: "/", secure: true, partitioned: true },
     },
   },
   providers: [
     Credentials({
       credentials: { email: {}, password: {} },
       authorize: async (credentials) => {
-        const email = String(credentials?.email ?? "");
+        const email = String(credentials?.email ?? "").trim();
         const password = String(credentials?.password ?? "");
         if (!email || !password) return null;
         try {
@@ -46,9 +48,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password }),
+            signal: AbortSignal.timeout(10_000),
           });
-          if (!res.ok) return null;
+          if (res.status === 400 || res.status === 401) return null;
+          if (!res.ok) throw new AuthenticationUnavailable();
           const data = await res.json();
+          if (!data.user?.id || !data.access_token) throw new AuthenticationUnavailable();
           return {
             id: data.user.id,
             email: data.user.email,
@@ -58,7 +63,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             userMetadata: data.user.user_metadata ?? {},
           };
         } catch {
-          return null;
+          // Network, database and provider failures are not bad passwords.
+          throw new AuthenticationUnavailable();
         }
       },
     }),

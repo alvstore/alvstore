@@ -39,9 +39,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        {/* Emotion cache for MUI SSR. enableCssLayer puts MUI styles in a CSS
-            cascade layer so Tailwind utilities keep winning specificity. */}
-        <AppRouterCacheProvider options={{ enableCssLayer: true }}>
+        {/* Share the Emotion cache between streamed server and client styles. */}
+        <AppRouterCacheProvider options={{ key: "mui" }}>
           <Providers>{children}</Providers>
         </AppRouterCacheProvider>
       </body>

@@ -1,218 +1,176 @@
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+"use client";
+
+import { Box, Button, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { DataTable } from "@/components/mui";
 import { Trash2, Plus } from "lucide-react";
-
 export interface DocumentItem {
-  id?: string;
-  product_id: string | null;
-  product_name: string;
-  description: string;
-  hsn_code: string;
-  quantity: number;
-  unit_price: number;
-  discount_type: "percentage" | "fixed";
-  discount_value: number;
-  gst_percentage: number;
-  gst_enabled: boolean;
-  total: number;
-  image_url?: string | null;
+    id?: string;
+    product_id: string | null;
+    product_name: string;
+    description: string;
+    hsn_code: string;
+    quantity: number;
+    unit_price: number;
+    discount_type: "percentage" | "fixed";
+    discount_value: number;
+    gst_percentage: number;
+    gst_enabled: boolean;
+    total: number;
+    image_url?: string | null;
 }
-
 interface Product {
-  id: string;
-  name: string;
-  description?: string | null;
-  selling_price: number | null;
-  gst_percentage: number | null;
+    id: string;
+    name: string;
+    description?: string | null;
+    selling_price: number | null;
+    gst_percentage: number | null;
 }
-
 interface ItemsTableProps {
-  items: DocumentItem[];
-  onItemsChange: (items: DocumentItem[]) => void;
-  products: Product[];
-  readOnly?: boolean;
+    items: DocumentItem[];
+    onItemsChange: (items: DocumentItem[]) => void;
+    products: Product[];
+    readOnly?: boolean;
 }
-
 export function calcItemTotal(item: DocumentItem): number {
-  const lineTotal = item.quantity * item.unit_price;
-  let discount = 0;
-  if (item.discount_type === "percentage") {
-    discount = lineTotal * (item.discount_value / 100);
-  } else {
-    discount = item.discount_value;
-  }
-  return Math.max(0, lineTotal - discount);
+    const lineTotal = item.quantity * item.unit_price;
+    let discount = 0;
+    if (item.discount_type === "percentage") {
+        discount = lineTotal * (item.discount_value / 100);
+    }
+    else {
+        discount = item.discount_value;
+    }
+    return Math.max(0, lineTotal - discount);
 }
-
 export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTableProps) {
-  const addItem = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-    const newItem: DocumentItem = {
-      product_id: product.id,
-      product_name: product.name,
-      description: product.description || "",
-      hsn_code: "",
-      quantity: 1,
-      unit_price: product.selling_price || 0,
-      discount_type: "percentage",
-      discount_value: 0,
-      gst_percentage: product.gst_percentage || 18,
-      gst_enabled: true,
-      total: product.selling_price || 0,
+    const addItem = (productId: string) => {
+        const product = products.find(p => p.id === productId);
+        if (!product)
+            return;
+        const newItem: DocumentItem = {
+            product_id: product.id,
+            product_name: product.name,
+            description: product.description || "",
+            hsn_code: "",
+            quantity: 1,
+            unit_price: product.selling_price || 0,
+            discount_type: "percentage",
+            discount_value: 0,
+            gst_percentage: product.gst_percentage || 18,
+            gst_enabled: true,
+            total: product.selling_price || 0,
+        };
+        onItemsChange([...items, newItem]);
     };
-    onItemsChange([...items, newItem]);
-  };
-
-  const updateItem = (idx: number, updates: Partial<DocumentItem>) => {
-    onItemsChange(items.map((item, i) => {
-      if (i !== idx) return item;
-      const updated = { ...item, ...updates };
-      updated.total = calcItemTotal(updated);
-      return updated;
-    }));
-  };
-
-  const removeItem = (idx: number) => onItemsChange(items.filter((_, i) => i !== idx));
-
-  if (readOnly) {
-    return (
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="w-10 text-xs">#</TableHead>
-              <TableHead className="text-xs">Item</TableHead>
-              <TableHead className="text-right text-xs w-16">Qty</TableHead>
-              <TableHead className="text-right text-xs w-24">Price</TableHead>
-              <TableHead className="text-right text-xs w-20">Disc.</TableHead>
-              <TableHead className="text-right text-xs w-16">GST%</TableHead>
-              <TableHead className="text-right text-xs w-24">Amount</TableHead>
+    const updateItem = (idx: number, updates: Partial<DocumentItem>) => {
+        onItemsChange(items.map((item, i) => {
+            if (i !== idx)
+                return item;
+            const updated = { ...item, ...updates };
+            updated.total = calcItemTotal(updated);
+            return updated;
+        }));
+    };
+    const removeItem = (idx: number) => onItemsChange(items.filter((_, i) => i !== idx));
+    if (readOnly) {
+        return (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", overflow: "hidden" }}>
+        <DataTable columnsCount={7}>
+          <TableHead>
+            <TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)" }}>
+              <TableCell sx={{ width: "2.5rem", fontSize: "0.75rem", lineHeight: "1rem" }}>#</TableCell>
+              <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>Item</TableCell>
+              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "4rem" }}>Qty</TableCell>
+              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "6rem" }}>Price</TableCell>
+              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "5rem" }}>Disc.</TableCell>
+              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "4rem" }}>GST%</TableCell>
+              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "6rem" }}>Amount</TableCell>
             </TableRow>
-          </TableHeader>
+          </TableHead>
           <TableBody>
-            {items.map((item, idx) => (
-              <TableRow key={idx}>
-                <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
+            {items.map((item, idx) => (<TableRow key={idx}>
+                <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{idx + 1}</TableCell>
                 <TableCell>
-                  <div className="flex items-start gap-2.5">
-                    {item.image_url && (
-                      <img src={item.image_url} alt={item.product_name} className="h-10 w-10 rounded-md object-cover border border-border shrink-0 mt-0.5" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium">{item.product_name}</p>
-                      {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
-                      {item.hsn_code && <p className="text-xs text-muted-foreground">HSN: {item.hsn_code}</p>}
-                    </div>
-                  </div>
+                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: "0.625rem" }}>
+                    {item.image_url && (<Box src={item.image_url} alt={item.product_name} component="img" sx={{ height: "2.5rem", width: "2.5rem", borderRadius: "calc(var(--radius) - 2px)", objectFit: "cover", borderWidth: "1px", borderColor: "hsl(var(--border))", flexShrink: "0", marginTop: "0.125rem" }}/>)}
+                    <Box>
+                      <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>{item.product_name}</Typography>
+                      {item.description && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{item.description}</Typography>}
+                      {item.hsn_code && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>HSN: {item.hsn_code}</Typography>}
+                    </Box>
+                  </Box>
                 </TableCell>
-                <TableCell className="text-right text-sm">{item.quantity}</TableCell>
-                <TableCell className="text-right text-sm">₹{item.unit_price.toFixed(2)}</TableCell>
-                <TableCell className="text-right text-sm">
+                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>{item.quantity}</TableCell>
+                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>₹{item.unit_price.toFixed(2)}</TableCell>
+                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
                   {item.discount_value > 0
                     ? item.discount_type === "percentage" ? `${item.discount_value}%` : `₹${item.discount_value}`
                     : "—"}
                 </TableCell>
-                <TableCell className="text-right text-sm">{item.gst_enabled ? `${item.gst_percentage}%` : "—"}</TableCell>
-                <TableCell className="text-right text-sm font-medium">₹{item.total.toFixed(2)}</TableCell>
-              </TableRow>
-            ))}
+                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>{item.gst_enabled ? `${item.gst_percentage}%` : "—"}</TableCell>
+                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>₹{item.total.toFixed(2)}</TableCell>
+              </TableRow>))}
           </TableBody>
-        </Table>
-      </div>
-    );
-  }
+        </DataTable>
+      </Box>);
+    }
+    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-sm font-semibold">Line Items</Label>
-        <Select onValueChange={addItem}>
-          <SelectTrigger className="w-[220px] h-8 text-xs">
-            <SelectValue placeholder="+ Add product" />
-          </SelectTrigger>
-          <SelectContent>
-            {products.map(p => (
-              <SelectItem key={p.id} value={p.id} className="text-xs">
+        <TextField label={"Line Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "220px", height: "2rem", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add product"}</MenuItem>
+            {products.map(p => (<MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>
                 {p.name} — ₹{p.selling_price}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+              </MenuItem>))}
+          </TextField>
+      </Box>
 
-      {items.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border p-6 text-center">
-          <Plus className="h-6 w-6 mx-auto text-muted-foreground/50 mb-1" />
-          <p className="text-sm text-muted-foreground">Add products to get started</p>
-        </div>
-      )}
+      {items.length === 0 && (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "1.5rem", textAlign: "center" }}>
+          <Box component={Plus} sx={{ height: "1.5rem", width: "1.5rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 50%, transparent)", marginBottom: "0.25rem" }}/>
+          <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>Add products to get started</Typography>
+        </Box>)}
 
-      {items.map((item, idx) => (
-        <div key={idx} className="rounded-lg border border-border bg-card p-3 space-y-2.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">{item.product_name}</p>
-              <Input
-                placeholder="Description (optional)"
-                value={item.description}
-                onChange={e => updateItem(idx, { description: e.target.value })}
-                className="h-7 text-xs mt-1"
-              />
-            </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => removeItem(idx)}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+      {items.map((item, idx) => (<Box key={idx} sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "hsl(var(--card))", padding: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.625rem" } }}>
+          <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem" }}>
+            <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
+              <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.product_name}</Typography>
+              <TextField placeholder="Description (optional)" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Description (optional)" } }} sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem", marginTop: "0.25rem" }}/>
+            </Box>
+            <IconButton onClick={() => removeItem(idx)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", flexShrink: "0", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}>
+              <Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }}/>
+            </IconButton>
+          </Box>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div>
-              <Label className="text-[10px] uppercase text-muted-foreground">Qty</Label>
-              <Input type="number" min="1" className="h-8 text-sm" value={item.quantity}
-                onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label className="text-[10px] uppercase text-muted-foreground">Price</Label>
-              <Input type="number" className="h-8 text-sm" value={item.unit_price}
-                onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label className="text-[10px] uppercase text-muted-foreground">Discount</Label>
-              <div className="flex gap-1">
-                <Input type="number" className="h-8 text-sm flex-1" value={item.discount_value}
-                  onChange={e => updateItem(idx, { discount_value: parseFloat(e.target.value) || 0 })} />
-                <Select value={item.discount_type} onValueChange={v => updateItem(idx, { discount_type: v as "percentage" | "fixed" })}>
-                  <SelectTrigger className="h-8 w-14 text-xs px-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="percentage" className="text-xs">%</SelectItem>
-                    <SelectItem value="fixed" className="text-xs">₹</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <Label className="text-[10px] uppercase text-muted-foreground">GST %</Label>
-                <Switch checked={item.gst_enabled} onCheckedChange={v => updateItem(idx, { gst_enabled: v })} className="h-4 w-7" />
-              </div>
-              <Input type="number" className="h-8 text-sm" value={item.gst_percentage} disabled={!item.gst_enabled}
-                onChange={e => updateItem(idx, { gst_percentage: parseFloat(e.target.value) || 0 })} />
-            </div>
-          </div>
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }, gap: "0.5rem" }}>
+            <Box>
 
-          <div className="flex items-center justify-between pt-1 border-t border-border/50">
-            {item.hsn_code || !readOnly ? (
-              <Input placeholder="HSN/SAC" value={item.hsn_code} onChange={e => updateItem(idx, { hsn_code: e.target.value })}
-                className="h-6 text-xs w-24 border-0 px-0 bg-transparent" />
-            ) : <span />}
-            <p className="text-sm font-semibold text-foreground">₹{item.total.toFixed(2)}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+              <TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} label={"Qty"} size="small" fullWidth slotProps={{ htmlInput: { min: "1" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem" }}/>
+            </Box>
+            <Box>
+
+              <TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} label={"Price"} size="small" fullWidth sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem" }}/>
+            </Box>
+            <Box>
+              <FormLabel sx={{ fontSize: "10px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))" }}>Discount</FormLabel>
+              <Box sx={{ display: "flex", gap: "0.25rem" }}>
+                <TextField type="number" value={item.discount_value} onChange={e => updateItem(idx, { discount_value: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", flex: "1 1 0%" }}/>
+                <TextField value={item.discount_type} select size="small" fullWidth onChange={event => (v => updateItem(idx, { discount_type: v as "percentage" | "fixed" }))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ height: "2rem", width: "3.5rem", fontSize: "0.75rem", lineHeight: "1rem", paddingLeft: "0.25rem", paddingRight: "0.25rem" }}>
+                    <MenuItem value="percentage" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>%</MenuItem>
+                    <MenuItem value="fixed" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>₹</MenuItem>
+                  </TextField>
+              </Box>
+            </Box>
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <FormLabel sx={{ fontSize: "10px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))" }}>GST %</FormLabel>
+                <Switch checked={item.gst_enabled} onChange={(event, checked) => (v => updateItem(idx, { gst_enabled: v }))(checked)} sx={{ height: "1rem", width: "1.75rem" }}/>
+              </Box>
+              <TextField type="number" value={item.gst_percentage} disabled={!item.gst_enabled} onChange={e => updateItem(idx, { gst_percentage: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem" }}/>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "0.25rem", borderTopWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+            {item.hsn_code || !readOnly ? (<TextField placeholder="HSN/SAC" value={item.hsn_code} onChange={e => updateItem(idx, { hsn_code: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "HSN/SAC" } }} sx={{ height: "1.5rem", fontSize: "0.75rem", lineHeight: "1rem", width: "6rem", borderWidth: "0px", paddingLeft: "0px", paddingRight: "0px", backgroundColor: "transparent" }}/>) : <Box component="span"/>}
+            <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>₹{item.total.toFixed(2)}</Typography>
+          </Box>
+        </Box>))}
+    </Box>);
 }

@@ -1,126 +1,62 @@
-import { useState } from "react";
+"use client";
+
+import { useEffect, useState } from "react";
+import { Alert, Box, Button, Chip, CircularProgress, IconButton, InputAdornment, Stack, TextField, Typography } from "@mui/material";
+import { Bolt, OpenInNew, Visibility, VisibilityOff } from "@mui/icons-material";
+import { alpha } from "@mui/material/styles";
 import { Link, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Zap, Eye, EyeOff, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { AnimatedPage } from "@/components/mui";
+import { signInFailure } from "@/lib/auth-errors";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [embedded, setEmbedded] = useState(false);
+  const [loginError, setLoginError] = useState<{ message: string; code?: string } | null>(null);
   const navigate = useNavigate();
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => { setEmbedded(window.self !== window.top); }, []);
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (loading) return;
+    setLoginError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-    } else {
-      navigate("/dashboard");
-    }
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setLoginError(error);
+      else navigate("/dashboard");
+    } catch { setLoginError(signInFailure()); }
+    finally { setLoading(false); }
   };
-
-  return (
-    <div className="min-h-screen flex">
-      {/* Left brand panel */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary/90 to-accent relative overflow-hidden items-center justify-center">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,hsl(var(--primary)/0.3),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,hsl(var(--accent)/0.2),transparent_50%)]" />
-        <div className="relative z-10 text-center space-y-6 px-12">
-          <div className="h-20 w-20 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center mx-auto">
-            <Zap className="h-10 w-10 text-white" />
-          </div>
-          <div>
-            <h1 className="text-4xl font-bold text-white tracking-tight">ALVStore</h1>
-            <p className="text-white/60 text-sm tracking-[0.2em] uppercase mt-1">ERP 2026</p>
-          </div>
-          <p className="text-white/70 text-sm max-w-xs mx-auto leading-relaxed">
-            Complete business management — CRM, Repairs, POS, Finance, and Inventory in one unified platform.
-          </p>
-          <div className="flex justify-center gap-3 pt-4">
-            {["CRM", "POS", "Repair", "Finance"].map(tag => (
-              <span key={tag} className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white/80 text-xs font-medium">
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Right form panel */}
-      <div className="flex-1 flex items-center justify-center bg-background px-6">
-        <div className="w-full max-w-sm space-y-8">
-          {/* Mobile logo */}
-          <div className="lg:hidden text-center">
-            <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mx-auto mb-3">
-              <Zap className="h-7 w-7 text-white" />
-            </div>
-            <h1 className="text-xl font-bold">
-              ALVStore <span className="text-primary">ERP</span>
-            </h1>
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
-            <p className="text-muted-foreground text-sm">Sign in to your account to continue</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="h-11"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link to="/forgot-password" className="text-xs text-primary hover:underline">
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-11 pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <Button type="submit" className="w-full h-11" disabled={loading}>
-              {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Signing in...</> : "Sign In"}
-            </Button>
-          </form>
-
-          <p className="text-center text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <Link to="/signup" className="text-primary font-medium hover:underline">Create account</Link>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  return <AnimatedPage><Box sx={{ minHeight: "100dvh", display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" } }}>
+    <Box sx={theme => ({ display: { xs: "none", lg: "grid" }, placeItems: "center", p: 8, color: theme.palette.primary.contrastText, background: `radial-gradient(circle at 25% 15%, ${alpha(theme.palette.secondary.light, 0.45)}, transparent 55%), linear-gradient(135deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})` })}>
+      <Stack spacing={3} sx={{ alignItems: "center", maxWidth: 420, textAlign: "center" }}>
+        <Box sx={{ p: 2, borderRadius: 4, bgcolor: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)" }}><Bolt sx={{ fontSize: 48 }} /></Box>
+        <Box><Typography variant="h3" sx={{ fontWeight: 800 }}>ALVStore</Typography><Typography variant="overline" sx={{ letterSpacing: ".25em", opacity: .7 }}>ERP 2026</Typography></Box>
+        <Typography sx={{ opacity: .8 }}>Complete business management — CRM, Repairs, POS, Finance, and Inventory in one unified platform.</Typography>
+        <Stack direction="row" spacing={1}>{["CRM", "POS", "Repairs", "Finance"].map(label => <Chip key={label} label={label} sx={{ color: "inherit", bgcolor: "rgba(255,255,255,.12)" }} />)}</Stack>
+      </Stack>
+    </Box>
+    <Box sx={{ display: "grid", placeItems: "center", p: { xs: 3, sm: 5 }, bgcolor: "background.default" }}>
+      <Box sx={{ width: "100%", maxWidth: 380 }}>
+        <Typography variant="h5" sx={{ display: { lg: "none" }, color: "primary.main", fontWeight: 800, mb: 5 }}>ALVStore ERP</Typography>
+        <Typography variant="h4" component="h1" sx={{ fontWeight: 750, mb: 1 }}>Welcome back</Typography>
+        <Typography color="text.secondary" variant="body2" sx={{ mb: 4 }}>Sign in to your account to continue</Typography>
+        <Box component="form" onSubmit={handleLogin} sx={{ display: "grid", gap: 2.5 }}>
+          {loginError && <Alert severity="error">{loginError.message}</Alert>}
+          <TextField id="email" label="Email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required fullWidth autoFocus />
+          <TextField id="password" label="Password" type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required fullWidth
+            slotProps={{ input: { endAdornment: <InputAdornment position="end"><IconButton aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)} onMouseDown={event => event.preventDefault()} edge="end">{showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}</IconButton></InputAdornment> } }} />
+          <Link to="/forgot-password" sx={{ justifySelf: "end", fontSize: 12, color: "primary.main" }}>Forgot password?</Link>
+          <Button type="submit" variant="contained" disabled={loading} size="large" startIcon={loading ? <CircularProgress size={16} color="inherit" /> : undefined}>{loading ? "Signing in…" : "Sign In"}</Button>
+        </Box>
+        {(embedded || loginError?.code === "AUTH_COOKIES_BLOCKED" || loginError?.code === "AUTH_SESSION_UNAVAILABLE") && <Button
+          component="a" href="/login" target="_blank" rel="noopener noreferrer" variant="text" startIcon={<OpenInNew fontSize="small" />}
+          sx={{ mt: 2, width: "100%" }}>Open sign-in in a new tab</Button>}
+        <Typography component="div" variant="body2" color="text.secondary" sx={{ textAlign: "center", mt: 4 }}>Don’t have an account? <Link to="/signup" sx={{ color: "primary.main", fontWeight: 600 }}>Create account</Link></Typography>
+      </Box>
+    </Box>
+  </Box></AnimatedPage>;
 }

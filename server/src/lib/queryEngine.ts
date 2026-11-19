@@ -3,6 +3,7 @@
  * shim) into Prisma queries, using the generated schema metadata.
  */
 import { prisma } from "../db.js";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseSelect, type SelectNode } from "./selectParser.js";
 import { toJsonValue } from "./serialize.js";
 import metaJson from "../generated/schema-meta.json" with { type: "json" };
@@ -68,7 +69,11 @@ function coerceValue(table: string, col: string, val: unknown): unknown {
     if (cm) {
       if (NUMERIC_UDTS.has(cm.udt) && val.trim() !== "" && !isNaN(Number(val))) return Number(val);
       if (cm.udt === "bool") return val === "true" ? true : val === "false" ? false : val;
-      if (DATE_UDTS.has(cm.udt)) return val;
+      if (DATE_UDTS.has(cm.udt)) {
+        const date = new Date(val);
+        if (!Number.isFinite(date.getTime())) throw new QueryError(`Invalid date for '${col}'`);
+        return date;
+      }
       if ((cm.udt === "jsonb" || cm.udt === "json") && (val.startsWith("{") || val.startsWith("["))) {
         try { return JSON.parse(val); } catch { /* fall through */ }
       }
@@ -305,6 +310,12 @@ function shapeRows(table: string, nodes: SelectNode[], rows: unknown): unknown {
   if (rows === null || rows === undefined) return rows;
   if (Array.isArray(rows)) return rows.map((r) => shapeRows(table, nodes, r));
   const row = rows as Record<string, unknown>;
+  // Match PostgREST's date-only strings, not Prisma's midnight DateTimes.
+  for (const column of META.tables[table].columns) {
+    if (column.udt === "date" && row[column.name] instanceof Date) {
+      row[column.name] = (row[column.name] as Date).toISOString().slice(0, 10);
+    }
+  }
   for (const n of nodes) {
     if (n.kind !== "embed") continue;
     if (n.aggregate === "count") continue;
@@ -339,11 +350,13 @@ export interface DataQueryPayload {
   ignoreDuplicates?: boolean;
 }
 
-function delegateFor(table: string) {
+type QueryClient = PrismaClient | Prisma.TransactionClient;
+
+function delegateFor(table: string, client: QueryClient) {
   const t = META.tables[table];
   if (!t) throw new QueryError(`unknown table '${table}'`, 404);
   const name = t.model.charAt(0).toLowerCase() + t.model.slice(1);
-  const d = (prisma as unknown as Record<string, unknown>)[name];
+  const d = (client as unknown as Record<string, unknown>)[name];
   if (!d) throw new QueryError(`model for table '${table}' not available`, 500);
   return d as {
     findMany: (a?: unknown) => Promise<unknown[]>;
@@ -362,7 +375,7 @@ function cleanValues(table: string, row: Record<string, unknown>): Record<string
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) {
     if (!valid.has(k)) continue; // strip relation embeds & unknown keys
-    out[k] = v === undefined ? undefined : v;
+    out[k] = v === undefined ? undefined : coerceValue(table, k, v);
   }
   return out;
 }
@@ -384,10 +397,20 @@ function pickSelectArgs(built: BuiltSelect): Record<string, unknown> {
   return built.mode === "include" ? { include: built.args } : { select: built.args };
 }
 
-export async function executeDataQuery(payload: DataQueryPayload): Promise<{ data: unknown; count: number | null }> {
+export async function executeDataQuery(payload: DataQueryPayload, actorId?: string): Promise<{ data: unknown; count: number | null }> {
+  if (payload.op === "select") return executeWithClient(payload, prisma);
+  // Transaction-local identity replaces Supabase auth.uid() for audit triggers.
+  // It never leaks to the next pool borrower, and failed writes are not replayed.
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SELECT set_config('app.user_id', ${actorId ?? ""}, true)`;
+    return executeWithClient(payload, tx);
+  });
+}
+
+async function executeWithClient(payload: DataQueryPayload, client: QueryClient): Promise<{ data: unknown; count: number | null }> {
   const { table, op } = payload;
   if (!META.tables[table]) throw new QueryError(`unknown table '${table}'`, 404);
-  const d = delegateFor(table);
+  const d = delegateFor(table, client);
   const nodes = parseSelect(payload.select);
   const built = buildSelect(table, nodes);
   const where = buildWhere(table, payload.filters ?? []);

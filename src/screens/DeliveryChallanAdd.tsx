@@ -1,274 +1,267 @@
+"use client";
+
+import { Box, Button, Card, CardContent, Divider, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { AnimatedPage, DataTable, PageHeader, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Send, Trash2, Plus, Truck, Car } from "lucide-react";
-import { toast } from "sonner";
-
-interface Product { id: string; name: string; selling_price: number | null; gst_percentage: number | null; }
-interface Customer { id: string; name: string; phone: string | null; address: string | null; gst_number: string | null; }
-interface ChallanItem {
-  product_id: string | null; product_name: string; quantity: number;
-  unit_price: number; total: number; hsn_code: string; gst_percentage: number; gst_amount: number;
+interface Product {
+    id: string;
+    name: string;
+    selling_price: number | null;
+    gst_percentage: number | null;
 }
-
+interface Customer {
+    id: string;
+    name: string;
+    phone: string | null;
+    address: string | null;
+    gst_number: string | null;
+}
+interface ChallanItem {
+    product_id: string | null;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    total: number;
+    hsn_code: string;
+    gst_percentage: number;
+    gst_amount: number;
+}
 export default function DeliveryChallanAdd() {
-  const { user } = useAuth();
-  const { id: editId } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [saving, setSaving] = useState(false);
-  const isEditing = !!editId;
+    const { user } = useAuth();
+    const { id: editId } = useParams<{
+        id: string;
+    }>();
+    const navigate = useNavigate();
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [saving, setSaving] = useState(false);
+    const isEditing = !!editId;
+    const [customerId, setCustomerId] = useState("");
+    const [notes, setNotes] = useState("");
+    const [deliveryPerson, setDeliveryPerson] = useState("");
+    const [vehicleNumber, setVehicleNumber] = useState("");
+    const [gstInclusive, setGstInclusive] = useState(false);
+    const [items, setItems] = useState<ChallanItem[]>([]);
+    useEffect(() => {
+        Promise.all([
+            supabase.from("customers").select("id, name, phone, address, gst_number").order("name"),
+            supabase.from("products").select("id, name, selling_price, gst_percentage").order("name"),
+        ]).then(([c, p]) => {
+            setCustomers(c.data || []);
+            setProducts(p.data || []);
+        });
+    }, []);
+    useEffect(() => {
+        if (!editId)
+            return;
+        (async () => {
+            const { data: ch } = await (supabase as any).from("delivery_challans").select("*").eq("id", editId).single();
+            if (ch) {
+                setCustomerId(ch.customer_id || "");
+                setNotes(ch.notes || "");
+                setDeliveryPerson(ch.delivery_person || "");
+                setVehicleNumber(ch.vehicle_number || "");
+                setGstInclusive(ch.gst_inclusive || false);
+            }
+            const { data: itms } = await (supabase as any).from("delivery_challan_items").select("*").eq("challan_id", editId);
+            if (itms)
+                setItems(itms.map((i: any) => ({
+                    product_id: i.product_id, product_name: i.product_name,
+                    quantity: i.quantity, unit_price: i.unit_price, total: i.total,
+                    hsn_code: i.hsn_code || "", gst_percentage: i.gst_percentage ?? 18, gst_amount: i.gst_amount || 0,
+                })));
+        })();
+    }, [editId]);
+    const addItem = (productId: string) => {
+        const p = products.find(pr => pr.id === productId);
+        if (!p)
+            return;
+        const price = p.selling_price || 0;
+        const gstPct = p.gst_percentage ?? 18;
+        const gstAmt = gstInclusive ? (price * gstPct) / (100 + gstPct) : (price * gstPct) / 100;
+        setItems([...items, {
+                product_id: p.id, product_name: p.name, quantity: 1,
+                unit_price: price, total: price, hsn_code: "", gst_percentage: gstPct, gst_amount: gstAmt,
+            }]);
+    };
+    const recalcItem = (item: ChallanItem): ChallanItem => {
+        const base = item.quantity * item.unit_price;
+        const gstAmt = gstInclusive
+            ? (base * item.gst_percentage) / (100 + item.gst_percentage)
+            : (base * item.gst_percentage) / 100;
+        return { ...item, total: base, gst_amount: Math.round(gstAmt * 100) / 100 };
+    };
+    const updateItem = (idx: number, updates: Partial<ChallanItem>) => {
+        setItems(items.map((item, i) => i !== idx ? item : recalcItem({ ...item, ...updates })));
+    };
+    const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const totalGst = items.reduce((s, i) => s + i.gst_amount, 0);
+    const grandTotal = gstInclusive ? subtotal : subtotal + totalGst;
+    const handleSave = async () => {
+        if (!customerId) {
+            toast.error("Select a customer");
+            return;
+        }
+        if (items.length === 0) {
+            toast.error("Add at least one item");
+            return;
+        }
+        setSaving(true);
+        try {
+            const challanPayload: any = {
+                customer_id: customerId, notes: notes || null,
+                delivery_person: deliveryPerson || null, vehicle_number: vehicleNumber || null,
+                gst_inclusive: gstInclusive, subtotal, gst_amount: totalGst, total: grandTotal,
+            };
+            if (isEditing) {
+                await (supabase as any).from("delivery_challans").update(challanPayload).eq("id", editId);
+                await (supabase as any).from("delivery_challan_items").delete().eq("challan_id", editId);
+                await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
+                    challan_id: editId, product_id: i.product_id, product_name: i.product_name,
+                    quantity: i.quantity, unit_price: i.unit_price, total: i.total,
+                    hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
+                })));
+                toast.success("Challan updated");
+                navigate(`/challans/${editId}`);
+            }
+            else {
+                const { data: ch, error } = await (supabase as any).from("delivery_challans").insert({
+                    challan_number: "", ...challanPayload, created_by: user?.id,
+                }).select().single();
+                if (error)
+                    throw error;
+                await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
+                    challan_id: ch.id, product_id: i.product_id, product_name: i.product_name,
+                    quantity: i.quantity, unit_price: i.unit_price, total: i.total,
+                    hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
+                })));
+                toast.success("Challan created — " + ch.challan_number);
+                navigate(`/challans/${ch.id}`);
+            }
+        }
+        catch (err: any) {
+            toast.error(err.message);
+        }
+        setSaving(false);
+    };
+    const selectedCustomer = customers.find(c => c.id === customerId);
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={isEditing ? "Edit Delivery Challan" : "New Delivery Challan"} subtitle={"Items to be delivered before invoicing"} actions={<><IconButton onClick={() => navigate("/challans")} aria-label={"Arrow Left"}><Box component={ArrowLeft} sx={{ height: "1.25rem", width: "1.25rem" }}/></IconButton></>}/>
 
-  const [customerId, setCustomerId] = useState("");
-  const [notes, setNotes] = useState("");
-  const [deliveryPerson, setDeliveryPerson] = useState("");
-  const [vehicleNumber, setVehicleNumber] = useState("");
-  const [gstInclusive, setGstInclusive] = useState(false);
-  const [items, setItems] = useState<ChallanItem[]>([]);
-
-  useEffect(() => {
-    Promise.all([
-      supabase.from("customers").select("id, name, phone, address, gst_number").order("name"),
-      supabase.from("products").select("id, name, selling_price, gst_percentage").order("name"),
-    ]).then(([c, p]) => {
-      setCustomers(c.data || []);
-      setProducts(p.data || []);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!editId) return;
-    (async () => {
-      const { data: ch } = await (supabase as any).from("delivery_challans").select("*").eq("id", editId).single();
-      if (ch) {
-        setCustomerId(ch.customer_id || "");
-        setNotes(ch.notes || "");
-        setDeliveryPerson(ch.delivery_person || "");
-        setVehicleNumber(ch.vehicle_number || "");
-        setGstInclusive(ch.gst_inclusive || false);
-      }
-      const { data: itms } = await (supabase as any).from("delivery_challan_items").select("*").eq("challan_id", editId);
-      if (itms) setItems(itms.map((i: any) => ({
-        product_id: i.product_id, product_name: i.product_name,
-        quantity: i.quantity, unit_price: i.unit_price, total: i.total,
-        hsn_code: i.hsn_code || "", gst_percentage: i.gst_percentage ?? 18, gst_amount: i.gst_amount || 0,
-      })));
-    })();
-  }, [editId]);
-
-  const addItem = (productId: string) => {
-    const p = products.find(pr => pr.id === productId);
-    if (!p) return;
-    const price = p.selling_price || 0;
-    const gstPct = p.gst_percentage ?? 18;
-    const gstAmt = gstInclusive ? (price * gstPct) / (100 + gstPct) : (price * gstPct) / 100;
-    setItems([...items, {
-      product_id: p.id, product_name: p.name, quantity: 1,
-      unit_price: price, total: price, hsn_code: "", gst_percentage: gstPct, gst_amount: gstAmt,
-    }]);
-  };
-
-  const recalcItem = (item: ChallanItem): ChallanItem => {
-    const base = item.quantity * item.unit_price;
-    const gstAmt = gstInclusive
-      ? (base * item.gst_percentage) / (100 + item.gst_percentage)
-      : (base * item.gst_percentage) / 100;
-    return { ...item, total: base, gst_amount: Math.round(gstAmt * 100) / 100 };
-  };
-
-  const updateItem = (idx: number, updates: Partial<ChallanItem>) => {
-    setItems(items.map((item, i) => i !== idx ? item : recalcItem({ ...item, ...updates })));
-  };
-
-  const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-
-  const subtotal = items.reduce((s, i) => s + i.total, 0);
-  const totalGst = items.reduce((s, i) => s + i.gst_amount, 0);
-  const grandTotal = gstInclusive ? subtotal : subtotal + totalGst;
-
-  const handleSave = async () => {
-    if (!customerId) { toast.error("Select a customer"); return; }
-    if (items.length === 0) { toast.error("Add at least one item"); return; }
-    setSaving(true);
-    try {
-      const challanPayload: any = {
-        customer_id: customerId, notes: notes || null,
-        delivery_person: deliveryPerson || null, vehicle_number: vehicleNumber || null,
-        gst_inclusive: gstInclusive, subtotal, gst_amount: totalGst, total: grandTotal,
-      };
-      if (isEditing) {
-        await (supabase as any).from("delivery_challans").update(challanPayload).eq("id", editId);
-        await (supabase as any).from("delivery_challan_items").delete().eq("challan_id", editId);
-        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
-          challan_id: editId, product_id: i.product_id, product_name: i.product_name,
-          quantity: i.quantity, unit_price: i.unit_price, total: i.total,
-          hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
-        })));
-        toast.success("Challan updated");
-        navigate(`/challans/${editId}`);
-      } else {
-        const { data: ch, error } = await (supabase as any).from("delivery_challans").insert({
-          challan_number: "", ...challanPayload, created_by: user?.id,
-        }).select().single();
-        if (error) throw error;
-        await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
-          challan_id: ch.id, product_id: i.product_id, product_name: i.product_name,
-          quantity: i.quantity, unit_price: i.unit_price, total: i.total,
-          hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
-        })));
-        toast.success("Challan created — " + ch.challan_number);
-        navigate(`/challans/${ch.id}`);
-      }
-    } catch (err: any) { toast.error(err.message); }
-    setSaving(false);
-  };
-
-  const selectedCustomer = customers.find(c => c.id === customerId);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/challans")}><ArrowLeft className="h-5 w-5" /></Button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{isEditing ? "Edit Delivery Challan" : "New Delivery Challan"}</h1>
-          <p className="text-sm text-muted-foreground">Items to be delivered before invoicing</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 space-y-6">
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 8 / span 8" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
           {/* Customer & Delivery Info */}
-          <Card className="border-border/50">
-            <CardContent className="p-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">Customer *</Label>
-                  <Select value={customerId} onValueChange={setCustomerId}>
-                    <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                    <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                {selectedCustomer && (
-                  <div className="rounded-lg border bg-muted/20 p-3 space-y-0.5">
-                    <p className="text-sm font-medium">{selectedCustomer.name}</p>
-                    {selectedCustomer.phone && <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>}
-                    {selectedCustomer.address && <p className="text-xs text-muted-foreground">{selectedCustomer.address}</p>}
-                    {selectedCustomer.gst_number && <p className="text-xs font-mono text-muted-foreground">GST: {selectedCustomer.gst_number}</p>}
-                  </div>
-                )}
-              </div>
+          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+            <CardContent sx={{ padding: "1.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-              <Separator />
+                  <TextField value={customerId} label={"Customer *"} select size="small" fullWidth onChange={event => setCustomerId(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select customer"}</MenuItem>{customers.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</TextField>
+                </Box>
+                {selectedCustomer && (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", padding: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.125rem" } }}>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>{selectedCustomer.name}</Typography>
+                    {selectedCustomer.phone && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.phone}</Typography>}
+                    {selectedCustomer.address && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.address}</Typography>}
+                    {selectedCustomer.gst_number && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontFamily: "JetBrains Mono, monospace", color: "hsl(var(--muted-foreground))" }}>GST: {selectedCustomer.gst_number}</Typography>}
+                  </Box>)}
+              </Box>
+
+              <Divider />
 
               {/* Delivery Person & Vehicle */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Truck className="h-3.5 w-3.5" />Delivery Person</Label>
-                  <Input value={deliveryPerson} onChange={e => setDeliveryPerson(e.target.value)} placeholder="Driver / delivery person name" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Car className="h-3.5 w-3.5" />Vehicle Number</Label>
-                  <Input value={vehicleNumber} onChange={e => setVehicleNumber(e.target.value)} placeholder="e.g. MH-12-AB-1234" />
-                </div>
-              </div>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-              <Separator />
+                  <TextField value={deliveryPerson} onChange={e => setDeliveryPerson(e.target.value)} placeholder="Driver / delivery person name" label={<><Box component={Truck} sx={{ height: "0.875rem", width: "0.875rem" }}/>Delivery Person</>} size="small" fullWidth/>
+                </Box>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField value={vehicleNumber} onChange={e => setVehicleNumber(e.target.value)} placeholder="e.g. MH-12-AB-1234" label={<><Box component={Car} sx={{ height: "0.875rem", width: "0.875rem" }}/>Vehicle Number</>} size="small" fullWidth/>
+                </Box>
+              </Box>
+
+              <Divider />
 
               {/* GST Toggle */}
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">GST Inclusive</Label>
-                <Switch checked={gstInclusive} onCheckedChange={setGstInclusive} />
-              </div>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <FormLabel sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}>GST Inclusive</FormLabel>
+                <Switch checked={gstInclusive} onChange={(event, checked) => setGstInclusive(checked)}/>
+              </Box>
 
               {/* Items */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Items</Label>
-                  <Select onValueChange={addItem}>
-                    <SelectTrigger className="w-[200px] h-9 text-xs"><SelectValue placeholder="+ Add Item" /></SelectTrigger>
-                    <SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name} — ₹{p.selling_price}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
-                {items.length === 0 ? (
-                  <div className="rounded-lg border-2 border-dashed border-border p-8 text-center">
-                    <Plus className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-                    <p className="text-sm text-muted-foreground">Add items to the delivery challan</p>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead><tr className="bg-muted/50 border-b">
-                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Item</th>
-                        <th className="text-left px-2 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-20">HSN</th>
-                        <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-24">Rate</th>
-                        <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-16">Qty</th>
-                        <th className="text-right px-2 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-16">GST%</th>
-                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase w-24">Total</th>
-                        <th className="w-10"></th>
-                      </tr></thead>
-                      <tbody>
-                        {items.map((item, idx) => (
-                          <tr key={idx} className="border-b border-border/50 last:border-0">
-                            <td className="px-4 py-3 font-medium">{item.product_name}</td>
-                            <td className="px-2 py-3"><Input className="h-8 text-xs" value={item.hsn_code} onChange={e => updateItem(idx, { hsn_code: e.target.value })} placeholder="HSN" /></td>
-                            <td className="px-3 py-3"><Input type="number" className="h-8 text-sm text-right" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} /></td>
-                            <td className="px-3 py-3"><Input type="number" min="1" className="h-8 text-sm text-right" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} /></td>
-                            <td className="px-2 py-3"><Input type="number" className="h-8 text-sm text-right" value={item.gst_percentage} onChange={e => updateItem(idx, { gst_percentage: parseFloat(e.target.value) || 0 })} /></td>
-                            <td className="px-4 py-3 text-right font-semibold">₹{item.total.toFixed(2)}</td>
-                            <td className="pr-2 py-3"><Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeItem(idx)}><Trash2 className="h-3.5 w-3.5" /></Button></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                  <TextField label={"Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "200px", height: "2.25rem", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add Item"}</MenuItem>{products.map(p => <MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{p.name} — ₹{p.selling_price}</MenuItem>)}</TextField>
+                </Box>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Notes</Label>
-                <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Delivery instructions..." />
-              </div>
+                {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>
+                    <Box component={Plus} sx={{ height: "2rem", width: "2rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 40%, transparent)", marginBottom: "0.5rem" }}/>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>Add items to the delivery challan</Typography>
+                  </Box>) : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", overflow: "hidden" }}>
+                    <DataTable columnsCount={7} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                      <TableHead><TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderBottomWidth: "1px" }}>
+                        <TableCell sx={{ textAlign: "left", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase" }}>Item</TableCell>
+                        <TableCell sx={{ textAlign: "left", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "5rem" }}>HSN</TableCell>
+                        <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "6rem" }}>Rate</TableCell>
+                        <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "4rem" }}>Qty</TableCell>
+                        <TableCell sx={{ textAlign: "right", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "4rem" }}>GST%</TableCell>
+                        <TableCell sx={{ textAlign: "right", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "6rem" }}>Total</TableCell>
+                        <TableCell sx={{ width: "2.5rem" }}/>
+                      </TableRow></TableHead>
+                      <TableBody>
+                        {items.map((item, idx) => (<TableRow key={idx} sx={{ borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "&:last-child": { borderWidth: "0px" } }}>
+                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", fontWeight: "500" }}>{item.product_name}</TableCell>
+                            <TableCell sx={{ paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField value={item.hsn_code} onChange={e => updateItem(idx, { hsn_code: e.target.value })} placeholder="HSN" size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "HSN" } }} sx={{ height: "2rem", fontSize: "0.75rem", lineHeight: "1rem" }}/></TableCell>
+                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>
+                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { min: "1", "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>
+                            <TableCell sx={{ paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.gst_percentage} onChange={e => updateItem(idx, { gst_percentage: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>
+                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", textAlign: "right", fontWeight: "600" }}>₹{item.total.toFixed(2)}</TableCell>
+                            <TableCell sx={{ paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><IconButton onClick={() => removeItem(idx)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}><Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }}/></IconButton></TableCell>
+                          </TableRow>))}
+                      </TableBody>
+                    </DataTable>
+                  </Box>)}
+              </Box>
+
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                <TextField value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Delivery instructions..." label={"Notes"} size="small" fullWidth multiline/>
+              </Box>
 
               {/* Totals */}
-              <div className="flex justify-end">
-                <div className="w-full max-w-xs space-y-1.5">
-                  <Separator className="mb-3" />
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">CGST</span><span>₹{(totalGst / 2).toFixed(2)}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">SGST</span><span>₹{(totalGst / 2).toFixed(2)}</span></div>
-                  <Separator />
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-semibold">Grand Total</span>
-                    <span className="text-xl font-bold">₹{grandTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
+              <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                <Box sx={{ width: "100%", maxWidth: "20rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+                  <Divider sx={{ marginBottom: "0.75rem" }}/>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Subtotal</Box><Box component="span">₹{subtotal.toFixed(2)}</Box></Box>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>CGST</Box><Box component="span">₹{(totalGst / 2).toFixed(2)}</Box></Box>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>SGST</Box><Box component="span">₹{(totalGst / 2).toFixed(2)}</Box></Box>
+                  <Divider />
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <Box component="span" sx={{ fontWeight: "600" }}>Grand Total</Box>
+                    <Box component="span" sx={{ fontSize: "1.25rem", lineHeight: "1.75rem", fontWeight: "700" }}>₹{grandTotal.toFixed(2)}</Box>
+                  </Box>
+                </Box>
+              </Box>
             </CardContent>
           </Card>
-        </div>
+        </Box>
 
-        <div className="lg:col-span-4">
-          <Card className="border-border/50 sticky top-6">
-            <CardContent className="p-5 space-y-3">
-              <Button className="w-full" onClick={handleSave} disabled={saving}>
-                <Send className="h-4 w-4 mr-2" />{saving ? "Saving..." : "Save Challan"}
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" } }}>
+          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", position: "sticky", top: "1.5rem" }}>
+            <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+              <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
+                <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>{saving ? "Saving..." : "Save Challan"}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate("/challans")}>Cancel</Button>
+              <Button onClick={() => navigate("/challans")} variant="outlined" sx={{ width: "100%" }}>Cancel</Button>
             </CardContent>
           </Card>
-        </div>
-      </div>
-    </div>
-  );
+        </Box>
+      </Box>
+    </Box></AnimatedPage>;
 }

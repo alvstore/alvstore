@@ -1,65 +1,60 @@
-import { useState, useEffect, useCallback } from "react";
+"use client";
+
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Alert, Box, Button, ButtonBase, Card, CardContent, Checkbox, FormControlLabel,
+  IconButton, MenuItem, Skeleton, Switch, TextField, Typography,
+} from "@mui/material";
+import {
+  AgendaWidget, AnimatedPage, DateCalendar, EmptyState, FormDialog, MotionSection,
+  PageHeader, SegmentedControl, StatusChip, WidgetCard, confirmAction, mergeSx, toast,
+} from "@/components/mui";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Calendar } from "@/components/ui/calendar";
-import { Badge } from "@/components/ui/badge";
+import { useTaskBoard } from "@/hooks/useTaskBoard";
+import { useNavigate, useSearchParams } from "@/lib/router-compat";
+import { localDateKey } from "@/lib/widget-data";
 import { ChevronLeft, ChevronRight, Plus, Trash2, ListTodo, CalendarDays, Clock } from "lucide-react";
-import { toast } from "sonner";
 import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  addMonths, subMonths, addWeeks, subWeeks, addDays, subDays,
-  eachDayOfInterval, isSameMonth, isSameDay, isToday,
-  parseISO, getHours, getMinutes, startOfDay, endOfDay,
-  eachHourOfInterval, setHours,
+  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths,
+  addWeeks, subWeeks, addDays, subDays, eachDayOfInterval, isSameMonth, isSameDay,
+  isToday, parseISO, getHours, getMinutes, startOfDay, endOfDay, eachHourOfInterval, setHours,
 } from "date-fns";
-import { cn } from "@/lib/utils";
 
 interface CalendarEvent {
   id: string; title: string; description: string | null; start_date: string;
-  end_date: string | null; all_day: boolean; category: string; color: string | null;
-  created_by: string;
+  end_date: string | null; all_day: boolean; category: string; color: string | null; created_by: string;
 }
-
-interface Task {
-  id: string; title: string; due_date: string | null; status: string | null;
-  priority: string | null;
-}
-
+interface Task { id: string; title: string; due_date: string | null; status: string | null; priority: string | null; }
 type ViewMode = "month" | "week" | "day" | "list";
-
 const CATEGORIES = [
-  { value: "personal", label: "Personal", color: "bg-red-500" },
-  { value: "business", label: "Business", color: "bg-primary" },
-  { value: "family", label: "Family", color: "bg-green-500" },
-  { value: "holiday", label: "Holiday", color: "bg-amber-500" },
-  { value: "etc", label: "ETC", color: "bg-cyan-500" },
+  { value: "personal", label: "Personal", color: { backgroundColor: "rgb(239 68 68 / 1)" } },
+  { value: "business", label: "Business", color: { backgroundColor: "hsl(var(--primary))" } },
+  { value: "family", label: "Family", color: { backgroundColor: "rgb(34 197 94 / 1)" } },
+  { value: "holiday", label: "Holiday", color: { backgroundColor: "rgb(245 158 11 / 1)" } },
+  { value: "etc", label: "Other", color: { backgroundColor: "rgb(6 182 212 / 1)" } },
 ];
-
-const getCategoryColor = (category: string) => CATEGORIES.find(c => c.value === category)?.color || "bg-muted-foreground";
+const getCategoryColor = (category: string) => CATEGORIES.find(c => c.value === category)?.color || { backgroundColor: "hsl(var(--muted-foreground))" };
 
 export default function CalendarPage() {
   const { user } = useAuth();
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const board = useTaskBoard();
+  const [searchParams] = useSearchParams();
+  const [currentDate, setCurrentDate] = useState(() => {
+    const key = searchParams.get("date");
+    const date = key && /^\d{4}-\d{2}-\d{2}$/.test(key) ? new Date(`${key}T12:00:00`) : new Date();
+    return Number.isFinite(date.getTime()) ? date : new Date();
+  });
   const [viewMode, setViewMode] = useState<ViewMode>("month");
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
-  const [filters, setFilters] = useState<Record<string, boolean>>({
-    personal: true, business: true, family: true, holiday: true, etc: true,
-  });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [filters, setFilters] = useState<Record<string, boolean>>({ personal: true, business: true, family: true, holiday: true, etc: true });
   const [showTasks, setShowTasks] = useState(true);
-
-  // Form
   const [formTitle, setFormTitle] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formStartDate, setFormStartDate] = useState("");
@@ -70,654 +65,354 @@ export default function CalendarPage() {
   const [formCategory, setFormCategory] = useState("business");
   const [formLinkTask, setFormLinkTask] = useState(false);
 
-  // Calculate date range based on view
-  const getDateRange = useCallback(() => {
-    if (viewMode === "month") {
-      return { start: startOfWeek(startOfMonth(currentDate)), end: endOfWeek(endOfMonth(currentDate)) };
-    } else if (viewMode === "week") {
-      return { start: startOfWeek(currentDate), end: endOfWeek(currentDate) };
-    } else if (viewMode === "day") {
-      return { start: startOfDay(currentDate), end: endOfDay(currentDate) };
-    }
-    // list: show next 30 days
-    return { start: startOfDay(currentDate), end: addDays(currentDate, 30) };
-  }, [currentDate, viewMode]);
-
-  const fetchEvents = useCallback(async () => {
-    const { start, end } = getDateRange();
-    const { data } = await supabase
-      .from("calendar_events").select("*")
-      .gte("start_date", start.toISOString()).lte("start_date", end.toISOString())
-      .order("start_date");
-    if (data) setEvents(data as CalendarEvent[]);
-  }, [getDateRange]);
-
-  const fetchTasks = useCallback(async () => {
-    const { start, end } = getDateRange();
-    const { data } = await supabase
-      .from("tasks").select("id, title, due_date, status, priority")
-      .not("due_date", "is", null)
-      .gte("due_date", format(start, "yyyy-MM-dd")).lte("due_date", format(end, "yyyy-MM-dd"));
-    if (data) setTasks(data);
-  }, [getDateRange]);
-
-  useEffect(() => { fetchEvents(); fetchTasks(); }, [fetchEvents, fetchTasks]);
-
-  const filteredEvents = events.filter(e => filters[e.category] !== false);
-  const getEventsForDay = (day: Date) => filteredEvents.filter(e => isSameDay(parseISO(e.start_date), day));
-  const getTasksForDay = (day: Date) => tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), day));
-
-  const openNewEvent = (date?: Date) => {
-    setEditEvent(null);
-    const d = date || new Date();
-    setFormTitle(""); setFormDescription("");
-    setFormStartDate(format(d, "yyyy-MM-dd"));
-    setFormStartTime("09:00");
-    setFormEndDate(format(d, "yyyy-MM-dd"));
-    setFormEndTime("10:00");
-    setFormAllDay(false); setFormCategory("business"); setFormLinkTask(false);
-    setDialogOpen(true);
+  const visibleStart = viewMode === "month" ? startOfWeek(startOfMonth(currentDate)) : viewMode === "week" ? startOfWeek(currentDate) : startOfDay(currentDate);
+  const visibleEnd = viewMode === "month" ? endOfWeek(endOfMonth(currentDate)) : viewMode === "week" ? endOfWeek(currentDate) : viewMode === "day" ? endOfDay(currentDate) : endOfDay(addDays(currentDate, 30));
+  // Always include the agenda week, even when the main view shows a single day.
+  const agendaStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const agendaEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+  const rangeStart = visibleStart < agendaStart ? visibleStart : agendaStart;
+  const rangeEnd = visibleEnd > agendaEnd ? visibleEnd : agendaEnd;
+  const eventsQuery = useQuery<CalendarEvent[]>({
+    queryKey: ["calendar", user?.id, rangeStart.toISOString(), rangeEnd.toISOString()], staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("calendar_events").select("*")
+        .gte("start_date", rangeStart.toISOString()).lte("start_date", rangeEnd.toISOString()).order("start_date");
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    },
+  });
+  const events = eventsQuery.data ?? [];
+  const filteredEvents = events.filter(event => filters[event.category] !== false);
+  const tasks = board.tasks.filter(task => task.due_date && task.due_date >= localDateKey(rangeStart) && task.due_date <= localDateKey(rangeEnd));
+  const refresh = () => { void queryClient.invalidateQueries({ queryKey: ["calendar"] }); void queryClient.invalidateQueries({ queryKey: ["dashboard"] }); void board.refresh(); };
+  const openNewEvent = (date = currentDate) => {
+    setFormError(""); setEditEvent(null); setFormTitle(""); setFormDescription("");
+    setFormStartDate(format(date, "yyyy-MM-dd")); setFormEndDate(format(date, "yyyy-MM-dd"));
+    setFormStartTime(format(date.getHours() >= 6 ? date : setHours(date, 9), "HH:00"));
+    setFormEndTime(format(setHours(date, date.getHours() >= 6 ? Math.min(date.getHours() + 1, 23) : 10), "HH:00"));
+    setFormAllDay(false); setFormCategory("business"); setFormLinkTask(false); setDialogOpen(true);
   };
-
   const openEditEvent = (event: CalendarEvent) => {
-    setEditEvent(event);
-    const start = parseISO(event.start_date);
-    setFormTitle(event.title); setFormDescription(event.description || "");
-    setFormStartDate(format(start, "yyyy-MM-dd"));
-    setFormStartTime(format(start, "HH:mm"));
-    if (event.end_date) {
-      const end = parseISO(event.end_date);
-      setFormEndDate(format(end, "yyyy-MM-dd"));
-      setFormEndTime(format(end, "HH:mm"));
-    }
-    setFormAllDay(event.all_day); setFormCategory(event.category); setFormLinkTask(false);
-    setDialogOpen(true);
+    setFormError(""); setEditEvent(event);
+    const start = parseISO(event.start_date), end = parseISO(event.end_date ?? event.start_date);
+    setFormTitle(event.title); setFormDescription(event.description ?? "");
+    setFormStartDate(format(start, "yyyy-MM-dd")); setFormStartTime(format(start, "HH:mm"));
+    setFormEndDate(format(end, "yyyy-MM-dd")); setFormEndTime(format(end, "HH:mm"));
+    setFormAllDay(event.all_day); setFormCategory(event.category); setFormLinkTask(false); setDialogOpen(true);
   };
-
   const handleSave = async () => {
-    if (!formTitle.trim()) { toast.error("Title is required"); return; }
-    const startDateTime = formAllDay ? `${formStartDate}T00:00:00` : `${formStartDate}T${formStartTime}:00`;
-    const endDateTime = formAllDay ? `${formEndDate || formStartDate}T23:59:59` : `${formEndDate || formStartDate}T${formEndTime}:00`;
-
-    if (editEvent) {
-      const { error } = await supabase.from("calendar_events").update({
-        title: formTitle, description: formDescription || null,
-        start_date: startDateTime, end_date: endDateTime,
-        all_day: formAllDay, category: formCategory,
-      }).eq("id", editEvent.id);
-      if (error) toast.error(error.message); else toast.success("Event updated");
-    } else {
-      const { error } = await supabase.from("calendar_events").insert({
-        title: formTitle, description: formDescription || null,
-        start_date: startDateTime, end_date: endDateTime,
-        all_day: formAllDay, category: formCategory, created_by: user?.id,
-      });
-      if (error) toast.error(error.message); else toast.success("Event created");
-    }
-
-    if (formLinkTask && !editEvent) {
-      await supabase.from("tasks").insert({
-        title: formTitle, description: formDescription || null,
-        due_date: formStartDate, status: "pending", priority: "normal",
-        assigned_to: user?.id, assigned_by: user?.id,
-        related_entity_type: "calendar_event",
-      });
-    }
-
-    setDialogOpen(false);
-    fetchEvents(); fetchTasks();
+    if (!formTitle.trim() || !formStartDate) { setFormError("A title and start date are required"); return; }
+    const start = new Date(`${formStartDate}T${formAllDay ? "00:00:00" : `${formStartTime}:00`}`);
+    const end = new Date(`${formEndDate || formStartDate}T${formAllDay ? "23:59:59" : `${formEndTime}:00`}`);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) { setFormError("End date and time must be after the start"); return; }
+    setFormError(""); setSaving(true);
+    try {
+      const payload = { title: formTitle.trim(), description: formDescription || null, start_date: start.toISOString(), end_date: end.toISOString(), all_day: formAllDay, category: formCategory };
+      const { data: saved, error } = editEvent
+        ? await supabase.from("calendar_events").update(payload).eq("id", editEvent.id)
+        : await supabase.from("calendar_events").insert({ ...payload, created_by: user?.id }).select("id").single();
+      if (error) throw new Error(error.message);
+      if (formLinkTask && !editEvent) {
+        const linked = await supabase.from("tasks").insert({ title: formTitle.trim(), description: formDescription || null, due_date: formStartDate, status: "pending", priority: "medium", assigned_to: user?.id, assigned_by: user?.id, related_entity_type: "calendar_event", related_entity_id: saved.id });
+        if (linked.error) toast.error(`Event saved, but its task could not be created: ${linked.error.message}`);
+        else toast.success("Event and task created");
+      } else toast.success(editEvent ? "Event updated" : "Event created");
+      setDialogOpen(false); refresh();
+    } catch (error) { setFormError(error instanceof Error ? error.message : "Could not save the event"); }
+    finally { setSaving(false); }
   };
-
   const handleDelete = async () => {
-    if (!editEvent) return;
-    const { error } = await supabase.from("calendar_events").delete().eq("id", editEvent.id);
-    if (error) toast.error(error.message); else toast.success("Event deleted");
-    setDialogOpen(false);
-    fetchEvents();
+    if (!editEvent || !await confirmAction("Delete this event? This cannot be undone.")) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("calendar_events").delete().eq("id", editEvent.id);
+      if (error) throw new Error(error.message);
+      toast.success("Event deleted"); setDialogOpen(false); refresh();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not delete event"); }
+    finally { setSaving(false); }
   };
+  const navigatePeriod = (direction: -1 | 1) => setCurrentDate(date => viewMode === "month" || viewMode === "list" ? addMonths(date, direction) : viewMode === "week" ? addWeeks(date, direction) : addDays(date, direction));
+  const headerLabel = viewMode === "week" ? `${format(startOfWeek(currentDate), "MMM d")} – ${format(endOfWeek(currentDate), "MMM d, yyyy")}` : viewMode === "day" ? format(currentDate, "EEE, d MMM yyyy") : format(currentDate, "MMMM yyyy");
+  const hours = Array.from({ length: 17 }, (_, index) => index + 6);
+  const viewKey = `${viewMode}-${viewMode === "month" ? format(currentDate, "yyyy-MM") : viewMode === "week" ? localDateKey(visibleStart) : localDateKey(currentDate)}`;
+  const agendaItems = [
+    ...filteredEvents.map(event => ({ id: event.id, title: event.title, date: event.start_date, allDay: event.all_day, detail: CATEGORIES.find(cat => cat.value === event.category)?.label ?? event.category })),
+    ...(showTasks ? tasks.map(task => ({ id: `task:${task.id}`, title: task.title, date: task.due_date!, allDay: true, kind: "task" as const, completed: task.status === "completed", detail: task.status.replace(/_/g, " ") })) : []),
+  ];
 
-  const toggleFilter = (category: string) => setFilters(prev => ({ ...prev, [category]: !prev[category] }));
-  const toggleAllFilters = () => {
-    const allOn = Object.values(filters).every(v => v);
-    const next: Record<string, boolean> = {};
-    CATEGORIES.forEach(c => { next[c.value] = !allOn; });
-    setFilters(next);
-  };
+  return <AnimatedPage><Box sx={{ display: "grid", gap: 3 }}>
+    <PageHeader title="Calendar" subtitle="Make room for what’s next. Events and tasks, in one place." actions={<Button variant="contained" startIcon={<Plus size={16} />} onClick={() => openNewEvent()}>Add Event</Button>} />
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1fr) 300px", xl: "minmax(0,1fr) 320px" }, gap: 2.5, alignItems: "start" }}>
+      <MotionSection><Card sx={{ borderRadius: "20px" }}><CardContent sx={{ p: { xs: 1.5, sm: 2.5 } }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1.5, alignItems: "center", mb: 2.5 }}>
+          <Box sx={{ display: "flex", gap: .5, alignItems: "center", minWidth: 0 }}>
+            <IconButton size="small" aria-label="Previous calendar period" onClick={() => navigatePeriod(-1)}><ChevronLeft size={16} /></IconButton>
+            <IconButton size="small" aria-label="Next calendar period" onClick={() => navigatePeriod(1)}><ChevronRight size={16} /></IconButton>
+            <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 650, fontSize: { xs: 13, sm: 16 }, ml: .5 }}>{headerLabel}</Typography>
+          </Box>
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
+            <Button size="small" variant="outlined" onClick={() => setCurrentDate(new Date())}>Today</Button>
+            <SegmentedControl value={viewMode} onChange={setViewMode} label="Calendar view" options={(["month", "week", "day", "list"] as ViewMode[]).map(view => ({ value: view, label: view }))} sx={{ textTransform: "capitalize" }} />
+          </Box>
+        </Box>
+        {eventsQuery.isError ? <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void eventsQuery.refetch()}>Retry</Button>}>Calendar events could not be loaded.</Alert> : eventsQuery.isPending ? <Skeleton variant="rounded" height={480} aria-label="Loading calendar" /> : <MotionSection key={viewKey}>
+          {viewMode === "month" && <MonthView currentDate={currentDate} filteredEvents={filteredEvents} tasks={showTasks ? tasks : []} onDayClick={openNewEvent} onEventClick={openEditEvent} />}
+          {viewMode === "week" && <WeekView currentDate={currentDate} hours={hours} filteredEvents={filteredEvents} tasks={showTasks ? tasks : []} onSlotClick={openNewEvent} onEventClick={openEditEvent} />}
+          {viewMode === "day" && <DayView currentDate={currentDate} hours={hours} filteredEvents={filteredEvents} tasks={showTasks ? tasks : []} onSlotClick={openNewEvent} onEventClick={openEditEvent} />}
+          {viewMode === "list" && <ListView currentDate={currentDate} filteredEvents={filteredEvents} tasks={showTasks ? tasks : []} onEventClick={openEditEvent} />}
+        </MotionSection>}
+        {showTasks && board.isError && <Alert severity="warning" sx={{ mt: 2 }}>Tasks could not be loaded. Calendar events are still available.</Alert>}
+      </CardContent></Card></MotionSection>
+      <Box sx={{ display: "grid", gap: 2.5, minWidth: 0 }}>
+        <AgendaWidget items={agendaItems} date={currentDate} onDateChange={setCurrentDate} onOpen={item => { if (item.id.startsWith("task:")) navigate("/tasks"); else { const event = events.find(event => event.id === item.id); if (event) openEditEvent(event); } }} loading={eventsQuery.isPending} error={eventsQuery.error?.message} onRetry={() => void eventsQuery.refetch()} index={1} />
+        <Box sx={{ display: { xs: "none", lg: "block" } }}><WidgetCard title="Jump to a date" index={2}><DateCalendar selected={currentDate} month={currentDate} onMonthChange={setCurrentDate} onSelect={date => { if (date) setCurrentDate(date); }} /></WidgetCard></Box>
+        <WidgetCard title="Your calendars" subtitle="Choose what you want to see." index={3}>
+          <FormControlLabel control={<Checkbox size="small" checked={Object.values(filters).every(Boolean)} indeterminate={Object.values(filters).some(Boolean) && !Object.values(filters).every(Boolean)} onChange={() => { const enabled = !Object.values(filters).every(Boolean); setFilters(Object.fromEntries(CATEGORIES.map(category => [category.value, enabled]))); }} />} label={<Typography variant="body2" sx={{ fontSize: 12 }}>View all events</Typography>} />
+          {CATEGORIES.map(category => <Box key={category.value}><FormControlLabel sx={{ my: -.5 }} control={<Checkbox size="small" checked={filters[category.value] !== false} onChange={(_event, checked) => setFilters(current => ({ ...current, [category.value]: checked }))} />} label={<Box sx={{ display: "flex", alignItems: "center", gap: 1 }}><Box sx={{ width: 6, height: 6, borderRadius: "50%", ...category.color }} /><Typography variant="body2" sx={{ fontSize: 12 }}>{category.label}</Typography></Box>} /></Box>)}
+          <Box sx={{ borderTop: 1, borderColor: "divider", mt: 1, pt: 1 }}><FormControlLabel control={<Checkbox size="small" checked={showTasks} onChange={(_event, checked) => setShowTasks(checked)} />} label={<Typography variant="body2" sx={{ fontSize: 12 }}>Show tasks</Typography>} /></Box>
+        </WidgetCard>
+      </Box>
+    </Box>
 
-  // Navigation
-  const goBack = () => {
-    if (viewMode === "month") setCurrentDate(subMonths(currentDate, 1));
-    else if (viewMode === "week") setCurrentDate(subWeeks(currentDate, 1));
-    else if (viewMode === "day") setCurrentDate(subDays(currentDate, 1));
-    else setCurrentDate(subMonths(currentDate, 1));
-  };
-  const goForward = () => {
-    if (viewMode === "month") setCurrentDate(addMonths(currentDate, 1));
-    else if (viewMode === "week") setCurrentDate(addWeeks(currentDate, 1));
-    else if (viewMode === "day") setCurrentDate(addDays(currentDate, 1));
-    else setCurrentDate(addMonths(currentDate, 1));
-  };
-  const goToday = () => setCurrentDate(new Date());
-
-  const headerLabel = () => {
-    if (viewMode === "month") return format(currentDate, "MMMM yyyy");
-    if (viewMode === "week") {
-      const ws = startOfWeek(currentDate);
-      const we = endOfWeek(currentDate);
-      return `${format(ws, "MMM d")} – ${format(we, "MMM d, yyyy")}`;
-    }
-    if (viewMode === "day") return format(currentDate, "EEEE, MMM d, yyyy");
-    return format(currentDate, "MMMM yyyy");
-  };
-
-  // HOURS for week/day view
-  const hours = Array.from({ length: 17 }, (_, i) => i + 6); // 6AM to 10PM
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Calendar</h1>
-          <p className="text-sm text-muted-foreground">Manage events & schedules</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Sidebar */}
-        <div className="lg:col-span-3 space-y-4">
-          <Button className="w-full" onClick={() => openNewEvent()}>
-            <Plus className="h-4 w-4 mr-2" />Add Event
-          </Button>
-
-          <Card className="border-border/50 shadow-sm">
-            <CardContent className="p-3">
-              <Calendar
-                mode="single"
-                selected={currentDate}
-                onSelect={(d) => { if (d) setCurrentDate(d); }}
-                month={currentDate}
-                onMonthChange={setCurrentDate}
-                className="p-0 pointer-events-auto"
-              />
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50 shadow-sm">
-            <CardContent className="p-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Event Filters</p>
-              <div className="flex items-center gap-2">
-                <Checkbox checked={Object.values(filters).every(v => v)} onCheckedChange={toggleAllFilters} />
-                <Label className="text-sm">View All</Label>
-              </div>
-              {CATEGORIES.map(cat => (
-                <div key={cat.value} className="flex items-center gap-2">
-                  <Checkbox checked={filters[cat.value] !== false} onCheckedChange={() => toggleFilter(cat.value)} />
-                  <div className={cn("h-2.5 w-2.5 rounded-full", cat.color)} />
-                  <Label className="text-sm">{cat.label}</Label>
-                </div>
-              ))}
-              <div className="flex items-center gap-2 pt-2 border-t border-border">
-                <Checkbox checked={showTasks} onCheckedChange={(v) => setShowTasks(!!v)} />
-                <ListTodo className="h-3.5 w-3.5 text-muted-foreground" />
-                <Label className="text-sm">Show Tasks</Label>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Calendar Area */}
-        <div className="lg:col-span-9">
-          <Card className="border-border/50 shadow-sm">
-            <CardContent className="p-4">
-              {/* Header with navigation + view toggle */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={goBack}><ChevronLeft className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={goForward}><ChevronRight className="h-4 w-4" /></Button>
-                  <h2 className="text-lg font-semibold text-foreground ml-2">{headerLabel()}</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={goToday}>Today</Button>
-                  <div className="flex rounded-lg border border-border overflow-hidden">
-                    {(["month", "week", "day", "list"] as ViewMode[]).map(v => (
-                      <button
-                        key={v}
-                        onClick={() => setViewMode(v)}
-                        className={cn(
-                          "px-3 py-1.5 text-xs font-medium capitalize transition-colors",
-                          viewMode === v
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-card text-muted-foreground hover:bg-muted"
-                        )}
-                      >
-                        {v}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* MONTH VIEW */}
-              {viewMode === "month" && (
-                <MonthView
-                  currentDate={currentDate}
-                  filteredEvents={filteredEvents}
-                  tasks={showTasks ? tasks : []}
-                  onDayClick={openNewEvent}
-                  onEventClick={openEditEvent}
-                />
-              )}
-
-              {/* WEEK VIEW */}
-              {viewMode === "week" && (
-                <WeekView
-                  currentDate={currentDate}
-                  hours={hours}
-                  filteredEvents={filteredEvents}
-                  tasks={showTasks ? tasks : []}
-                  onSlotClick={(d) => openNewEvent(d)}
-                  onEventClick={openEditEvent}
-                />
-              )}
-
-              {/* DAY VIEW */}
-              {viewMode === "day" && (
-                <DayView
-                  currentDate={currentDate}
-                  hours={hours}
-                  filteredEvents={filteredEvents}
-                  tasks={showTasks ? tasks : []}
-                  onSlotClick={(d) => openNewEvent(d)}
-                  onEventClick={openEditEvent}
-                />
-              )}
-
-              {/* LIST VIEW */}
-              {viewMode === "list" && (
-                <ListView
-                  currentDate={currentDate}
-                  filteredEvents={filteredEvents}
-                  tasks={showTasks ? tasks : []}
-                  onEventClick={openEditEvent}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Add/Edit Event Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>{editEvent ? "Edit Event" : "Add Event"}</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Title *</Label>
-              <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Event title" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Category</Label>
-              <Select value={formCategory} onValueChange={setFormCategory}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(c => (
-                    <SelectItem key={c.value} value={c.value}>
-                      <div className="flex items-center gap-2">
-                        <div className={cn("h-2.5 w-2.5 rounded-full", c.color)} />
-                        {c.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={formAllDay} onCheckedChange={setFormAllDay} />
-              <Label className="text-xs">All Day</Label>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label className="text-xs font-medium">Start Date</Label><Input type="date" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} /></div>
-              {!formAllDay && <div className="space-y-1.5"><Label className="text-xs font-medium">Start Time</Label><Input type="time" value={formStartTime} onChange={e => setFormStartTime(e.target.value)} /></div>}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label className="text-xs font-medium">End Date</Label><Input type="date" value={formEndDate} onChange={e => setFormEndDate(e.target.value)} /></div>
-              {!formAllDay && <div className="space-y-1.5"><Label className="text-xs font-medium">End Time</Label><Input type="time" value={formEndTime} onChange={e => setFormEndTime(e.target.value)} /></div>}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Description</Label>
-              <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} rows={2} placeholder="Optional details..." />
-            </div>
-            {!editEvent && (
-              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border border-border">
-                <Switch checked={formLinkTask} onCheckedChange={setFormLinkTask} className="h-4 w-7" />
-                <div>
-                  <Label className="text-xs font-medium">Also create a Task</Label>
-                  <p className="text-[10px] text-muted-foreground">Syncs this event with the Task Manager</p>
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="gap-2">
-            {editEvent && (
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                <Trash2 className="h-4 w-4 mr-1" />Delete
-              </Button>
-            )}
-            <Button onClick={handleSave}>{editEvent ? "Update" : "Add Event"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+    <FormDialog open={dialogOpen} busy={saving} onClose={() => setDialogOpen(false)} title={editEvent ? "Edit Event" : "Add Event"} maxWidth="sm" actions={<>
+      {editEvent && <Button variant="outlined" color="error" disabled={saving} onClick={handleDelete} startIcon={<Trash2 size={14} />}>Delete</Button>}
+      <Button variant="text" disabled={saving} onClick={() => setDialogOpen(false)}>Cancel</Button>
+      <Button variant="contained" disabled={saving} onClick={handleSave}>{saving ? "Saving…" : editEvent ? "Update" : "Add Event"}</Button>
+    </>}>
+      <Box sx={{ display: "grid", gap: 2, pt: 1 }}>
+        {formError && <Alert severity="error">{formError}</Alert>}
+        <TextField label="Title" required fullWidth value={formTitle} onChange={event => setFormTitle(event.target.value)} />
+        <TextField label="Category" select value={formCategory} onChange={event => setFormCategory(event.target.value)}>{CATEGORIES.map(category => <MenuItem key={category.value} value={category.value}>{category.label}</MenuItem>)}</TextField>
+        <FormControlLabel control={<Switch checked={formAllDay} onChange={(_event, checked) => setFormAllDay(checked)} />} label="All day" />
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", sm: "repeat(2,minmax(0,1fr))" }, gap: 2 }}><TextField type="date" label="Start Date" value={formStartDate} onChange={event => setFormStartDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />{!formAllDay && <TextField type="time" label="Start Time" value={formStartTime} onChange={event => setFormStartTime(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />}</Box>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", sm: "repeat(2,minmax(0,1fr))" }, gap: 2 }}><TextField type="date" label="End Date" value={formEndDate} onChange={event => setFormEndDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />{!formAllDay && <TextField type="time" label="End Time" value={formEndTime} onChange={event => setFormEndTime(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />}</Box>
+        <TextField label="Description" multiline minRows={2} value={formDescription} onChange={event => setFormDescription(event.target.value)} />
+        {!editEvent && <FormControlLabel control={<Switch checked={formLinkTask} onChange={(_event, checked) => setFormLinkTask(checked)} />} label={<Box><Typography variant="body2">Also create a task</Typography><Typography variant="caption" color="text.secondary">Assigned to you, due on the event’s start date.</Typography></Box>} />}
+      </Box>
+    </FormDialog>
+  </Box></AnimatedPage>;
 }
-
 // ═══════════════════════════════════════════════
 // MONTH VIEW
 // ═══════════════════════════════════════════════
 function MonthView({ currentDate, filteredEvents, tasks, onDayClick, onEventClick }: {
-  currentDate: Date; filteredEvents: CalendarEvent[]; tasks: Task[];
-  onDayClick: (d: Date) => void; onEventClick: (e: CalendarEvent) => void;
+    currentDate: Date;
+    filteredEvents: CalendarEvent[];
+    tasks: Task[];
+    onDayClick: (d: Date) => void;
+    onEventClick: (e: CalendarEvent) => void;
 }) {
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-  const calStart = startOfWeek(monthStart);
-  const calEnd = endOfWeek(monthEnd);
-  const days = eachDayOfInterval({ start: calStart, end: calEnd });
-
-  const getEventsForDay = (day: Date) => filteredEvents.filter(e => isSameDay(parseISO(e.start_date), day));
-  const getTasksForDay = (day: Date) => tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), day));
-
-  return (
-    <>
-      <div className="grid grid-cols-7 mb-1">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
-          <div key={day} className="text-center text-xs font-semibold text-muted-foreground py-2">{day}</div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 border-t border-l border-border">
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(currentDate);
+    const calStart = startOfWeek(monthStart);
+    const calEnd = endOfWeek(monthEnd);
+    const days = eachDayOfInterval({ start: calStart, end: calEnd });
+    const getEventsForDay = (day: Date) => filteredEvents.filter(e => isSameDay(parseISO(e.start_date), day));
+    const getTasksForDay = (day: Date) => tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), day));
+    return (<>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", marginBottom: "0.25rem" }}>
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (<Box key={day} sx={{ textAlign: "center", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", paddingTop: "0.5rem", paddingBottom: "0.5rem" }}>{day}</Box>))}
+      </Box>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", borderTopWidth: "1px", borderLeftWidth: "1px", borderColor: "hsl(var(--border))" }}>
         {days.map((day, idx) => {
-          const dayEvents = getEventsForDay(day);
-          const dayTasks = getTasksForDay(day);
-          const inMonth = isSameMonth(day, currentDate);
-          const today = isToday(day);
-
-          return (
-            <div
-              key={idx}
-              className={cn(
-                "min-h-[110px] border-r border-b border-border p-1 cursor-pointer hover:bg-muted/30 transition-colors",
-                !inMonth && "bg-muted/10",
-              )}
-              onClick={() => onDayClick(day)}
-            >
-              <div className={cn(
-                "text-xs font-medium mb-1 h-6 w-6 flex items-center justify-center rounded-full",
-                today && "bg-primary text-primary-foreground",
-                !inMonth && "text-muted-foreground/50",
-                inMonth && !today && "text-foreground",
-              )}>
+            const dayEvents = getEventsForDay(day);
+            const dayTasks = getTasksForDay(day);
+            const inMonth = isSameMonth(day, currentDate);
+            const today = isToday(day);
+            return (<Box key={idx} onClick={() => onDayClick(day)} sx={mergeSx({ minHeight: "110px", borderRightWidth: "1px", borderBottomWidth: "1px", borderColor: "hsl(var(--border))", padding: "0.25rem", cursor: "pointer", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }, transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, !inMonth && { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 10%, transparent)" })}>
+              <Box sx={mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", marginBottom: "0.25rem", height: "1.5rem", width: "1.5rem", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "9999px" }, today && { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }, !inMonth && { color: "color-mix(in srgb, hsl(var(--muted-foreground)) 50%, transparent)" }, inMonth && !today && { color: "hsl(var(--foreground))" })}>
                 {format(day, "d")}
-              </div>
-              <div className="space-y-0.5">
-                {dayEvents.slice(0, 2).map(event => (
-                  <button
-                    key={event.id}
-                    onClick={e => { e.stopPropagation(); onEventClick(event); }}
-                    className={cn(
-                      "w-full text-left text-[11px] font-medium px-1.5 py-1 rounded truncate text-white min-h-[22px] leading-tight",
-                      getCategoryColor(event.category),
-                    )}
-                    title={event.title}
-                  >
-                    {!event.all_day && <span className="opacity-80">{format(parseISO(event.start_date), "HH:mm")} </span>}
+              </Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.125rem" } }}>
+                {dayEvents.slice(0, 2).map(event => (<ButtonBase key={event.id} onClick={e => { e.stopPropagation(); onEventClick(event); }} title={event.title} type="button" sx={mergeSx({ width: "100%", textAlign: "left", fontSize: "11px", fontWeight: "500", paddingLeft: "0.375rem", paddingRight: "0.375rem", paddingTop: "0.25rem", paddingBottom: "0.25rem", borderRadius: "0.25rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgb(255 255 255 / 1)", minHeight: "22px", lineHeight: "1.25" }, getCategoryColor(event.category))}>
+                    {!event.all_day && <Box component="span" sx={{ opacity: "0.8" }}>{format(parseISO(event.start_date), "HH:mm")} </Box>}
                     {event.title}
-                  </button>
-                ))}
-                {dayTasks.slice(0, 2).map(task => (
-                  <div
-                    key={task.id}
-                    className="w-full text-left text-[10px] font-medium px-1.5 py-0.5 rounded truncate border border-dashed border-primary/40 text-primary bg-primary/5"
-                    title={`Task: ${task.title}`}
-                  >
-                    <ListTodo className="h-2.5 w-2.5 inline mr-0.5" />
+                  </ButtonBase>))}
+                {dayTasks.slice(0, 2).map(task => (<Box key={task.id} title={`Task: ${task.title}`} sx={{ width: "100%", textAlign: "left", fontSize: "10px", fontWeight: "500", paddingLeft: "0.375rem", paddingRight: "0.375rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "0.25rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", borderWidth: "1px", borderStyle: "dashed", borderColor: "color-mix(in srgb, hsl(var(--primary)) 40%, transparent)", color: "hsl(var(--primary))", backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)" }}>
+                    <Box component={ListTodo} sx={{ height: "0.625rem", width: "0.625rem", display: "inline", marginRight: "0.125rem" }}/>
                     {task.title}
-                  </div>
-                ))}
-                {(dayEvents.length + dayTasks.length) > 4 && (
-                  <p className="text-[10px] text-muted-foreground px-1">+{dayEvents.length + dayTasks.length - 4} more</p>
-                )}
-              </div>
-            </div>
-          );
+                  </Box>))}
+                {(dayEvents.length + dayTasks.length) > 4 && (<Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))", paddingLeft: "0.25rem", paddingRight: "0.25rem" }}>+{dayEvents.length + dayTasks.length - 4} more</Typography>)}
+              </Box>
+            </Box>);
         })}
-      </div>
-    </>
-  );
+      </Box>
+    </>);
 }
-
 // ═══════════════════════════════════════════════
 // WEEK VIEW
 // ═══════════════════════════════════════════════
 function WeekView({ currentDate, hours, filteredEvents, tasks, onSlotClick, onEventClick }: {
-  currentDate: Date; hours: number[]; filteredEvents: CalendarEvent[]; tasks: Task[];
-  onSlotClick: (d: Date) => void; onEventClick: (e: CalendarEvent) => void;
+    currentDate: Date;
+    hours: number[];
+    filteredEvents: CalendarEvent[];
+    tasks: Task[];
+    onSlotClick: (d: Date) => void;
+    onEventClick: (e: CalendarEvent) => void;
 }) {
-  const weekStart = startOfWeek(currentDate);
-  const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(currentDate) });
-
-  const getEventsForDayHour = (day: Date, hour: number) =>
-    filteredEvents.filter(e => {
-      const s = parseISO(e.start_date);
-      return isSameDay(s, day) && getHours(s) === hour && !e.all_day;
+    const weekStart = startOfWeek(currentDate);
+    const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(currentDate) });
+    const getEventsForDayHour = (day: Date, hour: number) => filteredEvents.filter(e => {
+        const s = parseISO(e.start_date);
+        return isSameDay(s, day) && getHours(s) === hour && !e.all_day;
     });
-
-  const getAllDayEvents = (day: Date) =>
-    filteredEvents.filter(e => e.all_day && isSameDay(parseISO(e.start_date), day));
-
-  const getTasksForDay = (day: Date) => tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), day));
-
-  return (
-    <div className="overflow-auto">
+    const getAllDayEvents = (day: Date) => filteredEvents.filter(e => e.all_day && isSameDay(parseISO(e.start_date), day));
+    const getTasksForDay = (day: Date) => tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), day));
+    return (<Box sx={{ overflow: "auto" }}>
       {/* All-day row */}
-      <div className="grid grid-cols-8 border-b border-border">
-        <div className="p-1 text-[10px] text-muted-foreground border-r border-border">All Day</div>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", borderBottomWidth: "1px", borderColor: "hsl(var(--border))" }}>
+        <Box sx={{ padding: "0.25rem", fontSize: "10px", color: "hsl(var(--muted-foreground))", borderRightWidth: "1px", borderColor: "hsl(var(--border))" }}>All Day</Box>
         {weekDays.map((day, i) => {
-          const allDay = getAllDayEvents(day);
-          const dayTasks = getTasksForDay(day);
-          return (
-            <div key={i} className="p-1 border-r border-border min-h-[28px]">
-              {allDay.map(e => (
-                <button key={e.id} onClick={() => onEventClick(e)} className={cn("w-full text-[10px] px-1 rounded text-white truncate mb-0.5", getCategoryColor(e.category))}>
+            const allDay = getAllDayEvents(day);
+            const dayTasks = getTasksForDay(day);
+            return (<Box key={i} sx={{ padding: "0.25rem", borderRightWidth: "1px", borderColor: "hsl(var(--border))", minHeight: "28px" }}>
+              {allDay.map(e => (<ButtonBase key={e.id} onClick={() => onEventClick(e)} type="button" sx={mergeSx({ width: "100%", fontSize: "10px", paddingLeft: "0.25rem", paddingRight: "0.25rem", borderRadius: "0.25rem", color: "rgb(255 255 255 / 1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: "0.125rem" }, getCategoryColor(e.category))}>
                   {e.title}
-                </button>
-              ))}
-              {dayTasks.map(t => (
-                <div key={t.id} className="text-[10px] px-1 rounded truncate border border-dashed border-primary/40 text-primary bg-primary/5 mb-0.5">
+                </ButtonBase>))}
+              {dayTasks.map(t => (<Box key={t.id} sx={{ fontSize: "10px", paddingLeft: "0.25rem", paddingRight: "0.25rem", borderRadius: "0.25rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", borderWidth: "1px", borderStyle: "dashed", borderColor: "color-mix(in srgb, hsl(var(--primary)) 40%, transparent)", color: "hsl(var(--primary))", backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)", marginBottom: "0.125rem" }}>
                   {t.title}
-                </div>
-              ))}
-            </div>
-          );
+                </Box>))}
+            </Box>);
         })}
-      </div>
+      </Box>
 
       {/* Header */}
-      <div className="grid grid-cols-8 border-b border-border sticky top-0 bg-card z-10">
-        <div className="p-2 text-xs text-muted-foreground border-r border-border"></div>
-        {weekDays.map((day, i) => (
-          <div key={i} className={cn("p-2 text-center border-r border-border", isToday(day) && "bg-primary/5")}>
-            <p className="text-[10px] text-muted-foreground">{format(day, "EEE")}</p>
-            <p className={cn("text-sm font-semibold", isToday(day) ? "text-primary" : "text-foreground")}>{format(day, "d")}</p>
-          </div>
-        ))}
-      </div>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", borderBottomWidth: "1px", borderColor: "hsl(var(--border))", position: "sticky", top: "0px", backgroundColor: "hsl(var(--card))", zIndex: "10" }}>
+        <Box sx={{ padding: "0.5rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", borderRightWidth: "1px", borderColor: "hsl(var(--border))" }}/>
+        {weekDays.map((day, i) => (<Box key={i} sx={mergeSx({ padding: "0.5rem", textAlign: "center", borderRightWidth: "1px", borderColor: "hsl(var(--border))" }, isToday(day) && { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)" })}>
+            <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))" }}>{format(day, "EEE")}</Typography>
+            <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }, isToday(day) ? { color: "hsl(var(--primary))" } : { color: "hsl(var(--foreground))" })}>{format(day, "d")}</Typography>
+          </Box>))}
+      </Box>
 
       {/* Time grid */}
-      {hours.map(hour => (
-        <div key={hour} className="grid grid-cols-8 border-b border-border/50">
-          <div className="p-1 text-[10px] text-muted-foreground text-right pr-2 border-r border-border w-16">
+      {hours.map(hour => (<Box key={hour} sx={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+          <Box sx={{ padding: "0.25rem", fontSize: "10px", color: "hsl(var(--muted-foreground))", textAlign: "right", paddingRight: "0.5rem", borderRightWidth: "1px", borderColor: "hsl(var(--border))", width: "4rem" }}>
             {hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`}
-          </div>
+          </Box>
           {weekDays.map((day, i) => {
-            const slotEvents = getEventsForDayHour(day, hour);
-            return (
-              <div
-                key={i}
-                className={cn("min-h-[48px] border-r border-border/50 p-0.5 cursor-pointer hover:bg-muted/20", isToday(day) && "bg-primary/[0.02]")}
-                onClick={() => { const d = new Date(day); d.setHours(hour); onSlotClick(d); }}
-              >
-                {slotEvents.map(e => (
-                  <button key={e.id} onClick={ev => { ev.stopPropagation(); onEventClick(e); }} className={cn("w-full text-left text-[10px] font-medium px-1 py-0.5 rounded text-white truncate mb-0.5", getCategoryColor(e.category))}>
+                const slotEvents = getEventsForDayHour(day, hour);
+                return (<Box key={i} onClick={() => { const d = new Date(day); d.setHours(hour); onSlotClick(d); }} sx={mergeSx({ minHeight: "48px", borderRightWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", padding: "0.125rem", cursor: "pointer", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)" } }, isToday(day) && { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 2%, transparent)" })}>
+                {slotEvents.map(e => (<ButtonBase key={e.id} onClick={ev => { ev.stopPropagation(); onEventClick(e); }} type="button" sx={mergeSx({ width: "100%", textAlign: "left", fontSize: "10px", fontWeight: "500", paddingLeft: "0.25rem", paddingRight: "0.25rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "0.25rem", color: "rgb(255 255 255 / 1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: "0.125rem" }, getCategoryColor(e.category))}>
                     {format(parseISO(e.start_date), "HH:mm")} {e.title}
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
+                  </ButtonBase>))}
+              </Box>);
+            })}
+        </Box>))}
+    </Box>);
 }
-
 // ═══════════════════════════════════════════════
 // DAY VIEW
 // ═══════════════════════════════════════════════
 function DayView({ currentDate, hours, filteredEvents, tasks, onSlotClick, onEventClick }: {
-  currentDate: Date; hours: number[]; filteredEvents: CalendarEvent[]; tasks: Task[];
-  onSlotClick: (d: Date) => void; onEventClick: (e: CalendarEvent) => void;
+    currentDate: Date;
+    hours: number[];
+    filteredEvents: CalendarEvent[];
+    tasks: Task[];
+    onSlotClick: (d: Date) => void;
+    onEventClick: (e: CalendarEvent) => void;
 }) {
-  const dayEvents = filteredEvents.filter(e => isSameDay(parseISO(e.start_date), currentDate));
-  const allDayEvents = dayEvents.filter(e => e.all_day);
-  const timedEvents = dayEvents.filter(e => !e.all_day);
-  const dayTasks = tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), currentDate));
-
-  return (
-    <div className="overflow-auto">
+    const dayEvents = filteredEvents.filter(e => isSameDay(parseISO(e.start_date), currentDate));
+    const allDayEvents = dayEvents.filter(e => e.all_day);
+    const timedEvents = dayEvents.filter(e => !e.all_day);
+    const dayTasks = tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), currentDate));
+    return (<Box sx={{ overflow: "auto" }}>
       {/* All-day section */}
-      {(allDayEvents.length > 0 || dayTasks.length > 0) && (
-        <div className="border-b border-border p-2 space-y-1">
-          <p className="text-[10px] text-muted-foreground font-medium">All Day</p>
-          {allDayEvents.map(e => (
-            <button key={e.id} onClick={() => onEventClick(e)} className={cn("text-[11px] font-medium px-2 py-1 rounded text-white mr-2", getCategoryColor(e.category))}>
+      {(allDayEvents.length > 0 || dayTasks.length > 0) && (<Box sx={{ borderBottomWidth: "1px", borderColor: "hsl(var(--border))", padding: "0.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+          <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))", fontWeight: "500" }}>All Day</Typography>
+          {allDayEvents.map(e => (<ButtonBase key={e.id} onClick={() => onEventClick(e)} type="button" sx={mergeSx({ fontSize: "11px", fontWeight: "500", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.25rem", paddingBottom: "0.25rem", borderRadius: "0.25rem", color: "rgb(255 255 255 / 1)", marginRight: "0.5rem" }, getCategoryColor(e.category))}>
               {e.title}
-            </button>
-          ))}
-          {dayTasks.map(t => (
-            <span key={t.id} className="text-[11px] font-medium px-2 py-1 rounded border border-dashed border-primary/40 text-primary bg-primary/5 mr-2 inline-block">
-              <ListTodo className="h-3 w-3 inline mr-0.5" />{t.title}
-            </span>
-          ))}
-        </div>
-      )}
+            </ButtonBase>))}
+          {dayTasks.map(t => (<Box key={t.id} component="span" sx={{ fontSize: "11px", fontWeight: "500", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.25rem", paddingBottom: "0.25rem", borderRadius: "0.25rem", borderWidth: "1px", borderStyle: "dashed", borderColor: "color-mix(in srgb, hsl(var(--primary)) 40%, transparent)", color: "hsl(var(--primary))", backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)", marginRight: "0.5rem", display: "inline-block" }}>
+              <Box component={ListTodo} sx={{ height: "0.75rem", width: "0.75rem", display: "inline", marginRight: "0.125rem" }}/>{t.title}
+            </Box>))}
+        </Box>)}
 
       {/* Hourly grid */}
       {hours.map(hour => {
-        const slotEvents = timedEvents.filter(e => getHours(parseISO(e.start_date)) === hour);
-        return (
-          <div key={hour} className="flex border-b border-border/50 min-h-[56px]">
-            <div className="w-20 shrink-0 p-2 text-xs text-muted-foreground text-right border-r border-border">
+            const slotEvents = timedEvents.filter(e => getHours(parseISO(e.start_date)) === hour);
+            return (<Box key={hour} sx={{ display: "flex", borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", minHeight: "56px" }}>
+            <Box sx={{ width: "5rem", flexShrink: "0", padding: "0.5rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", textAlign: "right", borderRightWidth: "1px", borderColor: "hsl(var(--border))" }}>
               {hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`}
-            </div>
-            <div
-              className="flex-1 p-1 cursor-pointer hover:bg-muted/20"
-              onClick={() => { const d = new Date(currentDate); d.setHours(hour); onSlotClick(d); }}
-            >
-              {slotEvents.map(e => (
-                <button key={e.id} onClick={ev => { ev.stopPropagation(); onEventClick(e); }} className={cn("text-left text-[11px] font-medium px-2 py-1 rounded text-white truncate block w-full mb-0.5", getCategoryColor(e.category))}>
+            </Box>
+            <Box onClick={() => { const d = new Date(currentDate); d.setHours(hour); onSlotClick(d); }} sx={{ flex: "1 1 0%", padding: "0.25rem", cursor: "pointer", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)" } }}>
+              {slotEvents.map(e => (<ButtonBase key={e.id} onClick={ev => { ev.stopPropagation(); onEventClick(e); }} type="button" sx={mergeSx({ textAlign: "left", fontSize: "11px", fontWeight: "500", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.25rem", paddingBottom: "0.25rem", borderRadius: "0.25rem", color: "rgb(255 255 255 / 1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", width: "100%", marginBottom: "0.125rem" }, getCategoryColor(e.category))}>
                   {format(parseISO(e.start_date), "HH:mm")} – {e.end_date ? format(parseISO(e.end_date), "HH:mm") : ""} {e.title}
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+                </ButtonBase>))}
+            </Box>
+          </Box>);
+        })}
+    </Box>);
 }
-
 // ═══════════════════════════════════════════════
 // LIST VIEW
 // ═══════════════════════════════════════════════
 function ListView({ currentDate, filteredEvents, tasks, onEventClick }: {
-  currentDate: Date; filteredEvents: CalendarEvent[]; tasks: Task[];
-  onEventClick: (e: CalendarEvent) => void;
+    currentDate: Date;
+    filteredEvents: CalendarEvent[];
+    tasks: Task[];
+    onEventClick: (e: CalendarEvent) => void;
 }) {
-  // Group events by date
-  const sortedEvents = [...filteredEvents].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
-
-  const grouped: Record<string, { events: CalendarEvent[]; tasks: Task[] }> = {};
-  sortedEvents.forEach(e => {
-    const key = format(parseISO(e.start_date), "yyyy-MM-dd");
-    if (!grouped[key]) grouped[key] = { events: [], tasks: [] };
-    grouped[key].events.push(e);
-  });
-  tasks.forEach(t => {
-    if (!t.due_date) return;
-    const key = t.due_date;
-    if (!grouped[key]) grouped[key] = { events: [], tasks: [] };
-    grouped[key].tasks.push(t);
-  });
-
-  const sortedKeys = Object.keys(grouped).sort();
-
-  if (sortedKeys.length === 0) {
-    return (
-      <div className="text-center py-16 text-muted-foreground">
-        <CalendarDays className="h-10 w-10 mx-auto mb-3 opacity-30" />
-        <p>No events in this period</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
+    // Group events by date
+    const sortedEvents = [...filteredEvents].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+    const grouped: Record<string, {
+        events: CalendarEvent[];
+        tasks: Task[];
+    }> = {};
+    sortedEvents.forEach(e => {
+        const key = format(parseISO(e.start_date), "yyyy-MM-dd");
+        if (!grouped[key])
+            grouped[key] = { events: [], tasks: [] };
+        grouped[key].events.push(e);
+    });
+    tasks.forEach(t => {
+        if (!t.due_date)
+            return;
+        const key = t.due_date;
+        if (!grouped[key])
+            grouped[key] = { events: [], tasks: [] };
+        grouped[key].tasks.push(t);
+    });
+    const sortedKeys = Object.keys(grouped).sort();
+    if (sortedKeys.length === 0) {
+        return (<Box sx={{ textAlign: "center", paddingTop: "4rem", paddingBottom: "4rem", color: "hsl(var(--muted-foreground))" }}>
+        <Box component={CalendarDays} sx={{ height: "2.5rem", width: "2.5rem", marginLeft: "auto", marginRight: "auto", marginBottom: "0.75rem", opacity: "0.3" }}/>
+        <Typography component="p" variant="body1">No events in this period</Typography>
+      </Box>);
+    }
+    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
       {sortedKeys.map(dateKey => {
-        const d = parseISO(dateKey);
-        const group = grouped[dateKey];
-        return (
-          <div key={dateKey}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className={cn(
-                "h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold",
-                isToday(d) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              )}>
+            const d = parseISO(dateKey);
+            const group = grouped[dateKey];
+            return (<Box key={dateKey}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              <Box sx={mergeSx({ height: "2rem", width: "2rem", borderRadius: "9999px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "700" }, isToday(d) ? { backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" } : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" })}>
                 {format(d, "d")}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">{format(d, "EEEE")}</p>
-                <p className="text-[10px] text-muted-foreground">{format(d, "MMMM yyyy")}</p>
-              </div>
-            </div>
-            <div className="ml-10 space-y-1.5">
-              {group.events.map(e => (
-                <button
-                  key={e.id}
-                  onClick={() => onEventClick(e)}
-                  className="flex items-center gap-3 w-full text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className={cn("h-3 w-3 rounded-full shrink-0", getCategoryColor(e.category))} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">{e.title}</p>
-                    <p className="text-[11px] text-muted-foreground">
+              </Box>
+              <Box>
+                <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>{format(d, "EEEE")}</Typography>
+                <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))" }}>{format(d, "MMMM yyyy")}</Typography>
+              </Box>
+            </Box>
+            <Box sx={{ marginLeft: "2.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+              {group.events.map(e => (<ButtonBase key={e.id} onClick={() => onEventClick(e)} type="button" sx={{ display: "flex", alignItems: "center", gap: "0.75rem", width: "100%", textAlign: "left", padding: "0.5rem", borderRadius: "var(--radius)", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)" }, transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }}>
+                  <Box sx={mergeSx({ height: "0.75rem", width: "0.75rem", borderRadius: "9999px", flexShrink: "0" }, getCategoryColor(e.category))}/>
+                  <Box sx={{ minWidth: "0px", flex: "1 1 0%" }}>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "11px", color: "hsl(var(--muted-foreground))" }}>
                       {e.all_day ? "All Day" : `${format(parseISO(e.start_date), "HH:mm")}${e.end_date ? ` – ${format(parseISO(e.end_date), "HH:mm")}` : ""}`}
                       {e.description && ` · ${e.description}`}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-[10px] capitalize shrink-0">{e.category}</Badge>
-                </button>
-              ))}
-              {group.tasks.map(t => (
-                <div key={t.id} className="flex items-center gap-3 p-2 rounded-lg border border-dashed border-primary/30 bg-primary/5">
-                  <ListTodo className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <p className="text-sm font-medium text-primary truncate">{t.title}</p>
-                  <Badge variant="outline" className="text-[10px] capitalize shrink-0">{t.status || "pending"}</Badge>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+                    </Typography>
+                  </Box>
+                  <StatusChip label={e.category} variant="outlined" sx={{ fontSize: "10px", textTransform: "capitalize", flexShrink: "0" }}/>
+                </ButtonBase>))}
+              {group.tasks.map(t => (<Box key={t.id} sx={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem", borderRadius: "var(--radius)", borderWidth: "1px", borderStyle: "dashed", borderColor: "color-mix(in srgb, hsl(var(--primary)) 30%, transparent)", backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)" }}>
+                  <Box component={ListTodo} sx={{ height: "0.875rem", width: "0.875rem", color: "hsl(var(--primary))", flexShrink: "0" }}/>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", color: "hsl(var(--primary))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</Typography>
+                  <StatusChip label={t.status || "pending"} variant="outlined" sx={{ fontSize: "10px", textTransform: "capitalize", flexShrink: "0" }}/>
+                </Box>))}
+            </Box>
+          </Box>);
+        })}
+    </Box>);
 }

@@ -1,230 +1,194 @@
+"use client";
+
+import { Box, Button, ButtonBase, Card, CardContent, Checkbox, FormLabel, MenuItem, TextField, Typography } from "@mui/material";
+import { AnimatedPage, PageHeader, SearchToolbar, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Barcode, Printer, Search, Package, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
 import JsBarcode from "jsbarcode";
-
 interface Product {
-  id: string; name: string; sku: string | null; barcode: string | null;
-  selling_price: number | null; stock_quantity: number;
+    id: string;
+    name: string;
+    sku: string | null;
+    barcode: string | null;
+    selling_price: number | null;
+    stock_quantity: number;
+}
+function BarcodeLabel({ product, code, format }: { product: Product; code: string; format: string }) {
+    const svgRef = useRef<SVGSVGElement>(null);
+    useEffect(() => {
+        if (!svgRef.current) return;
+        const options = { width: 1.5, height: 40, fontSize: 10, margin: 5, displayValue: true };
+        try { JsBarcode(svgRef.current, code, { ...options, format }); }
+        catch { JsBarcode(svgRef.current, code, { ...options, format: "CODE128" }); }
+    }, [code, format]);
+    return <Box data-barcode-label sx={{ display: "inline-block", border: "1px solid #ddd", borderRadius: 1, p: 1.5, m: .5, textAlign: "center", bgcolor: "#fff", color: "#111", width: 200 }}>
+        <Box component="svg" ref={svgRef} role="img" aria-label={`Barcode ${code}`} sx={{ maxWidth: "100%", mx: "auto" }} />
+        <Typography data-label-name variant="caption" component="p" noWrap sx={{ fontWeight: 500, mt: .5 }}>{product.name}</Typography>
+        {product.selling_price != null && <Typography data-label-price variant="caption" component="p" sx={{ color: "#666" }}>₹{product.selling_price}</Typography>}
+    </Box>;
 }
 
 export default function BarcodeManager() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [labelQty, setLabelQty] = useState(1);
-  const [format, setFormat] = useState("CODE128");
-  const [generating, setGenerating] = useState(false);
-  const [hasPreview, setHasPreview] = useState(false);
-  const previewRef = useRef<HTMLDivElement>(null);
-
-  const fetchProducts = useCallback(async () => {
-    let q = supabase.from("products").select("id, name, sku, barcode, selling_price, stock_quantity").order("name");
-    if (search) q = q.ilike("name", `%${search}%`);
-    const { data } = await q.limit(100);
-    setProducts(data || []);
-  }, [search]);
-
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
-
-  const toggleProduct = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const selectAll = () => {
-    if (selected.size === products.length) setSelected(new Set());
-    else setSelected(new Set(products.map(p => p.id)));
-  };
-
-  const autoGenerateBarcode = async (product: Product) => {
-    if (product.barcode) return product.barcode;
-    const code = `PRD${Date.now().toString(36).toUpperCase()}`;
-    await supabase.from("products").update({ barcode: code }).eq("id", product.id);
-    return code;
-  };
-
-  const generateAndPreview = async () => {
-    if (selected.size === 0) { toast.error("Select at least one product"); return; }
-    setGenerating(true);
-    const container = previewRef.current;
-    if (!container) { setGenerating(false); return; }
-    container.innerHTML = "";
-    setHasPreview(false);
-
-    for (const id of selected) {
-      const product = products.find(p => p.id === id);
-      if (!product) continue;
-      const code = await autoGenerateBarcode(product);
-
-      for (let i = 0; i < labelQty; i++) {
-        const label = document.createElement("div");
-        label.className = "inline-block border border-border rounded p-3 m-1 text-center bg-white";
-        label.style.width = "200px";
-
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        label.appendChild(svg);
-
-        try {
-          JsBarcode(svg, code, { format, width: 1.5, height: 40, fontSize: 10, margin: 5, displayValue: true });
-        } catch { JsBarcode(svg, code, { format: "CODE128", width: 1.5, height: 40, fontSize: 10, margin: 5, displayValue: true }); }
-
-        const nameEl = document.createElement("p");
-        nameEl.className = "text-xs font-medium mt-1 truncate";
-        nameEl.textContent = product.name;
-        label.appendChild(nameEl);
-
-        if (product.selling_price) {
-          const priceEl = document.createElement("p");
-          priceEl.className = "text-xs text-gray-500";
-          priceEl.textContent = `₹${product.selling_price}`;
-          label.appendChild(priceEl);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [search, setSearch] = useState("");
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [labelQty, setLabelQty] = useState(1);
+    const [format, setFormat] = useState("CODE128");
+    const [generating, setGenerating] = useState(false);
+    const [labels, setLabels] = useState<{ product: Product; code: string; format: string }[]>([]);
+    const hasPreview = labels.length > 0;
+    const previewRef = useRef<HTMLDivElement>(null);
+    const fetchProducts = useCallback(async () => {
+        let q = supabase.from("products").select("id, name, sku, barcode, selling_price, stock_quantity").order("name");
+        if (search)
+            q = q.ilike("name", `%${search}%`);
+        const { data } = await q.limit(100);
+        setProducts(data || []);
+    }, [search]);
+    useEffect(() => { fetchProducts(); }, [fetchProducts]);
+    const toggleProduct = (id: string) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+    const selectAll = () => {
+        if (selected.size === products.length)
+            setSelected(new Set());
+        else
+            setSelected(new Set(products.map(p => p.id)));
+    };
+    const autoGenerateBarcode = async (product: Product) => {
+        if (product.barcode)
+            return product.barcode;
+        const code = `PRD${product.id.replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+        const { error } = await supabase.from("products").update({ barcode: code }).eq("id", product.id);
+        if (error) throw new Error(error.message);
+        return code;
+    };
+    const generateAndPreview = async () => {
+        if (selected.size === 0) {
+            toast.error("Select at least one product");
+            return;
         }
-
-        container.appendChild(label);
-      }
-    }
-
-    setGenerating(false);
-    setHasPreview(container.childElementCount > 0);
-    fetchProducts();
-    toast.success("Barcodes generated");
-  };
-
-  const printLabels = () => {
-    const content = previewRef.current?.innerHTML;
-    if (!content) { toast.error("Generate barcodes first"); return; }
-    const w = window.open("", "_blank", "width=800,height=600");
-    if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>Print Barcodes</title>
-      <style>body{margin:20px;font-family:sans-serif} .label{display:inline-block;border:1px solid #ddd;border-radius:4px;padding:12px;margin:4px;text-align:center;background:#fff;width:200px}</style>
+        setGenerating(true);
+        try {
+            const next: { product: Product; code: string; format: string }[] = [];
+            for (const id of selected) {
+                const product = products.find(p => p.id === id);
+                if (!product) continue;
+                const code = await autoGenerateBarcode(product);
+                for (let i = 0; i < Math.max(1, Math.min(50, labelQty)); i++) next.push({ product, code, format });
+            }
+            setLabels(next);
+            await fetchProducts();
+            toast.success("Barcodes generated");
+        } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to generate barcodes"); }
+        finally { setGenerating(false); }
+    };
+    const printLabels = () => {
+        const content = previewRef.current?.innerHTML;
+        if (!content) {
+            toast.error("Generate barcodes first");
+            return;
+        }
+        const w = window.open("", "_blank", "width=800,height=600");
+        if (!w)
+            return;
+        w.document.write(`<!DOCTYPE html><html><head><title>Print Barcodes</title>
+      <style>body{margin:20px;font-family:sans-serif} [data-barcode-label]{display:inline-block;box-sizing:border-box;break-inside:avoid;border:1px solid #ddd;border-radius:4px;padding:12px;margin:4px;text-align:center;background:#fff;color:#111;width:200px}svg{max-width:100%;display:block;margin:auto}p{margin:0;font-size:12px;line-height:16px}[data-label-name]{font-weight:500;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}[data-label-price]{color:#666}</style>
     </head><body>${content}<script>window.print();window.close();</script></body></html>`);
-    w.document.close();
-  };
+        w.document.close();
+    };
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <PageHeader title={"Barcode Manager"} subtitle={"Generate, print, and assign barcodes to products"}/>
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Barcode Manager</h1>
-        <p className="text-muted-foreground">Generate, print, and assign barcodes to products</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
         {/* Left: Product Selection */}
-        <div className="lg:col-span-5 space-y-4">
-          <Card className="border-border/50 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Select Products</CardTitle>
-              <CardDescription>Choose products to generate barcodes for</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search products..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
-              </div>
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 5 / span 5" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" }}>
+            <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.75rem" })}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Select Products</Typography>
+              <Typography variant="body2" color="text.secondary">Choose products to generate barcodes for</Typography>
+            </Box>
+            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+              <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search products..."/>
 
-              <div className="flex items-center gap-2 pb-2 border-b border-border">
-                <Checkbox checked={selected.size === products.length && products.length > 0} onCheckedChange={selectAll} />
-                <Label className="text-xs text-muted-foreground">Select All ({selected.size}/{products.length})</Label>
-              </div>
+              <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem", paddingBottom: "0.5rem", borderBottomWidth: "1px", borderColor: "hsl(var(--border))" }}>
+                <Checkbox checked={selected.size === products.length && products.length > 0} onChange={(event, checked) => selectAll()}/>
+                <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Select All ({selected.size}/{products.length})</FormLabel>
+              </Box>
 
-              <div className="max-h-[400px] overflow-y-auto space-y-1">
-                {products.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => toggleProduct(p.id)}
-                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors ${selected.has(p.id) ? "bg-primary/5 border border-primary/20" : "hover:bg-muted/50 border border-transparent"}`}
-                  >
-                    <Checkbox checked={selected.has(p.id)} />
-                    <Package className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{p.name}</p>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        {p.sku && <span>SKU: {p.sku}</span>}
-                        {p.selling_price && <span>₹{p.selling_price}</span>}
-                      </div>
-                    </div>
-                    {p.barcode ? (
-                      <Badge variant="outline" className="text-[10px] shrink-0">Has Code</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px] shrink-0">No Code</Badge>
-                    )}
-                  </button>
-                ))}
-              </div>
+              <Box sx={{ maxHeight: "400px", overflowY: "auto", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+                {products.map(p => (<ButtonBase key={p.id} onClick={() => toggleProduct(p.id)} type="button" sx={mergeSx({ width: "100%", display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem", borderRadius: "var(--radius)", textAlign: "left", transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, selected.has(p.id) ? { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--primary)) 20%, transparent)" } : { "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)" }, borderWidth: "1px", borderColor: "transparent" })}>
+                    <Checkbox checked={selected.has(p.id)}/>
+                    <Box component={Package} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))", flexShrink: "0" }}/>
+                    <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
+                      <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</Typography>
+                      <Box sx={{ display: "flex", gap: "0.5rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
+                        {p.sku && <Box component="span">SKU: {p.sku}</Box>}
+                        {p.selling_price && <Box component="span">₹{p.selling_price}</Box>}
+                      </Box>
+                    </Box>
+                    {p.barcode ? (<StatusChip label={"Has Code"} variant="outlined" sx={{ fontSize: "10px", flexShrink: "0" }}/>) : (<StatusChip label={"No Code"} variant="filled" sx={{ fontSize: "10px", flexShrink: "0" }}/>)}
+                  </ButtonBase>))}
+              </Box>
             </CardContent>
           </Card>
-        </div>
+        </Box>
 
         {/* Right: Config + Preview */}
-        <div className="lg:col-span-7 space-y-4">
-          <Card className="border-border/50 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Generate Settings</CardTitle>
-            </CardHeader>
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 7 / span 7" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" }}>
+            <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.75rem" })}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Generate Settings</Typography>
+            </Box>
             <CardContent>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Format</Label>
-                  <Select value={format} onValueChange={setFormat}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CODE128">CODE128</SelectItem>
-                      <SelectItem value="EAN13">EAN-13</SelectItem>
-                      <SelectItem value="UPC">UPC</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Labels per Product</Label>
-                  <Input type="number" min={1} max={50} value={labelQty} onChange={e => setLabelQty(parseInt(e.target.value) || 1)} className="h-9" />
-                </div>
-                <div className="flex items-end gap-2">
-                  <Button className="flex-1 h-9" onClick={generateAndPreview} disabled={generating || selected.size === 0}>
-                    {generating ? <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" /> : <Barcode className="h-4 w-4 mr-1.5" />}
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.75rem" }}>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField value={format} label={"Format"} select size="small" fullWidth onChange={event => setFormat(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ height: "2.25rem" }}>
+                      <MenuItem value="CODE128">CODE128</MenuItem>
+                      <MenuItem value="EAN13">EAN-13</MenuItem>
+                      <MenuItem value="UPC">UPC</MenuItem>
+                    </TextField>
+                </Box>
+                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+                  <TextField type="number" value={labelQty} onChange={e => setLabelQty(parseInt(e.target.value) || 1)} label={"Labels per Product"} size="small" fullWidth slotProps={{ htmlInput: { min: 1, max: 50 } }} sx={{ height: "2.25rem" }}/>
+                </Box>
+                <Box sx={{ display: "flex", alignItems: "flex-end", gap: "0.5rem" }}>
+                  <Button onClick={generateAndPreview} disabled={generating || selected.size === 0} variant="contained" sx={{ flex: "1 1 0%", height: "2.25rem" }}>
+                    {generating ? <Box component={RefreshCw} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem", animation: "spin 1s linear infinite" }}/> : <Box component={Barcode} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>}
                     Generate
                   </Button>
-                  <Button variant="outline" className="h-9" onClick={printLabels}>
-                    <Printer className="h-4 w-4 mr-1.5" />Print
+                  <Button onClick={printLabels} variant="outlined" sx={{ height: "2.25rem" }}>
+                    <Box component={Printer} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>Print
                   </Button>
-                </div>
-              </div>
+                </Box>
+              </Box>
             </CardContent>
           </Card>
 
-          <Card className="border-border/50 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Label Preview</CardTitle>
-              <CardDescription>Generated barcode labels will appear here</CardDescription>
-            </CardHeader>
+          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" }}>
+            <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}>
+              <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Label Preview</Typography>
+              <Typography variant="body2" color="text.secondary">Generated barcode labels will appear here</Typography>
+            </Box>
             <CardContent>
-              {/* The preview container is mutated imperatively (innerHTML),
-                  so the placeholder is rendered as a sibling overlay — never
-                  as a React child of the container (avoids DOM conflicts). */}
-              <div className="relative min-h-[300px] bg-muted/20 rounded-lg">
-                <div ref={previewRef} className="min-h-[300px] p-4 flex flex-wrap items-start content-start" />
-                {!hasPreview && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground pointer-events-none">
-                    <Barcode className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm">Select products and click Generate</p>
-                  </div>
-                )}
-              </div>
+              {/* Barcode SVG drawing is confined to leaf refs owned by each label. */}
+              <Box sx={{ position: "relative", minHeight: "300px", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", borderRadius: "var(--radius)" }}>
+                <Box ref={previewRef} sx={{ minHeight: "300px", padding: "1rem", display: "flex", flexWrap: "wrap", alignItems: "flex-start", alignContent: "flex-start" }}>{labels.map((label, index) => <BarcodeLabel key={`${label.product.id}-${index}`} {...label} />)}</Box>
+                {!hasPreview && (<Box sx={{ position: "absolute", inset: "0px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "hsl(var(--muted-foreground))", pointerEvents: "none" }}>
+                    <Box component={Barcode} sx={{ height: "3rem", width: "3rem", marginLeft: "auto", marginRight: "auto", marginBottom: "0.75rem", opacity: "0.2" }}/>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem" }}>Select products and click Generate</Typography>
+                  </Box>)}
+              </Box>
             </CardContent>
           </Card>
-        </div>
-      </div>
-    </div>
-  );
+        </Box>
+      </Box>
+    </Box></AnimatedPage>;
 }

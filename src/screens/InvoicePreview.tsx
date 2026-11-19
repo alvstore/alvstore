@@ -1,327 +1,287 @@
+"use client";
+
+import { Box, Button, Card, CardContent, Divider, MenuItem, TextField, Typography } from "@mui/material";
+import { AnimatedPage, FormDialog, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { BusinessHeader } from "@/components/documents/BusinessHeader";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
 import { ArrowLeft, Send, Download, Printer, Pencil, CreditCard, Copy, Eye, Link, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-
 export default function InvoicePreview() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const [invoice, setInvoice] = useState<any>(null);
-  const [items, setItems] = useState<DocumentItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Payment
-  const [paySheetOpen, setPaySheetOpen] = useState(false);
-  const [payAmount, setPayAmount] = useState("");
-  const [payMethod, setPayMethod] = useState("cash");
-  const [sendingLink, setSendingLink] = useState(false);
-
-  useEffect(() => {
-    if (!id) return;
-    const load = async () => {
-      setLoading(true);
-      const { data: inv } = await supabase
-        .from("invoices")
-        .select("*, customers(name, email, phone, address, gst_number)")
-        .eq("id", id)
-        .single();
-      if (inv) setInvoice(inv);
-
-      const { data: itms } = await supabase.from("invoice_items").select("*").eq("invoice_id", id);
-      setItems(
-        (itms || []).map((i: any) => ({
-          id: i.id, product_id: i.product_id, product_name: i.product_name,
-          description: i.description || "", hsn_code: i.hsn_code || "",
-          quantity: i.quantity, unit_price: i.unit_price,
-          discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-          gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
-        }))
-      );
-      setLoading(false);
+    const { id } = useParams<{
+        id: string;
+    }>();
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const [invoice, setInvoice] = useState<any>(null);
+    const [items, setItems] = useState<DocumentItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    // Payment
+    const [paySheetOpen, setPaySheetOpen] = useState(false);
+    const [payAmount, setPayAmount] = useState("");
+    const [payMethod, setPayMethod] = useState("cash");
+    const [sendingLink, setSendingLink] = useState(false);
+    useEffect(() => {
+        if (!id)
+            return;
+        const load = async () => {
+            setLoading(true);
+            const { data: inv } = await supabase
+                .from("invoices")
+                .select("*, customers(name, email, phone, address, gst_number)")
+                .eq("id", id)
+                .single();
+            if (inv)
+                setInvoice(inv);
+            const { data: itms } = await supabase.from("invoice_items").select("*").eq("invoice_id", id);
+            setItems((itms || []).map((i: any) => ({
+                id: i.id, product_id: i.product_id, product_name: i.product_name,
+                description: i.description || "", hsn_code: i.hsn_code || "",
+                quantity: i.quantity, unit_price: i.unit_price,
+                discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
+                gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+            })));
+            setLoading(false);
+        };
+        load();
+    }, [id]);
+    const recordPayment = async () => {
+        if (!invoice)
+            return;
+        const amount = parseFloat(payAmount) || 0;
+        if (amount <= 0) {
+            toast.error("Enter a valid amount");
+            return;
+        }
+        const newPaid = (invoice.paid_amount || 0) + amount;
+        const paymentStatus = newPaid >= invoice.total ? "paid" : "partial";
+        const status = paymentStatus === "paid" ? "paid" : invoice.status;
+        const { error } = await supabase.from("invoices").update({ paid_amount: newPaid, payment_status: paymentStatus, status }).eq("id", invoice.id);
+        if (error)
+            toast.error(error.message);
+        else {
+            toast.success("Payment recorded");
+            setInvoice({ ...invoice, paid_amount: newPaid, payment_status: paymentStatus, status });
+        }
+        setPaySheetOpen(false);
     };
-    load();
-  }, [id]);
-
-  const recordPayment = async () => {
-    if (!invoice) return;
-    const amount = parseFloat(payAmount) || 0;
-    if (amount <= 0) { toast.error("Enter a valid amount"); return; }
-    const newPaid = (invoice.paid_amount || 0) + amount;
-    const paymentStatus = newPaid >= invoice.total ? "paid" : "partial";
-    const status = paymentStatus === "paid" ? "paid" : invoice.status;
-    const { error } = await supabase.from("invoices").update({ paid_amount: newPaid, payment_status: paymentStatus, status }).eq("id", invoice.id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Payment recorded");
-      setInvoice({ ...invoice, paid_amount: newPaid, payment_status: paymentStatus, status });
+    const copyPublicLink = () => {
+        if (!invoice?.public_token)
+            return;
+        navigator.clipboard.writeText(`${window.location.origin}/invoice/public/${invoice.public_token}`);
+        toast.success("Link copied");
+    };
+    const sendPaymentLink = async () => {
+        if (!invoice)
+            return;
+        const bal = (invoice.total || 0) - (invoice.paid_amount || 0);
+        if (bal <= 0) {
+            toast.error("No balance due");
+            return;
+        }
+        setSendingLink(true);
+        try {
+            const customer = invoice.customers;
+            const { data, error } = await supabase.functions.invoke("create-payment-link", {
+                body: {
+                    amount: bal,
+                    customer_name: customer?.name || "",
+                    customer_email: customer?.email || "",
+                    customer_phone: customer?.phone || "",
+                    invoice_id: invoice.id,
+                    description: `Payment for ${invoice.invoice_number}`,
+                },
+            });
+            if (error)
+                throw error;
+            if (data?.success) {
+                toast.success("Payment link sent!", { description: data.payment_link_url });
+                navigator.clipboard.writeText(data.payment_link_url);
+            }
+            else {
+                throw new Error(data?.error || "Failed to create link");
+            }
+        }
+        catch (err: any) {
+            toast.error(err.message || "Failed to create payment link");
+        }
+        finally {
+            setSendingLink(false);
+        }
+    };
+    if (loading) {
+        return <AnimatedPage><Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "16rem" }}>
+        <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>Loading invoice...</Typography>
+      </Box></AnimatedPage>;
     }
-    setPaySheetOpen(false);
-  };
-
-  const copyPublicLink = () => {
-    if (!invoice?.public_token) return;
-    navigator.clipboard.writeText(`${window.location.origin}/invoice/public/${invoice.public_token}`);
-    toast.success("Link copied");
-  };
-
-  const sendPaymentLink = async () => {
-    if (!invoice) return;
-    const bal = (invoice.total || 0) - (invoice.paid_amount || 0);
-    if (bal <= 0) { toast.error("No balance due"); return; }
-    setSendingLink(true);
-    try {
-      const customer = invoice.customers;
-      const { data, error } = await supabase.functions.invoke("create-payment-link", {
-        body: {
-          amount: bal,
-          customer_name: customer?.name || "",
-          customer_email: customer?.email || "",
-          customer_phone: customer?.phone || "",
-          invoice_id: invoice.id,
-          description: `Payment for ${invoice.invoice_number}`,
-        },
-      });
-      if (error) throw error;
-      if (data?.success) {
-        toast.success("Payment link sent!", { description: data.payment_link_url });
-        navigator.clipboard.writeText(data.payment_link_url);
-      } else {
-        throw new Error(data?.error || "Failed to create link");
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create payment link");
-    } finally {
-      setSendingLink(false);
+    if (!invoice) {
+        return <AnimatedPage><Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "16rem" }}>
+        <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>Invoice not found</Typography>
+      </Box></AnimatedPage>;
     }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading invoice...</p>
-      </div>
-    );
-  }
-
-  if (!invoice) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Invoice not found</p>
-      </div>
-    );
-  }
-
-  const customer = invoice.customers;
-  const balance = (invoice.total || 0) - (invoice.paid_amount || 0);
-
-  return (
-    <div className="space-y-6">
+    const customer = invoice.customers;
+    const balance = (invoice.total || 0) - (invoice.paid_amount || 0);
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
       {/* Back button */}
-      <Button variant="ghost" size="sm" onClick={() => navigate("/invoices")} className="text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Invoices
+      <Button onClick={() => navigate("/invoices")} variant="text" size="small" sx={{ color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
+        <Box component={ArrowLeft} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/> Back to Invoices
       </Button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
         {/* Document - Left Column */}
-        <div className="lg:col-span-8 print-area">
-          <Card className="shadow-sm border-border/50">
-            <CardContent className="p-6 md:p-8 space-y-6">
+        <Box data-print-area sx={{ "@media (min-width: 1024px)": { gridColumn: "span 8 / span 8" } }}>
+          <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+            <CardContent sx={{ padding: "1.5rem", "@media (min-width: 768px)": { padding: "2rem" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
               {/* Header row: Business + Invoice info */}
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                <BusinessHeader compact />
-                <div className="text-right space-y-1">
-                  <h2 className="text-xl font-bold text-foreground">{invoice.invoice_number}</h2>
-                  <p className="text-xs text-muted-foreground">
+              <Box sx={{ display: "flex", flexDirection: "column", "@media (min-width: 768px)": { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, gap: "1rem" }}>
+                <BusinessHeader compact/>
+                <Box sx={{ textAlign: "right", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+                  <Typography component="h2" variant="h2" sx={{ fontSize: "1.25rem", lineHeight: "1.75rem", fontWeight: "700", color: "hsl(var(--foreground))" }}>{invoice.invoice_number}</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
                     Date: {new Date(invoice.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                  </p>
-                  {invoice.due_date && (
-                    <p className="text-xs text-muted-foreground">
+                  </Typography>
+                  {invoice.due_date && (<Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
                       Due: {new Date(invoice.due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                    </p>
-                  )}
-                  <StatusBadge status={invoice.payment_status || "unpaid"} />
-                </div>
-              </div>
+                    </Typography>)}
+                  <StatusBadge status={invoice.payment_status || "unpaid"}/>
+                </Box>
+              </Box>
 
-              <Separator />
+              <Divider />
 
               {/* Invoice To */}
-              {customer && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Invoice To:</p>
-                    <p className="text-sm font-semibold text-foreground">{customer.name}</p>
-                    {customer.address && <p className="text-xs text-muted-foreground mt-0.5">{customer.address}</p>}
-                    {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
-                    {customer.email && <p className="text-xs text-muted-foreground">{customer.email}</p>}
-                    {customer.gst_number && <p className="text-xs text-muted-foreground mt-1">GSTIN: {customer.gst_number}</p>}
-                  </div>
-                  <div className="md:text-right">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Payment Info:</p>
-                    <p className="text-sm text-foreground">Total: <span className="font-bold">₹{(invoice.total || 0).toLocaleString("en-IN")}</span></p>
-                    <p className="text-sm text-foreground">Paid: <span className="font-medium text-success">₹{(invoice.paid_amount || 0).toLocaleString("en-IN")}</span></p>
-                    {balance > 0 && (
-                      <p className="text-sm text-destructive font-semibold">Balance: ₹{balance.toLocaleString("en-IN")}</p>
-                    )}
-                  </div>
-                </div>
-              )}
+              {customer && (<Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 768px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1.5rem" }}>
+                  <Box>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Invoice To:</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>{customer.name}</Typography>
+                    {customer.address && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.125rem" }}>{customer.address}</Typography>}
+                    {customer.phone && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{customer.phone}</Typography>}
+                    {customer.email && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{customer.email}</Typography>}
+                    {customer.gst_number && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>GSTIN: {customer.gst_number}</Typography>}
+                  </Box>
+                  <Box sx={{ "@media (min-width: 768px)": { textAlign: "right" } }}>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Payment Info:</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--foreground))" }}>Total: <Box component="span" sx={{ fontWeight: "700" }}>₹{(invoice.total || 0).toLocaleString("en-IN")}</Box></Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--foreground))" }}>Paid: <Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--success))" }}>₹{(invoice.paid_amount || 0).toLocaleString("en-IN")}</Box></Typography>
+                    {balance > 0 && (<Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--destructive))", fontWeight: "600" }}>Balance: ₹{balance.toLocaleString("en-IN")}</Typography>)}
+                  </Box>
+                </Box>)}
 
               {/* Items Table */}
-              <ItemsTable items={items} onItemsChange={() => {}} products={[]} readOnly />
+              <ItemsTable items={items} onItemsChange={() => { }} products={[]} readOnly/>
 
               {/* Totals */}
-              <div className="flex justify-end">
-                <div className="w-full max-w-xs">
-                  <TotalsPanel
-                    items={items}
-                    gstInclusive={invoice.gst_inclusive || false}
-                    globalDiscountType={(invoice.discount_type as "percentage" | "fixed") || "percentage"}
-                    globalDiscountValue={invoice.discount_value || 0}
-                    readOnly
-                  />
-                </div>
-              </div>
+              <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                <Box sx={{ width: "100%", maxWidth: "20rem" }}>
+                  <TotalsPanel items={items} gstInclusive={invoice.gst_inclusive || false} globalDiscountType={(invoice.discount_type as "percentage" | "fixed") || "percentage"} globalDiscountValue={invoice.discount_value || 0} readOnly/>
+                </Box>
+              </Box>
 
               {/* Notes */}
-              {invoice.notes && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Notes</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{invoice.notes}</p>
-                </div>
-              )}
+              {invoice.notes && (<Box>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Notes</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-wrap" }}>{invoice.notes}</Typography>
+                </Box>)}
 
               {/* Signature */}
-              {invoice.signature_data && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Signature</p>
-                  <img src={invoice.signature_data} alt="Signature" className="h-16 border border-border rounded" />
-                  {invoice.signature_name && <p className="text-xs text-muted-foreground mt-1">{invoice.signature_name}</p>}
-                </div>
-              )}
+              {invoice.signature_data && (<Box>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Signature</Typography>
+                  <Box src={invoice.signature_data} alt="Signature" component="img" sx={{ height: "4rem", borderWidth: "1px", borderColor: "hsl(var(--border))", borderRadius: "0.25rem" }}/>
+                  {invoice.signature_name && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>{invoice.signature_name}</Typography>}
+                </Box>)}
             </CardContent>
           </Card>
-        </div>
+        </Box>
 
         {/* Right Action Sidebar */}
-        <div className="lg:col-span-4 no-print">
-          <div className="lg:sticky lg:top-6 space-y-4">
-            <Card className="shadow-sm border-border/50">
-              <CardContent className="p-5 space-y-3">
-                <Button className="w-full bg-primary hover:bg-primary/90" onClick={copyPublicLink}>
-                  <Send className="h-4 w-4 mr-2" /> Send Invoice
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" }, "@media print": { display: "none" } }}>
+          <Box sx={{ "@media (min-width: 1024px)": { position: "sticky", top: "1.5rem" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+            <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+              <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                <Button onClick={copyPublicLink} variant="contained" sx={{ width: "100%", backgroundColor: "hsl(var(--primary))", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 90%, transparent)" } }}>
+                  <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Send Invoice
                 </Button>
 
-                <Button variant="outline" className="w-full" onClick={() => window.print()}>
-                  <Download className="h-4 w-4 mr-2" /> Download
+                <Button onClick={() => window.print()} variant="outlined" sx={{ width: "100%" }}>
+                  <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Download
                 </Button>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" onClick={() => window.print()}>
-                    <Printer className="h-4 w-4 mr-1.5" /> Print
+                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>
+                  <Button onClick={() => window.print()} variant="outlined" size="small">
+                    <Box component={Printer} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/> Print
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => navigate(`/invoices/${id}/edit`)}>
-                    <Pencil className="h-4 w-4 mr-1.5" /> Edit
+                  <Button onClick={() => navigate(`/invoices/${id}/edit`)} variant="outlined" size="small">
+                    <Box component={Pencil} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/> Edit
                   </Button>
-                </div>
+                </Box>
               </CardContent>
             </Card>
 
-            {invoice.payment_status !== "paid" && (
-              <Card className="shadow-sm border-border/50">
-                <CardContent className="p-5 space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Accept Payment</p>
-                  <p className="text-sm text-muted-foreground">
-                    Balance due: <span className="font-bold text-foreground">₹{balance.toLocaleString("en-IN")}</span>
-                  </p>
-                  <Button
-                    className="w-full bg-success hover:bg-success/90 text-success-foreground"
-                    onClick={() => {
-                      setPayAmount(String(balance.toFixed(2)));
-                      setPayMethod("cash");
-                      setPaySheetOpen(true);
-                    }}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" /> Add Payment
+            {invoice.payment_status !== "paid" && (<Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+                <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Accept Payment</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>
+                    Balance due: <Box component="span" sx={{ fontWeight: "700", color: "hsl(var(--foreground))" }}>₹{balance.toLocaleString("en-IN")}</Box>
+                  </Typography>
+                  <Button onClick={() => {
+            setPayAmount(String(balance.toFixed(2)));
+            setPayMethod("cash");
+            setPaySheetOpen(true);
+        }} variant="contained" sx={{ width: "100%", backgroundColor: "hsl(var(--success))", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 90%, transparent)" }, color: "hsl(var(--success-foreground))" }}>
+                    <Box component={CreditCard} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Add Payment
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full border-primary/30 text-primary hover:bg-primary/5"
-                    onClick={sendPaymentLink}
-                    disabled={sendingLink}
-                  >
-                    {sendingLink ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link className="h-4 w-4 mr-2" />}
+                  <Button onClick={sendPaymentLink} disabled={sendingLink} variant="outlined" sx={{ width: "100%", borderColor: "color-mix(in srgb, hsl(var(--primary)) 30%, transparent)", color: "hsl(var(--primary))", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)" } }}>
+                    {sendingLink ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Link} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}
                     {sendingLink ? "Creating..." : "Send Razorpay Link"}
                   </Button>
                 </CardContent>
-              </Card>
-            )}
+              </Card>)}
 
             {/* Quick Info */}
-            <Card className="shadow-sm border-border/50">
-              <CardContent className="p-5 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Details</p>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Status</span>
-                  <StatusBadge status={invoice.status || "draft"} />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Payment</span>
-                  <StatusBadge status={invoice.payment_status || "unpaid"} />
-                </div>
-                {invoice.quotation_id && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">From Quotation</span>
-                    <span className="text-primary text-xs font-medium">Yes</span>
-                  </div>
-                )}
+            <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+              <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
+                <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Details</Typography>
+                <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                  <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Status</Box>
+                  <StatusBadge status={invoice.status || "draft"}/>
+                </Box>
+                <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                  <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Payment</Box>
+                  <StatusBadge status={invoice.payment_status || "unpaid"}/>
+                </Box>
+                {invoice.quotation_id && (<Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                    <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>From Quotation</Box>
+                    <Box component="span" sx={{ color: "hsl(var(--primary))", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500" }}>Yes</Box>
+                  </Box>)}
               </CardContent>
             </Card>
-          </div>
-        </div>
-      </div>
+          </Box>
+        </Box>
+      </Box>
 
       {/* Payment Sheet */}
-      <Sheet open={paySheetOpen} onOpenChange={setPaySheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Record Payment</SheetTitle>
-          </SheetHeader>
-          <div className="space-y-4 mt-6">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Amount</Label>
-              <Input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Payment Method</Label>
-              <Select value={payMethod} onValueChange={setPayMethod}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                  <SelectItem value="upi">UPI</SelectItem>
-                  <SelectItem value="online">Online</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="w-full" onClick={recordPayment}>Record Payment</Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
+      <FormDialog open={paySheetOpen} onClose={() => setPaySheetOpen(false)} title={"Record Payment"}>
+
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)} label={"Amount"} size="small" fullWidth/>
+            </Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+
+              <TextField value={payMethod} label={"Payment Method"} select size="small" fullWidth onChange={event => setPayMethod(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+                  <MenuItem value="cash">Cash</MenuItem>
+                  <MenuItem value="card">Card</MenuItem>
+                  <MenuItem value="upi">UPI</MenuItem>
+                  <MenuItem value="online">Online</MenuItem>
+                </TextField>
+            </Box>
+            <Button onClick={recordPayment} variant="contained" sx={{ width: "100%" }}>Record Payment</Button>
+          </Box>
+        </FormDialog>
+    </Box></AnimatedPage>;
 }

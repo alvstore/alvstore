@@ -1,302 +1,281 @@
+"use client";
+
+import { Box, Button, Card, CardContent, Divider, Typography } from "@mui/material";
+import { AnimatedPage, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { BusinessHeader } from "@/components/documents/BusinessHeader";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
 import { ArrowLeft, Send, Download, Printer, Pencil, ArrowRightLeft, Copy, Eye, Link, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-
 export default function QuotationPreview() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const [quotation, setQuotation] = useState<any>(null);
-  const [items, setItems] = useState<DocumentItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
-  const [bankDetails, setBankDetails] = useState<{ bank_name?: string; bank_account_number?: string; bank_ifsc?: string; bank_branch?: string; bank_upi_id?: string } | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    const load = async () => {
-      setLoading(true);
-      const { data: q } = await supabase
-        .from("quotations")
-        .select("*, customers(name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode)")
-        .eq("id", id)
-        .single();
-      if (q) setQuotation(q);
-
-      const { data: itms } = await supabase.from("quotation_items").select("*").eq("quotation_id", id);
-      setItems(
-        (itms || []).map((i: any) => ({
-          id: i.id, product_id: i.product_id, product_name: i.product_name,
-          description: i.description || "", hsn_code: i.hsn_code || "",
-          quantity: i.quantity, unit_price: i.unit_price,
-          discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-          gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
-          image_url: i.image_url || null,
-        }))
-      );
-
-      // Fetch bank details
-      const { data: bs } = await supabase.from("business_settings").select("bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single();
-      if (bs) setBankDetails(bs as any);
-
-      setLoading(false);
+    const { id } = useParams<{
+        id: string;
+    }>();
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const [quotation, setQuotation] = useState<any>(null);
+    const [items, setItems] = useState<DocumentItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+    const [bankDetails, setBankDetails] = useState<{
+        bank_name?: string;
+        bank_account_number?: string;
+        bank_ifsc?: string;
+        bank_branch?: string;
+        bank_upi_id?: string;
+    } | null>(null);
+    useEffect(() => {
+        if (!id)
+            return;
+        const load = async () => {
+            setLoading(true);
+            const { data: q } = await supabase
+                .from("quotations")
+                .select("*, customers(name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode)")
+                .eq("id", id)
+                .single();
+            if (q)
+                setQuotation(q);
+            const { data: itms } = await supabase.from("quotation_items").select("*").eq("quotation_id", id);
+            setItems((itms || []).map((i: any) => ({
+                id: i.id, product_id: i.product_id, product_name: i.product_name,
+                description: i.description || "", hsn_code: i.hsn_code || "",
+                quantity: i.quantity, unit_price: i.unit_price,
+                discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
+                gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+                image_url: i.image_url || null,
+            })));
+            // Fetch bank details
+            const { data: bs } = await supabase.from("business_settings").select("bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single();
+            if (bs)
+                setBankDetails(bs as any);
+            setLoading(false);
+        };
+        load();
+    }, [id]);
+    const copyPublicLink = () => {
+        if (!quotation?.public_token)
+            return;
+        navigator.clipboard.writeText(`${window.location.origin}/sales/public/${quotation.public_token}`);
+        toast.success("Link copied");
     };
-    load();
-  }, [id]);
-
-  const copyPublicLink = () => {
-    if (!quotation?.public_token) return;
-    navigator.clipboard.writeText(`${window.location.origin}/sales/public/${quotation.public_token}`);
-    toast.success("Link copied");
-  };
-
-  const sendPaymentLink = async () => {
-    if (!quotation) return;
-    setSendingPaymentLink(true);
-    try {
-      const customer = quotation.customers;
-      const { data, error } = await supabase.functions.invoke("create-payment-link", {
-        body: {
-          amount: quotation.total || 0,
-          customer_name: customer?.name,
-          customer_email: customer?.email,
-          customer_phone: customer?.phone,
-          description: `Payment for ${quotation.quotation_number}`,
-        },
-      });
-      if (error) throw error;
-      if (data?.success) {
-        navigator.clipboard.writeText(data.payment_link_url);
-        toast.success("Payment link created & copied!");
-      } else {
-        toast.error(data?.error || "Failed to create payment link");
-      }
-    } catch (err: any) { toast.error(err.message); } finally { setSendingPaymentLink(false); }
-  };
-
-  const convertToInvoice = async () => {
-    if (!quotation?.customer_id) { toast.error("No customer on quotation"); return; }
-    const { data: qItems } = await supabase.from("quotation_items").select("*").eq("quotation_id", quotation.id);
-
-    const { data: inv, error: invErr } = await supabase.from("invoices").insert({
-      customer_id: quotation.customer_id, subtotal: quotation.subtotal,
-      gst_amount: quotation.gst_amount, total: quotation.total,
-      notes: quotation.notes, quotation_id: quotation.id,
-      discount_type: quotation.discount_type, discount_value: quotation.discount_value,
-      gst_inclusive: quotation.gst_inclusive, created_by: user?.id,
-    }).select().single();
-
-    if (invErr) { toast.error(invErr.message); return; }
-
-    if (qItems && qItems.length > 0) {
-      const invItems = qItems.map((i: any) => ({
-        invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
-        quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
-        description: i.description, hsn_code: i.hsn_code, discount_type: i.discount_type, discount_value: i.discount_value,
-      }));
-      await supabase.from("invoice_items").insert(invItems);
+    const sendPaymentLink = async () => {
+        if (!quotation)
+            return;
+        setSendingPaymentLink(true);
+        try {
+            const customer = quotation.customers;
+            const { data, error } = await supabase.functions.invoke("create-payment-link", {
+                body: {
+                    amount: quotation.total || 0,
+                    customer_name: customer?.name,
+                    customer_email: customer?.email,
+                    customer_phone: customer?.phone,
+                    description: `Payment for ${quotation.quotation_number}`,
+                },
+            });
+            if (error)
+                throw error;
+            if (data?.success) {
+                navigator.clipboard.writeText(data.payment_link_url);
+                toast.success("Payment link created & copied!");
+            }
+            else {
+                toast.error(data?.error || "Failed to create payment link");
+            }
+        }
+        catch (err: any) {
+            toast.error(err.message);
+        }
+        finally {
+            setSendingPaymentLink(false);
+        }
+    };
+    const convertToInvoice = async () => {
+        if (!quotation?.customer_id) {
+            toast.error("No customer on quotation");
+            return;
+        }
+        const { data: qItems } = await supabase.from("quotation_items").select("*").eq("quotation_id", quotation.id);
+        const { data: inv, error: invErr } = await supabase.from("invoices").insert({
+            customer_id: quotation.customer_id, subtotal: quotation.subtotal,
+            gst_amount: quotation.gst_amount, total: quotation.total,
+            notes: quotation.notes, quotation_id: quotation.id,
+            discount_type: quotation.discount_type, discount_value: quotation.discount_value,
+            gst_inclusive: quotation.gst_inclusive, created_by: user?.id,
+        }).select().single();
+        if (invErr) {
+            toast.error(invErr.message);
+            return;
+        }
+        if (qItems && qItems.length > 0) {
+            const invItems = qItems.map((i: any) => ({
+                invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
+                quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
+                description: i.description, hsn_code: i.hsn_code, discount_type: i.discount_type, discount_value: i.discount_value,
+            }));
+            await supabase.from("invoice_items").insert(invItems);
+        }
+        await supabase.from("quotations").update({ converted_invoice_id: inv.id, status: "accepted" as any }).eq("id", quotation.id);
+        toast.success("Converted to Invoice — " + inv.invoice_number);
+        navigate(`/invoices/${inv.id}`);
+    };
+    if (loading) {
+        return <AnimatedPage><Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "16rem" }}><Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>Loading quotation...</Typography></Box></AnimatedPage>;
     }
-
-    await supabase.from("quotations").update({ converted_invoice_id: inv.id, status: "accepted" as any }).eq("id", quotation.id);
-    toast.success("Converted to Invoice — " + inv.invoice_number);
-    navigate(`/invoices/${inv.id}`);
-  };
-
-  if (loading) {
-    return <div className="flex items-center justify-center h-64"><p className="text-muted-foreground">Loading quotation...</p></div>;
-  }
-
-  if (!quotation) {
-    return <div className="flex items-center justify-center h-64"><p className="text-muted-foreground">Quotation not found</p></div>;
-  }
-
-  const customer = quotation.customers;
-
-  return (
-    <div className="space-y-6">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/sales")} className="text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Quotations
+    if (!quotation) {
+        return <AnimatedPage><Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "16rem" }}><Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>Quotation not found</Typography></Box></AnimatedPage>;
+    }
+    const customer = quotation.customers;
+    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <Button onClick={() => navigate("/sales")} variant="text" size="small" sx={{ color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
+        <Box component={ArrowLeft} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/> Back to Quotations
       </Button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
         {/* Document */}
-        <div className="lg:col-span-8 print-area">
-          <Card className="shadow-sm border-border/50">
-            <CardContent className="p-6 md:p-8 space-y-6">
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                <BusinessHeader compact />
-                <div className="text-right space-y-1">
-                  <h2 className="text-xl font-bold text-foreground">{quotation.quotation_number}</h2>
-                  <p className="text-xs text-muted-foreground">
+        <Box data-print-area sx={{ "@media (min-width: 1024px)": { gridColumn: "span 8 / span 8" } }}>
+          <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+            <CardContent sx={{ padding: "1.5rem", "@media (min-width: 768px)": { padding: "2rem" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+              <Box sx={{ display: "flex", flexDirection: "column", "@media (min-width: 768px)": { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, gap: "1rem" }}>
+                <BusinessHeader compact/>
+                <Box sx={{ textAlign: "right", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
+                  <Typography component="h2" variant="h2" sx={{ fontSize: "1.25rem", lineHeight: "1.75rem", fontWeight: "700", color: "hsl(var(--foreground))" }}>{quotation.quotation_number}</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
                     Date: {new Date(quotation.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                  </p>
-                  {quotation.valid_until && (
-                    <p className="text-xs text-muted-foreground">
+                  </Typography>
+                  {quotation.valid_until && (<Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
                       Valid Until: {new Date(quotation.valid_until).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                    </p>
-                  )}
-                  <StatusBadge status={quotation.status} />
-                </div>
-              </div>
+                    </Typography>)}
+                  <StatusBadge status={quotation.status}/>
+                </Box>
+              </Box>
 
-              <Separator />
+              <Divider />
 
-              {customer && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bill To:</p>
-                    <p className="text-sm font-semibold text-foreground">{customer.name}</p>
-                    {customer.address && <p className="text-xs text-muted-foreground mt-0.5">{customer.address}</p>}
-                    {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
-                    {customer.email && <p className="text-xs text-muted-foreground">{customer.email}</p>}
-                    {customer.gst_number && <p className="text-xs text-muted-foreground mt-1">GSTIN: {customer.gst_number}</p>}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Ship To:</p>
-                    {customer.shipping_address ? (
-                      <>
-                        <p className="text-sm font-semibold text-foreground">{customer.name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{customer.shipping_address}</p>
-                        {customer.shipping_city && <p className="text-xs text-muted-foreground">{customer.shipping_city}{customer.shipping_state ? `, ${customer.shipping_state}` : ""} {customer.shipping_pincode || ""}</p>}
-                      </>
-                    ) : (
-                      <p className="text-xs text-muted-foreground italic">Same as billing address</p>
-                    )}
-                  </div>
-                </div>
-              )}
+              {customer && (<Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
+                  <Box>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Bill To:</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>{customer.name}</Typography>
+                    {customer.address && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.125rem" }}>{customer.address}</Typography>}
+                    {customer.phone && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{customer.phone}</Typography>}
+                    {customer.email && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{customer.email}</Typography>}
+                    {customer.gst_number && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>GSTIN: {customer.gst_number}</Typography>}
+                  </Box>
+                  <Box>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Ship To:</Typography>
+                    {customer.shipping_address ? (<>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>{customer.name}</Typography>
+                        <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.125rem" }}>{customer.shipping_address}</Typography>
+                        {customer.shipping_city && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{customer.shipping_city}{customer.shipping_state ? `, ${customer.shipping_state}` : ""} {customer.shipping_pincode || ""}</Typography>}
+                      </>) : (<Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", fontStyle: "italic" }}>Same as billing address</Typography>)}
+                  </Box>
+                </Box>)}
 
-              {(quotation as any).payment_terms && (
-                <div className="flex items-center gap-4 text-xs">
-                  <span className="text-muted-foreground font-medium">Payment Terms:</span>
-                  <span className="font-semibold text-foreground">{(quotation as any).payment_terms?.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                  {quotation.valid_until && <span className="text-muted-foreground ml-auto">Valid Until: {new Date(quotation.valid_until).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>}
-                </div>
-              )}
+              {(quotation as any).payment_terms && (<Box sx={{ display: "flex", alignItems: "center", gap: "1rem", fontSize: "0.75rem", lineHeight: "1rem" }}>
+                  <Box component="span" sx={{ color: "hsl(var(--muted-foreground))", fontWeight: "500" }}>Payment Terms:</Box>
+                  <Box component="span" sx={{ fontWeight: "600", color: "hsl(var(--foreground))" }}>{(quotation as any).payment_terms?.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}</Box>
+                  {quotation.valid_until && <Box component="span" sx={{ color: "hsl(var(--muted-foreground))", marginLeft: "auto" }}>Valid Until: {new Date(quotation.valid_until).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</Box>}
+                </Box>)}
 
-              <ItemsTable items={items} onItemsChange={() => {}} products={[]} readOnly />
+              <ItemsTable items={items} onItemsChange={() => { }} products={[]} readOnly/>
 
-              <div className="flex justify-end">
-                <div className="w-full max-w-xs">
-                  <TotalsPanel
-                    items={items}
-                    gstInclusive={quotation.gst_inclusive || false}
-                    globalDiscountType={(quotation.discount_type as "percentage" | "fixed") || "percentage"}
-                    globalDiscountValue={quotation.discount_value || 0}
-                    readOnly
-                  />
-                </div>
-              </div>
+              <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                <Box sx={{ width: "100%", maxWidth: "20rem" }}>
+                  <TotalsPanel items={items} gstInclusive={quotation.gst_inclusive || false} globalDiscountType={(quotation.discount_type as "percentage" | "fixed") || "percentage"} globalDiscountValue={quotation.discount_value || 0} readOnly/>
+                </Box>
+              </Box>
 
-              {quotation.notes && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Notes</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{quotation.notes}</p>
-                </div>
-              )}
+              {quotation.notes && (<Box>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Notes</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-wrap" }}>{quotation.notes}</Typography>
+                </Box>)}
 
-              {quotation.terms && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Terms & Conditions</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{quotation.terms}</p>
-                </div>
-              )}
+              {quotation.terms && (<Box>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Terms & Conditions</Typography>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-wrap" }}>{quotation.terms}</Typography>
+                </Box>)}
 
-              {quotation.signature_data && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Signature</p>
-                  <img src={quotation.signature_data} alt="Signature" className="h-16 border border-border rounded" />
-                  {quotation.signature_name && <p className="text-xs text-muted-foreground mt-1">{quotation.signature_name}</p>}
-                </div>
-              )}
+              {quotation.signature_data && (<Box>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Signature</Typography>
+                  <Box src={quotation.signature_data} alt="Signature" component="img" sx={{ height: "4rem", borderWidth: "1px", borderColor: "hsl(var(--border))", borderRadius: "0.25rem" }}/>
+                  {quotation.signature_name && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>{quotation.signature_name}</Typography>}
+                </Box>)}
 
-              {bankDetails?.bank_name && (
-                <div className="rounded-lg border border-border bg-muted/20 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bank Details for Payment</p>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                    <span className="text-muted-foreground">Bank</span><span className="font-medium text-foreground">{bankDetails.bank_name}</span>
-                    {bankDetails.bank_account_number && <><span className="text-muted-foreground">Account No.</span><span className="font-medium text-foreground">{bankDetails.bank_account_number}</span></>}
-                    {bankDetails.bank_ifsc && <><span className="text-muted-foreground">IFSC</span><span className="font-medium text-foreground">{bankDetails.bank_ifsc}</span></>}
-                    {bankDetails.bank_branch && <><span className="text-muted-foreground">Branch</span><span className="font-medium text-foreground">{bankDetails.bank_branch}</span></>}
-                    {bankDetails.bank_upi_id && <><span className="text-muted-foreground">UPI ID</span><span className="font-medium text-foreground">{bankDetails.bank_upi_id}</span></>}
-                  </div>
-                </div>
-              )}
+              {bankDetails?.bank_name && (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", padding: "1rem" }}>
+                  <Typography component="p" variant="body1" sx={{ fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Bank Details for Payment</Typography>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: "1.5rem", rowGap: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem" }}>
+                    <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Bank</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{bankDetails.bank_name}</Box>
+                    {bankDetails.bank_account_number && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Account No.</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{bankDetails.bank_account_number}</Box></>}
+                    {bankDetails.bank_ifsc && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>IFSC</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{bankDetails.bank_ifsc}</Box></>}
+                    {bankDetails.bank_branch && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Branch</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{bankDetails.bank_branch}</Box></>}
+                    {bankDetails.bank_upi_id && <><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>UPI ID</Box><Box component="span" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{bankDetails.bank_upi_id}</Box></>}
+                  </Box>
+                </Box>)}
             </CardContent>
           </Card>
-        </div>
+        </Box>
 
         {/* Right Action Sidebar */}
-        <div className="lg:col-span-4 no-print">
-          <div className="lg:sticky lg:top-6 space-y-4">
-            <Card className="shadow-sm border-border/50">
-              <CardContent className="p-5 space-y-3">
-                <Button className="w-full bg-primary hover:bg-primary/90" onClick={copyPublicLink}>
-                  <Send className="h-4 w-4 mr-2" /> Send Quotation
+        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" }, "@media print": { display: "none" } }}>
+          <Box sx={{ "@media (min-width: 1024px)": { position: "sticky", top: "1.5rem" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+            <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+              <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                <Button onClick={copyPublicLink} variant="contained" sx={{ width: "100%", backgroundColor: "hsl(var(--primary))", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 90%, transparent)" } }}>
+                  <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Send Quotation
                 </Button>
 
-                <Button variant="outline" className="w-full" onClick={sendPaymentLink} disabled={sendingPaymentLink}>
-                  {sendingPaymentLink ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link className="h-4 w-4 mr-2" />}
+                <Button onClick={sendPaymentLink} disabled={sendingPaymentLink} variant="outlined" sx={{ width: "100%" }}>
+                  {sendingPaymentLink ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Link} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}
                   Send Payment Link
                 </Button>
 
-                <Button variant="outline" className="w-full" onClick={() => window.print()}>
-                  <Download className="h-4 w-4 mr-2" /> Download
+                <Button onClick={() => window.print()} variant="outlined" sx={{ width: "100%" }}>
+                  <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Download
                 </Button>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" onClick={() => window.print()}>
-                    <Printer className="h-4 w-4 mr-1.5" /> Print
+                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>
+                  <Button onClick={() => window.print()} variant="outlined" size="small">
+                    <Box component={Printer} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/> Print
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => navigate(`/sales/${id}/edit`)}>
-                    <Pencil className="h-4 w-4 mr-1.5" /> Edit
+                  <Button onClick={() => navigate(`/sales/${id}/edit`)} variant="outlined" size="small">
+                    <Box component={Pencil} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/> Edit
                   </Button>
-                </div>
+                </Box>
               </CardContent>
             </Card>
 
-            {quotation.status !== "accepted" && !quotation.converted_invoice_id && (
-              <Card className="shadow-sm border-border/50">
-                <CardContent className="p-5">
-                  <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" onClick={convertToInvoice}>
-                    <ArrowRightLeft className="h-4 w-4 mr-2" /> Convert to Invoice
+            {quotation.status !== "accepted" && !quotation.converted_invoice_id && (<Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+                <CardContent sx={{ padding: "1.25rem" }}>
+                  <Button onClick={convertToInvoice} variant="contained" sx={{ width: "100%", backgroundColor: "hsl(var(--accent))", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--accent)) 90%, transparent)" }, color: "hsl(var(--accent-foreground))" }}>
+                    <Box component={ArrowRightLeft} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Convert to Invoice
                   </Button>
                 </CardContent>
-              </Card>
-            )}
+              </Card>)}
 
-            <Card className="shadow-sm border-border/50">
-              <CardContent className="p-5 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Details</p>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Status</span>
-                  <StatusBadge status={quotation.status} />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Views</span>
-                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{quotation.view_count || 0}</span>
-                </div>
-                {quotation.converted_invoice_id && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Converted</span>
-                    <span className="text-success text-xs font-medium">Yes</span>
-                  </div>
-                )}
+            <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+              <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
+                <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.5rem" }}>Details</Typography>
+                <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                  <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Status</Box>
+                  <StatusBadge status={quotation.status}/>
+                </Box>
+                <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                  <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Views</Box>
+                  <Box component="span" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", backgroundColor: "hsl(var(--muted))", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "9999px" }}>{quotation.view_count || 0}</Box>
+                </Box>
+                {quotation.converted_invoice_id && (<Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                    <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Converted</Box>
+                    <Box component="span" sx={{ color: "hsl(var(--success))", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500" }}>Yes</Box>
+                  </Box>)}
               </CardContent>
             </Card>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+          </Box>
+        </Box>
+      </Box>
+    </Box></AnimatedPage>;
 }

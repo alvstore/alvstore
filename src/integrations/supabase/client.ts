@@ -10,6 +10,7 @@
  * backend access token exposed on the session.
  */
 import { getSession, signIn, signOut } from "next-auth/react";
+import { signInFailure } from "@/lib/auth-errors";
 import type { Database } from "./types";
 
 export type { Database };
@@ -347,17 +348,25 @@ function shapeSession(nextAuthSession: unknown): SessionLike | null {
   };
 }
 
-const authApi = {
-  async signInWithPassword({ email, password }: { email: string; password: string }) {
-    const res = await signIn("credentials", { email, password, redirect: false });
-    if (res?.error) {
-      return { data: { user: null, session: null }, error: { message: "Invalid login credentials" } };
-    }
+async function passwordSignIn({ email, password }: { email: string; password: string }): Promise<{
+  data: { user: UserLike | null; session: SessionLike | null }; error: ApiError | null;
+}> {
+  const empty = { user: null, session: null };
+  try {
+    const res = await signIn("credentials", { email: email.trim(), password, redirect: false, redirectTo: "/dashboard" });
+    if (!res || res.error || !res.ok) return { data: empty, error: signInFailure(res?.error, res?.code) };
     const session = await getSession();
     const shaped = shapeSession(session);
+    if (!shaped?.access_token) return { data: empty, error: signInFailure("SessionUnavailable") };
     __setBackendSession(session);
-    return { data: { user: shaped?.user ?? null, session: shaped }, error: null };
-  },
+    return { data: { user: shaped.user, session: shaped }, error: null };
+  } catch {
+    return { data: empty, error: signInFailure() };
+  }
+}
+
+const authApi = {
+  signInWithPassword: passwordSignIn,
 
   async signUp({ email, password, options }: { email: string; password: string; options?: { data?: { full_name?: string }; emailRedirectTo?: string } }) {
     try {
@@ -368,12 +377,13 @@ const authApi = {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) return { data: { user: null, session: null }, error: body.error ?? { message: "Signup failed" } };
-      // establish Auth.js session right away
-      await signIn("credentials", { email, password, redirect: false });
-      const session = await getSession();
-      const shaped = shapeSession(session);
-      __setBackendSession(session);
-      return { data: { user: shaped?.user ?? null, session: shaped }, error: null };
+      // Creating an account is not the same as retaining its browser session.
+      const signedIn = await passwordSignIn({ email, password });
+      if (signedIn.error) return {
+        data: { user: body.user ?? null, session: null },
+        error: { ...signedIn.error, message: `Account created, but automatic sign-in failed. ${signedIn.error.message}` },
+      };
+      return signedIn;
     } catch (e) {
       return { data: { user: null, session: null }, error: { message: (e as Error).message } };
     }

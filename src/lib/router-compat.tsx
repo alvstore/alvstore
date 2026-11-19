@@ -21,7 +21,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { cn } from "@/lib/utils";
+import MuiLink from "@mui/material/Link";
+import type { SxProps, Theme } from "@mui/material";
 
 // ---------------------------------------------------------------------------
 // Link
@@ -30,7 +31,7 @@ export interface LinkProps {
   to: string;
   replace?: boolean;
   state?: unknown;
-  className?: string;
+  sx?: SxProps<Theme>;
   children?: ReactNode;
   style?: CSSProperties;
   target?: string;
@@ -46,34 +47,10 @@ export interface LinkProps {
 
 export const Link = forwardRef<HTMLAnchorElement, LinkProps>(
   ({ to, replace, state: _state, ...props }, ref) => (
-    <NextLink href={to} replace={replace} ref={ref} {...props} />
+    <MuiLink component={NextLink} href={to} replace={replace} ref={ref} underline="none" {...props} />
   )
 );
 Link.displayName = "Link";
-
-// ---------------------------------------------------------------------------
-// NavLink — react-router style active class handling
-// ---------------------------------------------------------------------------
-export interface NavLinkProps extends Omit<LinkProps, "className"> {
-  className?: string | ((args: { isActive: boolean; isPending: boolean }) => string | undefined);
-  activeClassName?: string;
-  end?: boolean;
-}
-
-export const NavLink = forwardRef<HTMLAnchorElement, NavLinkProps>(
-  ({ to, className, activeClassName, end, ...props }, ref) => {
-    const pathname = usePathname() ?? "";
-    const path = String(to);
-    const isActive =
-      path === "/" ? pathname === "/" : pathname === path || pathname.startsWith(path.endsWith("/") ? path : path + "/");
-    const resolved =
-      typeof className === "function"
-        ? className({ isActive, isPending: false })
-        : cn(className, isActive && activeClassName);
-    return <NextLink href={path} ref={ref} className={resolved} {...props} />;
-  }
-);
-NavLink.displayName = "NavLink";
 
 // ---------------------------------------------------------------------------
 // hooks

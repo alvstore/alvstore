@@ -1,3 +1,4 @@
+import { asyncHandler } from "../lib/async-handler.js";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
@@ -28,7 +29,7 @@ function publicUser(u: { id: string; email: string | null; created_at?: Date }, 
 }
 
 // POST /api/auth/signup
-authRouter.post("/signup", async (req, res) => {
+authRouter.post("/signup", asyncHandler(async (req, res) => {
   const { email, password, full_name } = req.body ?? {};
   if (!email || !password) {
     res.status(400).json({ error: { message: "email and password are required" } });
@@ -45,7 +46,7 @@ authRouter.post("/signup", async (req, res) => {
      VALUES ($1, $2, $3) RETURNING id, email, created_at`,
     [email, hash, JSON.stringify({ full_name: full_name ?? "" })]
   );
-  // trigger handle_new_user() creates profile + default admin role
+  // trigger handle_new_user() creates profile + a non-admin staff role
   const user = inserted.rows[0];
   if (full_name) {
     await prisma.profiles.updateMany({ where: { user_id: user.id }, data: { full_name } });
@@ -54,10 +55,10 @@ authRouter.post("/signup", async (req, res) => {
   const profile = await profileOf(user.id);
   const token = signAccessToken({ sub: user.id, email: user.email });
   res.json({ user: publicUser(user, roles, profile), access_token: token });
-});
+}));
 
 // POST /api/auth/login
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body ?? {};
   if (!email || !password) {
     res.status(400).json({ error: { message: "email and password are required" } });
@@ -76,19 +77,19 @@ authRouter.post("/login", async (req, res) => {
   const profile = await profileOf(user.id);
   const token = signAccessToken({ sub: user.id, email: user.email });
   res.json({ user: publicUser(user, roles, profile), access_token: token });
-});
+}));
 
 // GET /api/auth/me
-authRouter.get("/me", requireAuth, async (req, res) => {
+authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   const profile = await profileOf(req.user!.id);
   res.json({ user: publicUser({ id: req.user!.id, email: req.user!.email }, req.user!.roles, profile) });
-});
+}));
 
 // POST /api/auth/logout — stateless JWT, nothing to revoke server-side (hook for future)
 authRouter.post("/logout", (_req, res) => res.json({ success: true }));
 
 // POST /api/auth/update-password  (authenticated; mirrors supabase.auth.updateUser)
-authRouter.post("/update-password", requireAuth, async (req, res) => {
+authRouter.post("/update-password", requireAuth, asyncHandler(async (req, res) => {
   const { password } = req.body ?? {};
   if (!password || String(password).length < 6) {
     res.status(400).json({ error: { message: "Password must be at least 6 characters" } });
@@ -97,11 +98,11 @@ authRouter.post("/update-password", requireAuth, async (req, res) => {
   const hash = await bcrypt.hash(String(password), 10);
   await pool.query("UPDATE auth.users SET password_hash = $1, updated_at = now() WHERE id = $2", [hash, req.user!.id]);
   res.json({ user: { id: req.user!.id, email: req.user!.email } });
-});
+}));
 
 // POST /api/auth/forgot-password — issues a reset token. Without SMTP configured
 // the reset link is logged to the server console (dev mode).
-authRouter.post("/forgot-password", async (req, res) => {
+authRouter.post("/forgot-password", asyncHandler(async (req, res) => {
   const { email } = req.body ?? {};
   if (!email) {
     res.status(400).json({ error: { message: "email is required" } });
@@ -123,10 +124,10 @@ authRouter.post("/forgot-password", async (req, res) => {
   const link = `${req.headers.origin ?? ""}/reset-password?token=${token}`;
   console.log(`[auth] password reset link for ${email}: ${link}`);
   res.json({ success: true, dev_reset_link: link });
-});
+}));
 
 // POST /api/auth/reset-password
-authRouter.post("/reset-password", async (req, res) => {
+authRouter.post("/reset-password", asyncHandler(async (req, res) => {
   const { token, password } = req.body ?? {};
   if (!token || !password || String(password).length < 6) {
     res.status(400).json({ error: { message: "token and a password of at least 6 characters are required" } });
@@ -146,11 +147,11 @@ authRouter.post("/reset-password", async (req, res) => {
   await pool.query("UPDATE auth.users SET password_hash = $1, updated_at = now() WHERE id = $2", [hash, found.rows[0].user_id]);
   await pool.query("UPDATE auth.password_reset_tokens SET used_at = now() WHERE id = $1", [found.rows[0].id]);
   res.json({ success: true });
-});
+}));
 
 // GET /api/auth/users — list users with roles (admin)
-authRouter.get("/users", requireAuth, requireRole("admin"), async (_req, res) => {
+authRouter.get("/users", requireAuth, requireRole("admin"), asyncHandler(async (_req, res) => {
   const users = await pool.query("SELECT id, email, created_at FROM auth.users ORDER BY created_at DESC");
   res.json({ users: users.rows });
-});
+}));
 

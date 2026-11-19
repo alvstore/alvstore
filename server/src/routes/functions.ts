@@ -1,3 +1,5 @@
+import { isDatabaseUnavailable } from "../lib/api-errors.js";
+import { asyncHandler } from "../lib/async-handler.js";
 import { Router, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
@@ -72,7 +74,7 @@ async function manageStaff(req: Request, res: Response) {
   }
   return fail(res, "Invalid action. Use 'create' or 'update'");
 }
-functionsRouter.post("/manage-staff", requireAuth, requireRole("admin"), manageStaff);
+functionsRouter.post("/manage-staff", requireAuth, requireRole("admin"), asyncHandler(manageStaff));
 
 // ---------------------------------------------------------------------------
 // settings helper
@@ -167,7 +169,7 @@ async function sendSmsMessage(args: { phone: string; message: string }): Promise
 // ---------------------------------------------------------------------------
 // send-whatsapp — POST sends; GET handles Meta webhook verification
 // ---------------------------------------------------------------------------
-functionsRouter.get("/send-whatsapp", async (req, res) => {
+functionsRouter.get("/send-whatsapp", asyncHandler(async (req, res) => {
   const settings = await getSettings();
   const integrations = (settings.integrations as Record<string, string>) || {};
   const mode = req.query["hub.mode"];
@@ -182,9 +184,9 @@ functionsRouter.get("/send-whatsapp", async (req, res) => {
     return;
   }
   res.status(200).send("OK");
-});
+}));
 
-functionsRouter.post("/send-whatsapp", requireAuth, async (req, res) => {
+functionsRouter.post("/send-whatsapp", requireAuth, asyncHandler(async (req, res) => {
   try {
     const { to, message, template_name, template_params, conversation_id, sender_id } = req.body ?? {};
     if (!to) return fail(res, "Recipient phone number required");
@@ -204,19 +206,21 @@ functionsRouter.post("/send-whatsapp", requireAuth, async (req, res) => {
           [message, conversation_id]
         );
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         console.warn("[send-whatsapp] failed to record chat message:", (e as Error).message);
       }
     }
     return ok(res, { success: true, whatsapp_message_id: result.waMessageId });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // send-email — template support + SMTP (generic HTTP mail API pattern)
 // ---------------------------------------------------------------------------
-functionsRouter.post("/send-email", requireAuth, async (req, res) => {
+functionsRouter.post("/send-email", requireAuth, asyncHandler(async (req, res) => {
   try {
     const { to, subject, body, template_id, variables } = req.body ?? {};
     if (!to || !subject) return fail(res, "Missing 'to' or 'subject'");
@@ -244,14 +248,15 @@ functionsRouter.post("/send-email", requireAuth, async (req, res) => {
     }
     return ok(res, { success: true });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // send-sms — template support + generic SMS provider
 // ---------------------------------------------------------------------------
-functionsRouter.post("/send-sms", requireAuth, async (req, res) => {
+functionsRouter.post("/send-sms", requireAuth, asyncHandler(async (req, res) => {
   try {
     const { phone, message, template_id, variables } = req.body ?? {};
     if (!phone) return fail(res, "Missing 'phone'");
@@ -267,15 +272,16 @@ functionsRouter.post("/send-sms", requireAuth, async (req, res) => {
     if (!result.success) return fail(res, result.error ?? "SMS send failed", 500);
     return ok(res, { success: true, result: result.result });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // whatsapp-automation — fires the template configured for an event,
 // WhatsApp first, SMS fallback (faithful port)
 // ---------------------------------------------------------------------------
-functionsRouter.post("/whatsapp-automation", requireAuth, async (req, res) => {
+functionsRouter.post("/whatsapp-automation", requireAuth, asyncHandler(async (req, res) => {
   try {
     const { event_type, customer_phone, variables } = req.body ?? {};
     if (!event_type || !customer_phone) return fail(res, "event_type and customer_phone required");
@@ -320,9 +326,10 @@ functionsRouter.post("/whatsapp-automation", requireAuth, async (req, res) => {
 
     return ok(res, { success: sent, channel, event_type, whatsapp_message_id: waMessageId });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // whatsapp-webhook — inbound Meta webhook (verification + events)
@@ -345,7 +352,7 @@ async function verifyMetaWebhook(req: Request, res: Response) {
 }
 functionsRouter.get("/whatsapp-webhook", verifyMetaWebhook);
 
-functionsRouter.post("/whatsapp-webhook", async (req, res) => {
+functionsRouter.post("/whatsapp-webhook", asyncHandler(async (req, res) => {
   // Always return 200 to Meta to prevent retries
   try {
     const body = req.body as Record<string, unknown>;
@@ -437,15 +444,16 @@ functionsRouter.post("/whatsapp-webhook", async (req, res) => {
     }
     res.json({ success: true });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     console.error("[whatsapp-webhook] error:", e);
     res.json({ success: true });
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // create-payment-link (Razorpay)
 // ---------------------------------------------------------------------------
-functionsRouter.post("/create-payment-link", requireAuth, async (req, res) => {
+functionsRouter.post("/create-payment-link", requireAuth, asyncHandler(async (req, res) => {
   try {
     const { amount, customer_name, customer_email, customer_phone, invoice_id, description } = req.body ?? {};
     if (!amount || Number(amount) <= 0) return fail(res, "Invalid amount");
@@ -485,20 +493,22 @@ functionsRouter.post("/create-payment-link", requireAuth, async (req, res) => {
           [amount, rpData.id, inv.rows[0]?.customer_id ?? null, `Razorpay Link: ${rpData.short_url}`]
         );
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         console.warn("[create-payment-link] payment record insert failed:", (e as Error).message);
       }
     }
 
     return ok(res, { success: true, payment_link_url: rpData.short_url, payment_link_id: rpData.id });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // razorpay-webhook — verify signature, mark payment completed, update invoice
 // ---------------------------------------------------------------------------
-functionsRouter.post("/razorpay-webhook", async (req, res) => {
+functionsRouter.post("/razorpay-webhook", asyncHandler(async (req, res) => {
   try {
     if (!env.razorpayWebhookSecret) return fail(res, "RAZORPAY_WEBHOOK_SECRET not configured", 500);
 
@@ -554,9 +564,10 @@ functionsRouter.post("/razorpay-webhook", async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // parse-offer-pdf — AI extraction when a gateway is configured,
@@ -575,7 +586,7 @@ Return a JSON array of offers. Each offer object must have:
 
 Only return the JSON array, no other text.`;
 
-functionsRouter.post("/parse-offer-pdf", requireAuth, async (req, res) => {
+functionsRouter.post("/parse-offer-pdf", requireAuth, asyncHandler(async (req, res) => {
   try {
     const { pdfText } = req.body ?? {};
     if (!pdfText || typeof pdfText !== "string" || pdfText.length < 20) {
@@ -626,9 +637,10 @@ functionsRouter.post("/parse-offer-pdf", requireAuth, async (req, res) => {
     }
     return ok(res, { success: true, offers, note: "Heuristic parser — set AI_GATEWAY_URL/AI_GATEWAY_KEY for AI extraction. Review extracted offers before saving." });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ═══════════════════════════════════════════════════════════════════════════
 // hikvision-sync — Hik-Partner Cloud integration (full port)
@@ -806,6 +818,7 @@ async function storeAttendanceLog(args: {
     );
     return (r.rowCount ?? 0) > 0;
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     console.warn("[hikvision] attendance log insert error:", (e as Error).message);
     return false;
   }
@@ -881,6 +894,7 @@ async function pollMqAttendance(
     await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/subscribe", { subType: 1, subMode: "all" });
     details.push("MQ subscription OK");
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     details.push(`MQ subscribe warning: ${(e as Error).message}`);
   }
 
@@ -961,6 +975,7 @@ async function pollMqAttendance(
         try { await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId }); details.push(`Acked batch ${batchId}`); } catch { /* ignore */ }
       }
     } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
       details.push(`Poll #${pollAttempts} error: ${(e as Error).message}`);
       break;
     }
@@ -1116,6 +1131,7 @@ async function runDemoTest(deviceId: string | null): Promise<HikAny> {
       testEmployeeId = newEmp.rows[0].id;
       results.steps.push("Created demo employee: " + testEmployeeId);
     } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
       results.errors.push(`Failed to create test employee: ${(e as Error).message}`);
       return results;
     }
@@ -1171,6 +1187,7 @@ async function runDemoTest(deviceId: string | null): Promise<HikAny> {
         results.attendance_records_created = 1;
         results.steps.push("Created attendance record (check-in 9:00, check-out 17:00)");
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         results.errors.push(`Attendance record error: ${(e as Error).message}`);
       }
     }
@@ -1194,7 +1211,7 @@ async function runDemoTest(deviceId: string | null): Promise<HikAny> {
   return results;
 }
 
-functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async (req, res) => {
+functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
   try {
     const body = req.body ?? {};
     const { action, device_id } = body;
@@ -1208,6 +1225,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         await logSync(device_id || null, "demo_test", result.success ? "success" : "error", "demo", result.attendance_logs_created);
         return ok(res, result);
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         return ok(res, { success: false, error: (e as Error).message });
       }
     }
@@ -1221,6 +1239,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
           message: "Backend credentials are valid. Token acquired.",
         });
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         return ok(res, { success: false, error: (e as Error).message });
       }
     }
@@ -1247,6 +1266,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         }
         return ok(res, { success: false, error: `Device ${device_serial} not found in any site` });
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         const errMsg = (e as Error).message;
         await logSync(device_id, "test_connection", "error", "device_info", 0, errMsg);
         return ok(res, { success: false, error: errMsg });
@@ -1260,6 +1280,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         const sites = await getAllSites(areaDomain, accessToken);
         return ok(res, { success: true, sites });
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         return ok(res, { success: false, error: (e as Error).message });
       }
     }
@@ -1301,6 +1322,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
               }
               imported++;
             } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
               console.warn("[hikvision] device import error:", (e as Error).message);
             }
           }
@@ -1309,6 +1331,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
 
         return ok(res, { success: true, devices: allDevices, sites: siteResults });
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         return ok(res, { success: false, error: (e as Error).message });
       }
     }
@@ -1323,6 +1346,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
           await logSync(device_id, "sync_employees_isapi", "success", "employee", result.records_synced);
           return ok(res, result);
         } catch (isapiErr) {
+    if (isDatabaseUnavailable(isapiErr)) throw isapiErr;
           console.log(`[sync-employees] ISAPI failed: ${(isapiErr as Error).message}, falling back to logs...`);
           await logSync(device_id, "sync_employees_isapi_failed", "info", "employee", 0, (isapiErr as Error).message);
         }
@@ -1331,6 +1355,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         await logSync(device_id, "sync_employees_from_logs", "success", "employee", result.records_synced);
         return ok(res, result);
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         const errMsg = (e as Error).message;
         await logSync(device_id, "sync_employees_failed", "error", "employee", 0, errMsg);
         return ok(res, { success: false, error: errMsg });
@@ -1345,6 +1370,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         await logSync(device_id, "sync_attendance_mq", "success", "attendance", result.records_synced);
         return ok(res, result);
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         const errMsg = (e as Error).message;
         await logSync(device_id, "sync_attendance_failed", "error", "attendance", 0, errMsg);
         return ok(res, { success: false, error: errMsg });
@@ -1362,6 +1388,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         await logSync(device_id, "backfill_attendance", "success", "attendance", result.records_synced);
         return ok(res, result);
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         const errMsg = (e as Error).message;
         await logSync(device_id, "backfill_attendance_failed", "error", "attendance", 0, errMsg);
         return ok(res, { success: false, error: errMsg });
@@ -1381,6 +1408,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         }
         await logSync(device_id, "full_sync_employees", "success", "employee", results["sync-employees"].records_synced);
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         results["sync-employees"] = { success: false, error: (e as Error).message };
       }
 
@@ -1388,6 +1416,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         results["sync-attendance"] = await pollMqAttendance(areaDomain, accessToken, device_serial, device_id);
         await logSync(device_id, "full_sync_attendance", "success", "attendance", results["sync-attendance"].records_synced);
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         results["sync-attendance"] = { success: false, error: (e as Error).message };
       }
 
@@ -1410,6 +1439,7 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         }
         return ok(res, { success: true, mapped });
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         return ok(res, { success: false, error: (e as Error).message });
       }
     }
@@ -1439,16 +1469,18 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
         await logSync(device_id, "manual_add_employee", "success", "employee", 1);
         return ok(res, { success: true, message: `Employee ${name} (${employee_code}) mapped` });
       } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
         return ok(res, { success: false, error: (e as Error).message });
       }
     }
 
     return fail(res, "Invalid action");
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     console.error(`[hikvision-sync FATAL] ${(e as Error).message}`);
     return fail(res, (e as Error).message, 500);
   }
-});
+}));
 
 // ---------------------------------------------------------------------------
 // hikvision-webhook — inbound Hik-Partner event receiver (full port)
@@ -1469,7 +1501,7 @@ functionsRouter.get("/hikvision-webhook", (req, res) => {
   res.status(200).type("text/plain").send(challenge);
 });
 
-functionsRouter.post("/hikvision-webhook", async (req, res) => {
+functionsRouter.post("/hikvision-webhook", asyncHandler(async (req, res) => {
   try {
     const bodyText = rawBody(req);
     const timestamp = (req.headers["x-hook-timestamp"] as string) || "";
@@ -1548,6 +1580,7 @@ functionsRouter.post("/hikvision-webhook", async (req, res) => {
           await convertToAttendanceRecord(erpEmployeeId, eventTime, deviceSerial, "webhook");
         }
       } catch (evtErr) {
+    if (isDatabaseUnavailable(evtErr)) throw evtErr;
         console.warn(`[hikvision-webhook] Event error: ${(evtErr as Error).message}`);
         skipped++;
       }
@@ -1562,7 +1595,8 @@ functionsRouter.post("/hikvision-webhook", async (req, res) => {
     console.log(`[hikvision-webhook] Done: ${processed} processed, ${skipped} skipped, batch ${batchId}`);
     return ok(res, { success: true, processed, skipped });
   } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
     console.error(`[hikvision-webhook] FATAL: ${(e as Error).stack || (e as Error).message}`);
     return fail(res, "Internal error", 500);
   }
-});
+}));
