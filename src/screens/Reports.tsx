@@ -1,161 +1,746 @@
 "use client";
 
-import { Box, Button, Card, CardContent, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, PageHeader, StatCard, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
-import { useState, useEffect } from "react";
+import {
+  Box, Button, Card, CardContent, Chip, MenuItem, Tab, TableBody, TableCell,
+  TableHead, TableRow, TextField, Typography, useTheme,
+} from "@mui/material";
+import { alpha } from "@mui/material/styles";
+import {
+  AnimatedPage, DataTable, DistributionWidget, EmptyState, PageHeader,
+  StatCard, TabBar, TabPanel, TabView, toast,
+} from "@/components/mui";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, } from "recharts";
-import { Download, TrendingUp, Package, Wrench, DollarSign } from "lucide-react";
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { Download, TrendingUp, Package, Wrench, DollarSign, CheckCircle, AlertTriangle } from "lucide-react";
 import { format, subDays } from "date-fns";
+
+const money = (val: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
+
 export default function Reports() {
-    const [tab, setTab] = useState("sales");
-    const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-    const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
-    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-      <PageHeader title={"Reports"} subtitle={"Business analytics and data exports"}/>
+  const [tab, setTab] = useState("sales");
+  const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
 
-      <Box sx={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <TextField type="date" value={startDate} onChange={e => setStartDate(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "auto" }}/>
-        <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>to</Box>
-        <TextField type="date" value={endDate} onChange={e => setEndDate(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "auto" }}/>
+  return (
+    <AnimatedPage>
+      <Box sx={{ display: "grid", gap: 3 }}>
+        <PageHeader
+          title="Reports & Analytics"
+          subtitle="Real-time business performance analytics, distribution insights, and CSV exports"
+          actions={
+            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <TextField
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                size="small"
+                label="From"
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ width: 150 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                to
+              </Typography>
+              <TextField
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                size="small"
+                label="To"
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ width: 150 }}
+              />
+            </Box>
+          }
+        />
+
+        <TabView value={tab} onChange={setTab}>
+          <TabBar>
+            <Tab
+              value="sales"
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <Box component={TrendingUp} sx={{ height: 15, width: 15 }} />
+                  Sales Analytics
+                </Box>
+              }
+            />
+            <Tab
+              value="inventory"
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <Box component={Package} sx={{ height: 15, width: 15 }} />
+                  Inventory Health
+                </Box>
+              }
+            />
+            <Tab
+              value="repairs"
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <Box component={Wrench} sx={{ height: 15, width: 15 }} />
+                  Repair Service
+                </Box>
+              }
+            />
+            <Tab
+              value="payments"
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <Box component={DollarSign} sx={{ height: 15, width: 15 }} />
+                  Payment Collections
+                </Box>
+              }
+            />
+          </TabBar>
+
+          <TabPanel value="sales">
+            <SalesReport start={startDate} end={endDate} />
+          </TabPanel>
+          <TabPanel value="inventory">
+            <InventoryReport />
+          </TabPanel>
+          <TabPanel value="repairs">
+            <RepairsReport start={startDate} end={endDate} />
+          </TabPanel>
+          <TabPanel value="payments">
+            <PaymentsReport start={startDate} end={endDate} />
+          </TabPanel>
+        </TabView>
       </Box>
-
-      <TabView value={tab} onChange={setTab}>
-        <TabBar>
-          <Tab value="sales" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={TrendingUp} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/>Sales</Box>}/>
-          <Tab value="inventory" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Package} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/>Inventory</Box>}/>
-          <Tab value="repairs" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Wrench} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/>Repairs</Box>}/>
-          <Tab value="payments" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={DollarSign} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/>Payments</Box>}/>
-        </TabBar>
-
-        <TabPanel value="sales"><SalesReport start={startDate} end={endDate}/></TabPanel>
-        <TabPanel value="inventory"><InventoryReport /></TabPanel>
-        <TabPanel value="repairs"><RepairsReport start={startDate} end={endDate}/></TabPanel>
-        <TabPanel value="payments"><PaymentsReport start={startDate} end={endDate}/></TabPanel>
-      </TabView>
-    </Box></AnimatedPage>;
+    </AnimatedPage>
+  );
 }
-function SalesReport({ start, end }: {
-    start: string;
-    end: string;
-}) {
-    const [data, setData] = useState<any[]>([]);
-    useEffect(() => {
-        supabase.from("pos_transactions").select("*").gte("created_at", start).lte("created_at", end + "T23:59:59").order("created_at", { ascending: false }).then(({ data }) => setData(data || []));
-    }, [start, end]);
-    const totalSales = data.reduce((s, d) => s + (d.total || 0), 0);
-    const exportCSV = () => {
-        const csv = "Transaction,Total,Method,Date\n" + data.map(d => `${d.transaction_number},${d.total},${d.payment_method},${d.created_at}`).join("\n");
-        downloadCSV(csv, "sales-report.csv");
-    };
-    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1rem" }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <StatCard label={"Total Sales"} value={totalSales} formatter={amount => "\u20B9" + amount.toLocaleString()}/>
-        <Button onClick={exportCSV} variant="outlined"><Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Export CSV</Button>
+
+function SalesReport({ start, end }: { start: string; end: string }) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const theme = useTheme();
+
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from("pos_transactions")
+      .select("*")
+      .gte("created_at", start)
+      .lte("created_at", end + "T23:59:59")
+      .order("created_at", { ascending: false })
+      .then(({ data: rows }) => {
+        setData(rows || []);
+        setLoading(false);
+      });
+  }, [start, end]);
+
+  const totalSales = data.reduce((s, d) => s + (d.total || 0), 0);
+  const avgSale = data.length ? totalSales / data.length : 0;
+  const maxSale = data.length ? Math.max(...data.map(d => d.total || 0)) : 0;
+
+  const dailyTrend = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const d of data) {
+      const dateKey = format(new Date(d.created_at), "dd MMM");
+      map[dateKey] = (map[dateKey] || 0) + (d.total || 0);
+    }
+    return Object.entries(map).map(([date, total]) => ({ date, total }));
+  }, [data]);
+
+  const exportCSV = () => {
+    const csv =
+      "Transaction,Total,Method,Date\n" +
+      data
+        .map(d => `${d.transaction_number},${d.total},${d.payment_method},${d.created_at}`)
+        .join("\n");
+    downloadCSV(csv, `sales-report-${start}-to-${end}.csv`);
+  };
+
+  return (
+    <Box sx={{ display: "grid", gap: 2.5, pt: 1 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+        <StatCard
+          label="Total POS Sales"
+          value={totalSales}
+          isCurrency
+          accent="primary"
+          loading={loading}
+        />
+        <StatCard
+          label="Transactions"
+          value={data.length}
+          accent="info"
+          loading={loading}
+        />
+        <StatCard
+          label="Avg Ticket Size"
+          value={avgSale}
+          isCurrency
+          accent="success"
+          loading={loading}
+        />
+        <StatCard
+          label="Peak Sale"
+          value={maxSale}
+          isCurrency
+          accent="secondary"
+          loading={loading}
+        />
       </Box>
-      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
-        <DataTable columnsCount={4}>
-          <TableHead><TableRow><TableCell>Transaction #</TableCell><TableCell sx={{ textAlign: "right" }}>Total</TableCell><TableCell>Method</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
-          <TableBody>
-            {data.map(d => (<TableRow key={d.id}><TableCell>{d.transaction_number}</TableCell><TableCell sx={{ textAlign: "right" }}>₹{d.total}</TableCell><TableCell sx={{ textTransform: "capitalize" }}>{d.payment_method}</TableCell><TableCell>{format(new Date(d.created_at), "dd MMM yyyy")}</TableCell></TableRow>))}
-            {data.length === 0 && <TableRow><TableCell colSpan={4} sx={{ textAlign: "center", paddingTop: "2rem", paddingBottom: "2rem", color: "hsl(var(--muted-foreground))" }}>No sales data</TableCell></TableRow>}
-          </TableBody>
-        </DataTable>
-      </Box>
-    </Box>);
-}
-function InventoryReport() {
-    const [data, setData] = useState<any[]>([]);
-    useEffect(() => {
-        supabase.from("products").select("name,stock_quantity,low_stock_threshold,selling_price,category").order("stock_quantity").then(({ data }) => setData(data || []));
-    }, []);
-    const exportCSV = () => {
-        const csv = "Product,Stock,Threshold,Price,Category\n" + data.map(d => `"${d.name}",${d.stock_quantity},${d.low_stock_threshold},${d.selling_price},"${d.category || ""}"`).join("\n");
-        downloadCSV(csv, "inventory-report.csv");
-    };
-    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1rem" }}>
-      <Box sx={{ display: "flex", justifyContent: "flex-end" }}><Button onClick={exportCSV} variant="outlined"><Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Export CSV</Button></Box>
-      <Card>
-        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem" })}>Stock Levels</Typography></Box>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.slice(0, 15)}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
-              <XAxis dataKey="name" fontSize={11} angle={-30} textAnchor="end" height={80} stroke="hsl(var(--muted-foreground))"/>
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12}/>
-              <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }}/>
-              <Bar dataKey="stock_quantity" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]}/>
-            </BarChart>
-          </ResponsiveContainer>
+
+      {dailyTrend.length > 1 && (
+        <Card sx={{ borderRadius: "18px" }}>
+          <Box sx={{ p: 2.5, pb: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                Sales Trajectory
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Daily aggregated POS collections for selected window
+              </Typography>
+            </Box>
+            <Button
+              onClick={exportCSV}
+              variant="outlined"
+              size="small"
+              startIcon={<Box component={Download} sx={{ height: 14, width: 14 }} />}
+            >
+              Export CSV
+            </Button>
+          </Box>
+          <CardContent sx={{ pt: 1, pb: 2.5 }}>
+            <Box sx={{ width: "100%", height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={dailyTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={theme.palette.primary.main} stopOpacity={0.25} />
+                      <stop offset="95%" stopColor={theme.palette.primary.main} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
+                  <XAxis dataKey="date" stroke={theme.palette.text.secondary} fontSize={11} tickLine={false} />
+                  <YAxis stroke={theme.palette.text.secondary} fontSize={11} tickLine={false} tickFormatter={val => `₹${val}`} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: theme.palette.background.paper,
+                      borderColor: theme.palette.divider,
+                      borderRadius: 10,
+                      fontSize: 12,
+                    }}
+                    formatter={(val: number) => [money(val), "Sales"]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="total"
+                    stroke={theme.palette.primary.main}
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#salesGrad)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card sx={{ borderRadius: "18px" }}>
+        <Box sx={{ p: 2, pb: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Transaction Log ({data.length})
+          </Typography>
+          {dailyTrend.length <= 1 && (
+            <Button
+              onClick={exportCSV}
+              variant="outlined"
+              size="small"
+              startIcon={<Box component={Download} sx={{ height: 14, width: 14 }} />}
+            >
+              Export CSV
+            </Button>
+          )}
+        </Box>
+        <CardContent sx={{ p: 0 }}>
+          <DataTable columnsCount={4} empty={data.length === 0} emptyMessage="No sales recorded in selected window">
+            <TableHead>
+              <TableRow>
+                <TableCell>Transaction #</TableCell>
+                <TableCell sx={{ textAlign: "right" }}>Total</TableCell>
+                <TableCell>Method</TableCell>
+                <TableCell>Date</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map(d => (
+                <TableRow key={d.id}>
+                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{d.transaction_number}</TableCell>
+                  <TableCell sx={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, fontSize: 12.5 }}>
+                    {money(d.total || 0)}
+                  </TableCell>
+                  <TableCell sx={{ textTransform: "capitalize", fontSize: 12 }}>{d.payment_method}</TableCell>
+                  <TableCell sx={{ fontSize: 12, color: "text.secondary" }}>
+                    {format(new Date(d.created_at), "dd MMM yyyy, h:mm a")}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </DataTable>
         </CardContent>
       </Card>
-      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
-        <DataTable columnsCount={4}>
-          <TableHead><TableRow><TableCell>Product</TableCell><TableCell sx={{ textAlign: "right" }}>Stock</TableCell><TableCell sx={{ textAlign: "right" }}>Threshold</TableCell><TableCell>Category</TableCell></TableRow></TableHead>
-          <TableBody>
-            {data.map((d, i) => (<TableRow key={i}><TableCell sx={d.stock_quantity <= d.low_stock_threshold ? { color: "hsl(var(--destructive))", fontWeight: "500" } : {}}>{d.name}</TableCell><TableCell sx={{ textAlign: "right" }}>{d.stock_quantity}</TableCell><TableCell sx={{ textAlign: "right" }}>{d.low_stock_threshold}</TableCell><TableCell>{d.category || "—"}</TableCell></TableRow>))}
-          </TableBody>
-        </DataTable>
-      </Box>
-    </Box>);
+    </Box>
+  );
 }
-function RepairsReport({ start, end }: {
-    start: string;
-    end: string;
-}) {
-    const [data, setData] = useState<any[]>([]);
-    useEffect(() => {
-        supabase.from("repair_tickets").select("ticket_number,status,priority,device_type,device_brand,created_at").gte("created_at", start).lte("created_at", end + "T23:59:59").order("created_at", { ascending: false }).then(({ data }) => setData(data || []));
-    }, [start, end]);
-    const exportCSV = () => {
-        const csv = "Ticket,Status,Priority,Device,Date\n" + data.map(d => `${d.ticket_number},${d.status},${d.priority},"${d.device_brand || ""} ${d.device_type || ""}",${d.created_at}`).join("\n");
-        downloadCSV(csv, "repairs-report.csv");
-    };
-    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1rem" }}>
-      <Box sx={{ display: "flex", justifyContent: "flex-end" }}><Button onClick={exportCSV} variant="outlined"><Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Export CSV</Button></Box>
-      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
-        <DataTable columnsCount={5}>
-          <TableHead><TableRow><TableCell>Ticket #</TableCell><TableCell>Status</TableCell><TableCell>Priority</TableCell><TableCell>Device</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
-          <TableBody>
-            {data.map(d => (<TableRow key={d.ticket_number}><TableCell>{d.ticket_number}</TableCell><TableCell sx={{ textTransform: "capitalize" }}>{d.status?.replace("_", " ")}</TableCell><TableCell sx={{ textTransform: "capitalize" }}>{d.priority}</TableCell><TableCell>{d.device_brand} {d.device_type}</TableCell><TableCell>{format(new Date(d.created_at), "dd MMM yyyy")}</TableCell></TableRow>))}
-            {data.length === 0 && <TableRow><TableCell colSpan={5} sx={{ textAlign: "center", paddingTop: "2rem", paddingBottom: "2rem", color: "hsl(var(--muted-foreground))" }}>No repair data</TableCell></TableRow>}
-          </TableBody>
-        </DataTable>
+
+function InventoryReport() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const theme = useTheme();
+
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from("products")
+      .select("name,stock_quantity,low_stock_threshold,selling_price,category")
+      .order("stock_quantity")
+      .then(({ data: rows }) => {
+        setData(rows || []);
+        setLoading(false);
+      });
+  }, []);
+
+  const totalProducts = data.length;
+  const lowStock = data.filter(p => p.stock_quantity <= p.low_stock_threshold && p.stock_quantity > 0).length;
+  const outOfStock = data.filter(p => p.stock_quantity <= 0).length;
+  const healthy = totalProducts - lowStock - outOfStock;
+
+  const categoryDistribution = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of data) {
+      const cat = p.category || "Uncategorized";
+      map[cat] = (map[cat] || 0) + 1;
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [data]);
+
+  const exportCSV = () => {
+    const csv =
+      "Product,Stock,Threshold,Price,Category\n" +
+      data
+        .map(
+          d =>
+            `"${d.name}",${d.stock_quantity},${d.low_stock_threshold},${d.selling_price},"${d.category || ""}"`
+        )
+        .join("\n");
+    downloadCSV(csv, "inventory-report.csv");
+  };
+
+  return (
+    <Box sx={{ display: "grid", gap: 2.5, pt: 1 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+        <StatCard
+          label="Total SKUs"
+          value={totalProducts}
+          accent="primary"
+          loading={loading}
+        />
+        <StatCard
+          label="Healthy Stock"
+          value={healthy}
+          accent="success"
+          loading={loading}
+        />
+        <StatCard
+          label="Low Stock Warning"
+          value={lowStock}
+          accent="warning"
+          loading={loading}
+        />
+        <StatCard
+          label="Out of Stock"
+          value={outOfStock}
+          accent="error"
+          loading={loading}
+        />
       </Box>
-    </Box>);
-}
-function PaymentsReport({ start, end }: {
-    start: string;
-    end: string;
-}) {
-    const [data, setData] = useState<any[]>([]);
-    useEffect(() => {
-        supabase.from("payments").select("payment_number,amount,payment_method,status,type,created_at").gte("created_at", start).lte("created_at", end + "T23:59:59").order("created_at", { ascending: false }).then(({ data }) => setData(data || []));
-    }, [start, end]);
-    const exportCSV = () => {
-        const csv = "Payment,Amount,Method,Status,Type,Date\n" + data.map(d => `${d.payment_number},${d.amount},${d.payment_method},${d.status},${d.type},${d.created_at}`).join("\n");
-        downloadCSV(csv, "payments-report.csv");
-    };
-    return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1rem" }}>
-      <Box sx={{ display: "flex", justifyContent: "flex-end" }}><Button onClick={exportCSV} variant="outlined"><Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Export CSV</Button></Box>
-      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
-        <DataTable columnsCount={5}>
-          <TableHead><TableRow><TableCell>Payment #</TableCell><TableCell sx={{ textAlign: "right" }}>Amount</TableCell><TableCell>Method</TableCell><TableCell>Status</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
-          <TableBody>
-            {data.map(d => (<TableRow key={d.payment_number}><TableCell>{d.payment_number}</TableCell><TableCell sx={{ textAlign: "right" }}>₹{d.amount}</TableCell><TableCell sx={{ textTransform: "capitalize" }}>{d.payment_method}</TableCell><TableCell sx={{ textTransform: "capitalize" }}>{d.status}</TableCell><TableCell>{format(new Date(d.created_at), "dd MMM yyyy")}</TableCell></TableRow>))}
-            {data.length === 0 && <TableRow><TableCell colSpan={5} sx={{ textAlign: "center", paddingTop: "2rem", paddingBottom: "2rem", color: "hsl(var(--muted-foreground))" }}>No payment data</TableCell></TableRow>}
-          </TableBody>
-        </DataTable>
+
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.6fr 1fr" }, gap: 2.5 }}>
+        <Card sx={{ borderRadius: "18px" }}>
+          <Box sx={{ p: 2.5, pb: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                Stock Levels by SKU
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Lowest 15 inventory items by on-hand quantity
+              </Typography>
+            </Box>
+            <Button
+              onClick={exportCSV}
+              variant="outlined"
+              size="small"
+              startIcon={<Box component={Download} sx={{ height: 14, width: 14 }} />}
+            >
+              Export CSV
+            </Button>
+          </Box>
+          <CardContent sx={{ pt: 1, pb: 2.5 }}>
+            <Box sx={{ width: "100%", height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.slice(0, 15)} margin={{ top: 10, right: 10, left: -10, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    fontSize={10.5}
+                    angle={-30}
+                    textAnchor="end"
+                    interval={0}
+                    stroke={theme.palette.text.secondary}
+                  />
+                  <YAxis stroke={theme.palette.text.secondary} fontSize={11} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: theme.palette.background.paper,
+                      borderColor: theme.palette.divider,
+                      borderRadius: 10,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Bar dataKey="stock_quantity" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </CardContent>
+        </Card>
+
+        <DistributionWidget
+          title="Catalog by category"
+          subtitle="Inventory product count distribution."
+          items={categoryDistribution}
+          loading={loading}
+          formatter={val => `${val} SKUs`}
+        />
       </Box>
-    </Box>);
+
+      <Card sx={{ borderRadius: "18px" }}>
+        <Box sx={{ p: 2, pb: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Inventory Catalog Table
+          </Typography>
+        </Box>
+        <CardContent sx={{ p: 0 }}>
+          <DataTable columnsCount={5} empty={data.length === 0} emptyMessage="No products in catalog">
+            <TableHead>
+              <TableRow>
+                <TableCell>Product Name</TableCell>
+                <TableCell sx={{ textAlign: "right" }}>Stock</TableCell>
+                <TableCell sx={{ textAlign: "right" }}>Threshold</TableCell>
+                <TableCell sx={{ textAlign: "right" }}>Selling Price</TableCell>
+                <TableCell>Category</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map((d, i) => {
+                const isCritical = d.stock_quantity <= d.low_stock_threshold;
+                return (
+                  <TableRow key={i}>
+                    <TableCell sx={{ fontWeight: 600, fontSize: 12, color: isCritical ? "error.main" : "text.primary" }}>
+                      {d.name}
+                    </TableCell>
+                    <TableCell sx={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, fontSize: 12 }}>
+                      {d.stock_quantity}
+                    </TableCell>
+                    <TableCell sx={{ textAlign: "right", fontSize: 12, color: "text.secondary" }}>
+                      {d.low_stock_threshold}
+                    </TableCell>
+                    <TableCell sx={{ textAlign: "right", fontSize: 12, fontFamily: "monospace" }}>
+                      {money(d.selling_price || 0)}
+                    </TableCell>
+                    <TableCell sx={{ fontSize: 12 }}>{d.category || "—"}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </DataTable>
+        </CardContent>
+      </Card>
+    </Box>
+  );
 }
+
+function RepairsReport({ start, end }: { start: string; end: string }) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from("repair_tickets")
+      .select("ticket_number,status,priority,device_type,device_brand,created_at")
+      .gte("created_at", start)
+      .lte("created_at", end + "T23:59:59")
+      .order("created_at", { ascending: false })
+      .then(({ data: rows }) => {
+        setData(rows || []);
+        setLoading(false);
+      });
+  }, [start, end]);
+
+  const completed = data.filter(d => ["completed", "delivered", "closed"].includes(d.status)).length;
+  const inProgress = data.filter(d => ["in_progress", "assigned", "diagnosing"].includes(d.status)).length;
+  const urgent = data.filter(d => d.priority === "urgent" || d.priority === "high").length;
+
+  const statusDistribution = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const d of data) {
+      const s = (d.status || "unassigned").replace(/_/g, " ");
+      map[s] = (map[s] || 0) + 1;
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [data]);
+
+  const exportCSV = () => {
+    const csv =
+      "Ticket,Status,Priority,Device,Date\n" +
+      data
+        .map(
+          d =>
+            `${d.ticket_number},${d.status},${d.priority},"${d.device_brand || ""} ${d.device_type || ""}",${d.created_at}`
+        )
+        .join("\n");
+    downloadCSV(csv, `repairs-report-${start}-to-${end}.csv`);
+  };
+
+  return (
+    <Box sx={{ display: "grid", gap: 2.5, pt: 1 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+        <StatCard
+          label="Total Tickets"
+          value={data.length}
+          accent="primary"
+          loading={loading}
+        />
+        <StatCard
+          label="Completed"
+          value={completed}
+          accent="success"
+          loading={loading}
+        />
+        <StatCard
+          label="In Progress"
+          value={inProgress}
+          accent="warning"
+          loading={loading}
+        />
+        <StatCard
+          label="High Priority"
+          value={urgent}
+          accent="error"
+          loading={loading}
+        />
+      </Box>
+
+      {statusDistribution.length > 0 && (
+        <DistributionWidget
+          title="Repair ticket distribution"
+          subtitle="Breakdown of tickets by resolution status."
+          items={statusDistribution}
+          loading={loading}
+          formatter={val => `${val} tickets`}
+        />
+      )}
+
+      <Card sx={{ borderRadius: "18px" }}>
+        <Box sx={{ p: 2, pb: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Repair Ticket Records ({data.length})
+          </Typography>
+          <Button
+            onClick={exportCSV}
+            variant="outlined"
+            size="small"
+            startIcon={<Box component={Download} sx={{ height: 14, width: 14 }} />}
+          >
+            Export CSV
+          </Button>
+        </Box>
+        <CardContent sx={{ p: 0 }}>
+          <DataTable columnsCount={5} empty={data.length === 0} emptyMessage="No repair tickets in selected period">
+            <TableHead>
+              <TableRow>
+                <TableCell>Ticket #</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Priority</TableCell>
+                <TableCell>Device</TableCell>
+                <TableCell>Date</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map(d => (
+                <TableRow key={d.ticket_number}>
+                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{d.ticket_number}</TableCell>
+                  <TableCell sx={{ textTransform: "capitalize", fontSize: 12 }}>
+                    {d.status?.replace("_", " ")}
+                  </TableCell>
+                  <TableCell sx={{ textTransform: "capitalize", fontSize: 12 }}>{d.priority}</TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {d.device_brand} {d.device_type}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12, color: "text.secondary" }}>
+                    {format(new Date(d.created_at), "dd MMM yyyy")}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </DataTable>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+}
+
+function PaymentsReport({ start, end }: { start: string; end: string }) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from("payments")
+      .select("payment_number,amount,payment_method,status,type,created_at")
+      .gte("created_at", start)
+      .lte("created_at", end + "T23:59:59")
+      .order("created_at", { ascending: false })
+      .then(({ data: rows }) => {
+        setData(rows || []);
+        setLoading(false);
+      });
+  }, [start, end]);
+
+  const totalCollected = data.reduce((s, d) => s + (d.amount || 0), 0);
+  const completedCount = data.filter(d => d.status === "completed" || d.status === "paid").length;
+  const pendingAmount = data
+    .filter(d => d.status === "pending")
+    .reduce((s, d) => s + (d.amount || 0), 0);
+
+  const methodDistribution = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const d of data) {
+      const m = (d.payment_method || "Other").toUpperCase();
+      map[m] = (map[m] || 0) + (d.amount || 0);
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [data]);
+
+  const exportCSV = () => {
+    const csv =
+      "Payment,Amount,Method,Status,Type,Date\n" +
+      data
+        .map(
+          d =>
+            `${d.payment_number},${d.amount},${d.payment_method},${d.status},${d.type},${d.created_at}`
+        )
+        .join("\n");
+    downloadCSV(csv, `payments-report-${start}-to-${end}.csv`);
+  };
+
+  return (
+    <Box sx={{ display: "grid", gap: 2.5, pt: 1 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+        <StatCard
+          label="Total Collected"
+          value={totalCollected}
+          isCurrency
+          accent="success"
+          loading={loading}
+        />
+        <StatCard
+          label="Cleared Transactions"
+          value={completedCount}
+          accent="primary"
+          loading={loading}
+        />
+        <StatCard
+          label="Pending Clearance"
+          value={pendingAmount}
+          isCurrency
+          accent="warning"
+          loading={loading}
+        />
+        <StatCard
+          label="Payment Records"
+          value={data.length}
+          accent="info"
+          loading={loading}
+        />
+      </Box>
+
+      {methodDistribution.length > 0 && (
+        <DistributionWidget
+          title="Collections by payment method"
+          subtitle="Value collected across transaction channels."
+          items={methodDistribution}
+          loading={loading}
+          formatter={money}
+        />
+      )}
+
+      <Card sx={{ borderRadius: "18px" }}>
+        <Box sx={{ p: 2, pb: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Payment Ledger Entries ({data.length})
+          </Typography>
+          <Button
+            onClick={exportCSV}
+            variant="outlined"
+            size="small"
+            startIcon={<Box component={Download} sx={{ height: 14, width: 14 }} />}
+          >
+            Export CSV
+          </Button>
+        </Box>
+        <CardContent sx={{ p: 0 }}>
+          <DataTable columnsCount={5} empty={data.length === 0} emptyMessage="No payments in selected window">
+            <TableHead>
+              <TableRow>
+                <TableCell>Payment #</TableCell>
+                <TableCell sx={{ textAlign: "right" }}>Amount</TableCell>
+                <TableCell>Method</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Date</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map(d => (
+                <TableRow key={d.payment_number}>
+                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{d.payment_number}</TableCell>
+                  <TableCell sx={{ textAlign: "right", fontFamily: "monospace", fontWeight: 700, fontSize: 12.5 }}>
+                    {money(d.amount || 0)}
+                  </TableCell>
+                  <TableCell sx={{ textTransform: "capitalize", fontSize: 12 }}>{d.payment_method}</TableCell>
+                  <TableCell sx={{ textTransform: "capitalize", fontSize: 12 }}>{d.status}</TableCell>
+                  <TableCell sx={{ fontSize: 12, color: "text.secondary" }}>
+                    {format(new Date(d.created_at), "dd MMM yyyy")}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </DataTable>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+}
+
 function downloadCSV(csv: string, filename: string) {
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${filename}`);
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast.success(`Exported ${filename}`);
 }

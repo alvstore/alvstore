@@ -3,10 +3,11 @@
 import { Accordion, AccordionDetails, AccordionSummary, Box, Button, ButtonBase, Card, CardContent, Divider, FormLabel, IconButton, LinearProgress, MenuItem, Radio, RadioGroup, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { AnimatedPage, DataTable, PageHeader, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useParams } from "@/lib/router-compat";
+import { useNavigate, useParams, useSearchParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2, Check, User, Smartphone, IndianRupee, ClipboardCheck, FileText, Trash2, Tag, } from "lucide-react";
+import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2, Check, User, Smartphone, IndianRupee, ClipboardCheck, FileText, Trash2, Tag, UserPlus } from "lucide-react";
+import { CustomerQuickDialog } from "@/components/customers/CustomerQuickDialog";
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 const STEPS = [
     { label: "Customer", icon: User },
@@ -168,6 +169,7 @@ export default function JobSheetCreate() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { id: editId } = useParams();
+    const [searchParams] = useSearchParams();
     const isEditMode = !!editId;
     const [currentStep, setCurrentStep] = useState(1);
     const [brands, setBrands] = useState<{
@@ -236,6 +238,15 @@ export default function JobSheetCreate() {
         google_account_password: "",
         device_lock_code: "",
     });
+    const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
+
+    useEffect(() => {
+        if (isEditMode) return;
+        const paramId = searchParams?.get("customerId") || searchParams?.get("customer_id");
+        if (paramId && !form.customer_id) {
+            setForm(prev => ({ ...prev, customer_id: paramId }));
+        }
+    }, [searchParams, isEditMode, form.customer_id]);
     useEffect(() => {
         Promise.all([
             supabase.from("device_brands").select("id, name").order("name"),
@@ -606,7 +617,20 @@ export default function JobSheetCreate() {
 
       {/* Step 1: Customer */}
       {currentStep === 1 && (<Card>
-          <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={User} sx={{ height: "1rem", width: "1rem" }}/> Customer Information</Typography></Box>
+          <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+            <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" })}>
+              <Box component={User} sx={{ height: "1rem", width: "1rem" }}/> Customer Information
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setQuickCustomerOpen(true)}
+              startIcon={<Box component={UserPlus} sx={{ width: 14, height: 14 }} />}
+              sx={{ fontSize: "11px", py: 0.5 }}
+            >
+              + Add Customer
+            </Button>
+          </Box>
           <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -911,7 +935,7 @@ export default function JobSheetCreate() {
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField type="date" value={form.estimated_completion} onChange={e => updateField("estimated_completion", e.target.value)} label={"Estimated Completion"} size="small" fullWidth/>
+                  <TextField type="date" value={form.estimated_completion} onChange={e => updateField("estimated_completion", e.target.value)} label={"Estimated Completion"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -988,5 +1012,14 @@ export default function JobSheetCreate() {
             </Button>)}
         </Box>
       </Box>
+
+      <CustomerQuickDialog
+        open={quickCustomerOpen}
+        onClose={() => setQuickCustomerOpen(false)}
+        onCustomerCreated={(newCust) => {
+          setCustomers(prev => [newCust as any, ...prev]);
+          updateField("customer_id", newCust.id);
+        }}
+      />
     </Box></AnimatedPage>;
 }

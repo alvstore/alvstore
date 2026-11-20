@@ -1,11 +1,12 @@
 "use client";
 
-import { Box, Button, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, toast } from "@/components/mui";
+import { Box, Button, Card, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { alpha } from "@mui/material/styles";
+import { AnimatedPage, DataTable, DistributionWidget, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { DollarSign, Clock, CheckCircle, Plus, Search } from "lucide-react";
+import { DollarSign, Clock, CheckCircle, Plus, Search, CreditCard, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 interface Payment {
     id: string;
@@ -43,6 +44,14 @@ export default function Payments() {
     useEffect(() => { fetchPayments(); }, [search, statusFilter]);
     const todayTotal = payments.filter(p => p.status === "completed" && new Date(p.created_at).toDateString() === new Date().toDateString()).reduce((s, p) => s + p.amount, 0);
     const pendingTotal = payments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0);
+    const completedTotal = payments.filter(p => p.status === "completed").reduce((s, p) => s + p.amount, 0);
+
+    const methodDistribution = Object.entries(payments.reduce((acc, p) => {
+        const method = p.payment_method ? p.payment_method.toUpperCase() : "OTHER";
+        acc[method] = (acc[method] || 0) + (p.amount || 0);
+        return acc;
+    }, {} as Record<string, number>)).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
     const handleSave = async () => {
         const amount = parseFloat(form.amount);
         if (!amount || amount <= 0) {
@@ -62,57 +71,66 @@ export default function Payments() {
             fetchPayments();
         }
     };
-    const statusBadge = (s: string) => {
-        const map = { completed: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }, pending: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" }, failed: { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))" }, refunded: { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" } };
-        return <StatusChip label={s} sx={map[s] || {}}/>;
-    };
-    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-      <PageHeader title={"Payments"} subtitle={"Track and manage payment records"} actions={<><Button onClick={() => { setForm({ amount: "", type: "pos", payment_method: "cash", status: "completed", reference_id: "", notes: "" }); setSheetOpen(true); }} variant="contained">
-          <Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Record Payment
-        </Button></>}/>
+    return <AnimatedPage><Box sx={{ display: "grid", gap: 3 }}>
+      <PageHeader title={"Payments"} subtitle={"Track and manage customer payments, collections, and settlement records"} actions={<><Button onClick={() => { setForm({ amount: "", type: "pos", payment_method: "cash", status: "completed", reference_id: "", notes: "" }); setSheetOpen(true); }} variant="contained" startIcon={<Box component={Plus} sx={{ height: "1rem", width: "1rem" }} />}>Record Payment</Button></>}/>
 
       {/* KPI Cards */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
-        <StatCard label={"Collected Today"} value={todayTotal} formatter={amount => "\u20B9" + amount.toLocaleString()} icon={<Box component={CheckCircle} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--success))" }}/>} accent="success"/>
-        <StatCard label={"Pending"} value={pendingTotal} formatter={amount => "\u20B9" + amount.toLocaleString()} icon={<Box component={Clock} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--warning))" }}/>} accent="warning"/>
-        <StatCard label={"Total Records"} value={payments.length} icon={<Box component={DollarSign} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--primary))" }}/>} accent="primary"/>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+        <StatCard label="Total Collected" value={completedTotal} formatter={amount => "₹" + amount.toLocaleString("en-IN")} icon={<Box component={CheckCircle} sx={{ height: 20, width: 20 }} />} accent="success" loading={loading} />
+        <StatCard label="Collected Today" value={todayTotal} formatter={amount => "₹" + amount.toLocaleString("en-IN")} icon={<Box component={TrendingUp} sx={{ height: 20, width: 20 }} />} accent="primary" loading={loading} />
+        <StatCard label="Pending Clearance" value={pendingTotal} formatter={amount => "₹" + amount.toLocaleString("en-IN")} icon={<Box component={Clock} sx={{ height: 20, width: 20 }} />} accent="warning" loading={loading} />
+        <StatCard label="Total Transactions" value={payments.length} icon={<Box component={CreditCard} sx={{ height: 20, width: 20 }} />} accent="info" loading={loading} />
       </Box>
 
+      {/* Widget: Payment Method Breakdown */}
+      {methodDistribution.length > 1 && (
+        <DistributionWidget
+          title="Payment channel distribution"
+          subtitle="Collections volume segmented by payment method."
+          items={methodDistribution}
+          loading={loading}
+          formatter={val => `₹${val.toLocaleString("en-IN")}`}
+        />
+      )}
+
       {/* Filters */}
-      <Box sx={{ display: "flex", gap: "0.75rem" }}>
-        <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search payment #..." sx={{ flex: "1 1 0%", maxWidth: "24rem" }}/>
-        <TextField value={statusFilter} select size="small" fullWidth onChange={event => setStatusFilter(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "150px" }}>
-            <MenuItem value="all">All Status</MenuItem>
-            <MenuItem value="completed">Completed</MenuItem>
-            <MenuItem value="pending">Pending</MenuItem>
-            <MenuItem value="failed">Failed</MenuItem>
-            <MenuItem value="refunded">Refunded</MenuItem>
-          </TextField>
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1.5, alignItems: "flex-start" }}>
+        <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search payment #..." sx={{ flex: 1, maxWidth: "24rem" }}/>
+        <TextField value={statusFilter} select size="small" onChange={event => setStatusFilter(event.target.value)} slotProps={{ select: { displayEmpty: true } }} sx={{ width: 160 }}>
+          <MenuItem value="all">All Status</MenuItem>
+          <MenuItem value="completed">Completed</MenuItem>
+          <MenuItem value="pending">Pending</MenuItem>
+          <MenuItem value="failed">Failed</MenuItem>
+          <MenuItem value="refunded">Refunded</MenuItem>
+        </TextField>
       </Box>
 
       {/* Table */}
-      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "hsl(var(--card))" }}>
-        <DataTable columnsCount={6} loading={loading} empty={payments.length === 0} emptyMessage={"No payments found"}>
+      <Card sx={theme => ({ borderRadius: "16px", border: `1px solid ${theme.palette.divider}`, overflow: "hidden" })}>
+        <DataTable columnsCount={6} loading={loading} empty={payments.length === 0} emptyMessage={<>
+                <Box component={DollarSign} sx={{ height: "2.5rem", width: "2.5rem", mx: "auto", mb: 1, opacity: 0.25 }}/>
+                <Typography variant="body2" color="text.secondary">No payments found</Typography>
+              </>}>
           <TableHead>
-            <TableRow>
-              <TableCell>Payment #</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Method</TableCell>
-              <TableCell sx={{ textAlign: "right" }}>Amount</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Date</TableCell>
+            <TableRow sx={theme => ({ bgcolor: alpha(theme.palette.text.primary, 0.03) })}>
+              <TableCell sx={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "text.secondary" }}>Payment #</TableCell>
+              <TableCell sx={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "text.secondary" }}>Type</TableCell>
+              <TableCell sx={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "text.secondary" }}>Method</TableCell>
+              <TableCell sx={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "text.secondary", textAlign: "right" }}>Amount</TableCell>
+              <TableCell sx={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "text.secondary" }}>Status</TableCell>
+              <TableCell sx={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "text.secondary" }}>Date</TableCell>
             </TableRow>
           </TableHead>
-          <TableBody>{payments.map(p => (<TableRow key={p.id}>
-                <TableCell sx={{ fontWeight: "500" }}>{p.payment_number}</TableCell>
-                <TableCell sx={{ textTransform: "capitalize" }}>{p.type}</TableCell>
-                <TableCell sx={{ textTransform: "capitalize" }}>{p.payment_method}</TableCell>
-                <TableCell sx={{ textAlign: "right", fontWeight: "500" }}>₹{p.amount.toLocaleString()}</TableCell>
-                <TableCell>{statusBadge(p.status)}</TableCell>
-                <TableCell sx={{ color: "hsl(var(--muted-foreground))" }}>{format(new Date(p.created_at), "dd MMM yyyy")}</TableCell>
+          <TableBody>{payments.map(p => (<TableRow key={p.id} sx={theme => ({ "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.04) }, transition: "background-color 160ms ease" })}>
+                <TableCell sx={{ fontFamily: "monospace", fontWeight: "700", color: "primary.main", fontSize: "0.875rem" }}>{p.payment_number}</TableCell>
+                <TableCell sx={{ textTransform: "capitalize", fontSize: "0.875rem" }}>{p.type}</TableCell>
+                <TableCell sx={{ textTransform: "uppercase", fontWeight: "600", fontSize: "0.8rem", color: "text.secondary" }}>{p.payment_method}</TableCell>
+                <TableCell sx={{ textAlign: "right", fontWeight: "650", fontVariantNumeric: "tabular-nums", fontSize: "0.875rem" }}>₹{Number(p.amount || 0).toLocaleString("en-IN")}</TableCell>
+                <TableCell><StatusChip label={p.status} /></TableCell>
+                <TableCell sx={{ color: "text.secondary", fontSize: "0.8rem" }}>{format(new Date(p.created_at), "dd MMM yyyy")}</TableCell>
               </TableRow>))}</TableBody>
         </DataTable>
-      </Box>
+      </Card>
 
       {/* Slide-over */}
       <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"Record Payment"} description={"Enter payment details"}>

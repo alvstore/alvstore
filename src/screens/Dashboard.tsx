@@ -15,7 +15,7 @@ import {
 import { addDays, endOfWeek, format, startOfDay, startOfMonth, startOfWeek, subDays } from "date-fns";
 import {
   AgendaWidget, AnimatedPage, ChecklistWidget, CountUp, DistributionWidget, EmptyState,
-  PageHeader, ProgressRing, StatCard, TrendChart, WidgetCard, WorkloadCalendar, money, type AgendaItem, type StatAccent,
+  InventoryWatchWidget, PageHeader, ProgressRing, StatCard, TrendChart, WidgetCard, WorkloadCalendar, money, type AgendaItem, type StatAccent,
 } from "@/components/mui";
 import { useAuth } from "@/hooks/useAuth";
 import { useTaskBoard } from "@/hooks/useTaskBoard";
@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@/lib/router-compat";
 import { completionPercent, dailySeries, localDateKey } from "@/lib/widget-data";
 import { taskSummary } from "@/lib/task-summary";
+import { controlFeedback } from "@/lib/motion-presets";
 
 const integer = (value: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value);
 const sum = (rows: any[] | null, column: string) => (rows ?? []).reduce((total, row) => total + Number(row[column] ?? 0), 0);
@@ -77,6 +78,15 @@ async function fetchRecentInvoices() {
   return data ?? [];
 }
 
+async function fetchLowStockItems() {
+  const { data, error } = await supabase.from("products").select("id, name, stock_quantity, low_stock_threshold, category, selling_price")
+    .or("stock_quantity.lte.low_stock_threshold")
+    .order("stock_quantity", { ascending: true })
+    .limit(5);
+  if (error) throw new Error(error.message);
+  return (data ?? []).filter((p: any) => Number(p.stock_quantity ?? 0) <= Number(p.low_stock_threshold ?? 0));
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -88,6 +98,7 @@ export default function Dashboard() {
   const salesQuery = useQuery({ queryKey: [...key, "sales"], queryFn: fetchSalesTrend, staleTime: 60_000 });
   const repairsQuery = useQuery({ queryKey: [...key, "repairs"], queryFn: fetchRepairs, staleTime: 60_000 });
   const invoicesQuery = useQuery({ queryKey: [...key, "invoices"], queryFn: fetchRecentInvoices, staleTime: 60_000 });
+  const lowStockQuery = useQuery({ queryKey: [...key, "low-stock"], queryFn: fetchLowStockItems, staleTime: 60_000 });
   const agendaQuery = useQuery({
     queryKey: [...key, "agenda", localDateKey(weekStart)], staleTime: 30_000,
     queryFn: async () => {
@@ -102,14 +113,20 @@ export default function Dashboard() {
     id: `task-${task.id}`, title: task.title, date: task.due_date!, allDay: true, kind: "task" as const,
     completed: task.status === "completed", detail: `${task.priority} priority · ${task.status.replace(/_/g, " ")}`,
   }))];
-  const refreshing = [kpiQuery, salesQuery, repairsQuery, invoicesQuery, agendaQuery, board].some(query => query.isFetching);
+  const refreshing = [kpiQuery, salesQuery, repairsQuery, invoicesQuery, agendaQuery, lowStockQuery, board].some(query => query.isFetching);
   const work = taskSummary(board.tasks);
   const kpis = kpiQuery.data;
   const repairs = repairsQuery.data;
   const net = (kpis?.revenue ?? 0) - (kpis?.expenses ?? 0);
   const collection = completionPercent(kpis?.collectedMonth ?? 0, kpis?.invoicesMonth ?? 0);
+  const repairHealth = repairs?.total ? completionPercent(repairs.completed, repairs.total) : 100;
+  const taskHealth = work.total ? work.percent : 100;
+  const stockHealth = Math.max(0, 100 - (kpis?.lowStock ?? 0) * 10);
+  const vitalityScore = Math.round((repairHealth + collection + taskHealth + stockHealth) / 4);
   const today = localDateKey(new Date());
   const firstName = String(user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "there").split(" ")[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const refresh = () => { void queryClient.invalidateQueries({ queryKey: ["dashboard"] }); void board.refresh(); };
   const kpiValue = (value?: number) => kpiQuery.isError ? "—" : value ?? 0;
   const stats: { label: string; value: number | string; isCurrency?: boolean; icon: React.ReactNode; accent: StatAccent; to: string; caption: string; sparkline?: number[] }[] = [
@@ -131,12 +148,46 @@ export default function Dashboard() {
   ];
 
   return <AnimatedPage><Box sx={{ display: "grid", gap: 3 }}>
-    <PageHeader title="Dashboard" subtitle={<>Welcome back, <Box component="span" sx={{ color: "primary.main", fontWeight: 600 }}>{firstName}</Box>. Here’s your day at a glance.</>} actions={<>
+    <PageHeader title="Dashboard" subtitle={<>{greeting}, <Box component="span" sx={{ color: "primary.main", fontWeight: 600 }}>{firstName}</Box>. Welcome back — here’s your store at a glance.</>} actions={<>
       <Chip variant="outlined" size="small" label={format(new Date(), "EEE, d MMM")} sx={{ fontSize: 11 }} />
       <Tooltip title="Refresh dashboard"><Box component="span"><IconButton aria-label="Refresh dashboard" aria-busy={refreshing} loading={refreshing} onClick={refresh} size="small"><Refresh fontSize="small" /></IconButton></Box></Tooltip>
     </>} />
-    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>{quickActions.map(action => <Button key={action.label} size="small" variant="outlined" startIcon={action.icon} onClick={() => navigate(action.to)} sx={{ borderColor: "divider", bgcolor: "background.paper" }}>{action.label}</Button>)}</Box>
+
+    <Box sx={theme => ({ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1.5, p: 1.75, px: 2.25, borderRadius: "16px", bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? .04 : .025), border: `1px solid ${alpha(theme.palette.primary.main, .12)}` })}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+        <Box sx={theme => ({ display: "inline-flex", alignItems: "center", gap: .85, px: 1.25, py: .35, borderRadius: "9999px", bgcolor: alpha(theme.palette.success.main, .1), border: `1px solid ${alpha(theme.palette.success.main, .25)}` })}>
+          <Box sx={theme => ({
+            width: 7, height: 7, borderRadius: "50%", bgcolor: "success.main", position: "relative",
+            "&::after": {
+              content: '""', position: "absolute", inset: -3, borderRadius: "50%",
+              border: `2px solid ${alpha(theme.palette.success.main, .45)}`,
+              animation: "alvStorePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+            },
+            "@keyframes alvStorePulse": {
+              "0%, 100%": { opacity: 1, transform: "scale(1)" },
+              "50%": { opacity: 0.25, transform: "scale(1.7)" },
+            },
+          })} />
+          <Typography variant="caption" sx={{ fontSize: 10.5, fontWeight: 700, color: "success.main", letterSpacing: ".04em" }}>STORE ACTIVE</Typography>
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
+          <Box component="span" sx={{ fontWeight: 650, color: "text.primary" }}>{repairs?.active ?? 0}</Box> active repairs ·{" "}
+          <Box component="span" sx={{ fontWeight: 650, color: "text.primary" }}>{work.total - work.completed}</Box> pending tasks ·{" "}
+          {kpis?.lowStock ? <Box component="span" sx={{ color: "warning.main", fontWeight: 650 }}>{kpis.lowStock} low stock item{kpis.lowStock > 1 ? "s" : ""}</Box> : <Box component="span" sx={{ color: "success.main", fontWeight: 600 }}>Stock healthy</Box>}
+        </Typography>
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
+        Active cash balance: <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>{money(kpis?.totalBalance ?? 0)}</Box>
+      </Typography>
+    </Box>
+
+    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10.5, fontWeight: 600, mr: .5, letterSpacing: ".05em", textTransform: "uppercase" }}>Quick actions:</Typography>
+      {quickActions.map(action => <Button key={action.label} size="small" variant="outlined" startIcon={action.icon} onClick={() => navigate(action.to)} sx={{ borderColor: "divider", bgcolor: "background.paper", borderRadius: "10px", px: 1.5, fontWeight: 600, ...controlFeedback }}>{action.label}</Button>)}
+    </Box>
+
     {kpiQuery.isError && <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => void kpiQuery.refetch()}>Retry</Button>}>Business totals could not be loaded. They are not shown as zero.</Alert>}
+
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2,minmax(0,1fr))", lg: "repeat(4,minmax(0,1fr))" }, gap: 2 }}>
       {stats.map((stat, index) => <StatCard key={stat.label} {...stat} loading={stat.label === "Active Repairs" ? repairsQuery.isPending : kpiQuery.isPending} index={index} onClick={() => navigate(stat.to)} />)}
     </Box>
@@ -180,6 +231,68 @@ export default function Dashboard() {
         </ButtonBase>)}
       </WidgetCard>
       <DistributionWidget title="Repair pipeline" subtitle="Every job, by its current stage." items={repairs?.items ?? []} loading={repairsQuery.isPending} error={repairsQuery.error?.message} onRetry={() => void repairsQuery.refetch()} formatter={integer} index={1} />
+    </Box>
+
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "repeat(2,minmax(0,1fr))" }, gap: 2.5 }}>
+      <InventoryWatchWidget
+        items={lowStockQuery.data ?? []}
+        loading={lowStockQuery.isPending}
+        error={lowStockQuery.error?.message}
+        onRetry={() => void lowStockQuery.refetch()}
+        index={2}
+      />
+      <WidgetCard
+        title="Store operational pulse"
+        subtitle="Operational vitality and key activity across store departments."
+        eyebrow="CROSS-MODULE STATUS"
+        index={3}
+      >
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "140px 1fr" }, gap: 2.5, alignItems: "center", pt: 1 }}>
+          <Box sx={{ textAlign: "center", py: 1 }}>
+            <ProgressRing
+              value={vitalityScore}
+              label="Store vitality index"
+              caption="Operational vitality"
+              size={120}
+              color={vitalityScore >= 75 ? "success" : vitalityScore >= 50 ? "primary" : "warning"}
+            />
+          </Box>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2,1fr)" }, gap: 1.5 }}>
+            <Box sx={theme => ({ p: 1.75, borderRadius: 2.5, bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? .06 : .03), border: `1px solid ${alpha(theme.palette.primary.main, .1)}` })}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Customer directory</Typography>
+              <Typography variant="h6" sx={{ mt: 0.25, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                <CountUp value={kpis?.totalCustomers ?? 0} />
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, fontSize: 10.5 }}>Active client accounts in CRM</Typography>
+              <Button size="small" variant="text" onClick={() => navigate("/crm")} sx={{ mt: 0.75, p: 0, minHeight: "auto", fontSize: 11.5, fontWeight: 600 }}>Manage customers →</Button>
+            </Box>
+            <Box sx={theme => ({ p: 1.75, borderRadius: 2.5, bgcolor: alpha(theme.palette.success.main, theme.palette.mode === "dark" ? .06 : .03), border: `1px solid ${alpha(theme.palette.success.main, .1)}` })}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Collection performance</Typography>
+              <Typography variant="h6" sx={{ mt: 0.25, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "success.main" }}>
+                {Math.round(collection)}%
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, fontSize: 10.5 }}>{money(kpis?.collectedMonth ?? 0)} collected</Typography>
+              <Button size="small" variant="text" color="success" onClick={() => navigate("/invoices")} sx={{ mt: 0.75, p: 0, minHeight: "auto", fontSize: 11.5, fontWeight: 600 }}>View billing →</Button>
+            </Box>
+            <Box sx={theme => ({ p: 1.75, borderRadius: 2.5, bgcolor: alpha(theme.palette.warning.main, theme.palette.mode === "dark" ? .06 : .03), border: `1px solid ${alpha(theme.palette.warning.main, .1)}` })}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Pending receivables</Typography>
+              <Typography variant="h6" sx={{ mt: 0.25, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "warning.main" }}>
+                {money(kpis?.pendingPayments ?? 0)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, fontSize: 10.5 }}>Awaiting customer clearance</Typography>
+              <Button size="small" variant="text" color="warning" onClick={() => navigate("/payments")} sx={{ mt: 0.75, p: 0, minHeight: "auto", fontSize: 11.5, fontWeight: 600 }}>Review payments →</Button>
+            </Box>
+            <Box sx={theme => ({ p: 1.75, borderRadius: 2.5, bgcolor: alpha(theme.palette.info.main, theme.palette.mode === "dark" ? .06 : .03), border: `1px solid ${alpha(theme.palette.info.main, .1)}` })}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>Repair throughput</Typography>
+              <Typography variant="h6" sx={{ mt: 0.25, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "info.main" }}>
+                {repairs?.completed ?? 0} jobs
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, fontSize: 10.5 }}>Repairs completed to date</Typography>
+              <Button size="small" variant="text" color="info" onClick={() => navigate("/repairs")} sx={{ mt: 0.75, p: 0, minHeight: "auto", fontSize: 11.5, fontWeight: 600 }}>Open repairs board →</Button>
+            </Box>
+          </Box>
+        </Box>
+      </WidgetCard>
     </Box>
   </Box></AnimatedPage>;
 }

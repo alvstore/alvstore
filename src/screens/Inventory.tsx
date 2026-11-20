@@ -1,7 +1,8 @@
 "use client";
 
 import { Box, Button, Card, CardContent, IconButton, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
+import { alpha } from "@mui/material/styles";
+import { AnimatedPage, DataTable, DistributionWidget, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
@@ -141,19 +142,32 @@ export default function Inventory() {
     const inStock = products.filter(p => p.stock_quantity > p.low_stock_threshold).length;
     const lowStock = products.filter(p => p.stock_quantity > 0 && p.stock_quantity <= p.low_stock_threshold).length;
     const outOfStock = products.filter(p => p.stock_quantity <= 0).length;
-    const kpiCards = [
-        { label: "Total Products", value: totalProducts, icon: Package, bg: { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)" }, iconColor: { color: "hsl(var(--primary))" } },
-        { label: "In Stock", value: inStock, icon: CheckCircle, bg: { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)" }, iconColor: { color: "hsl(var(--success))" } },
-        { label: "Low Stock", value: lowStock, icon: AlertTriangle, bg: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)" }, iconColor: { color: "hsl(var(--warning))" } },
-        { label: "Out of Stock", value: outOfStock, icon: XCircle, bg: { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)" }, iconColor: { color: "hsl(var(--destructive))" } },
-    ];
-    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-      <PageHeader title={"Products"} subtitle={"Manage your product catalog and inventory"} actions={<><Button onClick={() => navigate("/inventory/add")} variant="contained"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Add Product</Button></>}/>
+    const categoryDistribution = Object.entries(products.reduce((acc, p) => {
+        const cat = p.category || "Uncategorized";
+        acc[cat] = (acc[cat] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>)).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+    return <AnimatedPage><Box sx={{ display: "grid", gap: 3 }}>
+      <PageHeader title={"Products"} subtitle={"Manage your product catalog, barcode assignments, and stock inventory"} actions={<><Button onClick={() => navigate("/inventory/add")} variant="contained"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Add Product</Button></>}/>
 
       {/* KPI Cards */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }, gap: "1rem" }}>
-        {kpiCards.map(kpi => (<StatCard label={kpi.label} value={loading ? "—" : kpi.value} icon={<Box component={kpi.icon} sx={mergeSx({ height: "1.25rem", width: "1.25rem" }, kpi.iconColor)}/>} key={kpi.label} sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" }}/>))}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+        <StatCard label="Total Products" value={loading ? "—" : totalProducts} icon={<Box component={Package} sx={{ height: 20, width: 20 }} />} accent="primary" loading={loading} />
+        <StatCard label="In Stock" value={loading ? "—" : inStock} icon={<Box component={CheckCircle} sx={{ height: 20, width: 20 }} />} accent="success" loading={loading} />
+        <StatCard label="Low Stock" value={loading ? "—" : lowStock} icon={<Box component={AlertTriangle} sx={{ height: 20, width: 20 }} />} accent="warning" loading={loading} />
+        <StatCard label="Out of Stock" value={loading ? "—" : outOfStock} icon={<Box component={XCircle} sx={{ height: 20, width: 20 }} />} accent="error" loading={loading} />
       </Box>
+
+      {categoryDistribution.length > 1 && (
+        <DistributionWidget
+          title="Product category distribution"
+          subtitle="Inventory composition by product category."
+          items={categoryDistribution}
+          loading={loading}
+          formatter={val => `${val} products`}
+        />
+      )}
 
       <TabView value={activeTab} onChange={setActiveTab}>
         <TabBar>

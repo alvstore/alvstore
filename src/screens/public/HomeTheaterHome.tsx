@@ -1,637 +1,2100 @@
 "use client";
 
 import { scrollToSection } from "@/lib/scroll";
-
-import { Box, Button, ButtonBase, Drawer, IconButton, MenuItem, SxProps, TextField, Theme, Typography } from "@mui/material";
+import {
+  Box,
+  Button,
+  ButtonBase,
+  Chip,
+  Drawer,
+  IconButton,
+  MenuItem,
+  SxProps,
+  TextField,
+  Theme,
+  Typography,
+} from "@mui/material";
 import { AnimatedPage, FormDialog, Marquee, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight, Monitor, Speaker, Headphones, Star, Phone, MapPin, Mail, Menu, X as XIcon, ChevronDown, Volume2, } from "lucide-react";
+import {
+  ArrowRight,
+  Monitor,
+  Speaker,
+  Headphones,
+  Star,
+  Phone,
+  MapPin,
+  Mail,
+  Menu,
+  X as XIcon,
+  ChevronDown,
+  Volume2,
+  Wrench,
+  ShieldCheck,
+  Award,
+  Sparkles,
+  Sliders,
+  CheckCircle2,
+  Search,
+  ExternalLink,
+  Layers,
+  Activity,
+  Cpu,
+} from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import Configurator from "@/components/home-theater/Configurator";
 import WhatsAppFloat from "@/components/home-theater/WhatsAppFloat";
+import AcousticFieldVisualizer from "@/components/home-theater/AcousticFieldVisualizer";
+import {
+  ConsultationModal,
+  RepairIntakeModal,
+  TrackOrderModal,
+} from "@/components/home-theater/CinemaModals";
 import { motion, useInView, AnimatePresence, useReducedMotion } from "framer-motion";
 import { CINEMA_COLORS, TYPOGRAPHY, ANIMATION } from "@/lib/design-system";
+
 const CinemaParticles = lazy(() => import("@/components/home-theater/CinemaParticles"));
 const TheaterRoom3D = lazy(() => import("@/components/home-theater/TheaterRoom3D"));
-const SpeakerEvolution = lazy(() => import("@/components/home-theater/SpeakerEvolution"));
 const SoundstageSection = lazy(() => import("@/components/home-theater/SoundstageSection"));
-// ─── Data ────────────────────────────────────────
+
+// ─── Data: Signature Systems ────────────────────────────────────────
 const SERVICES = [
-    {
-        title: "Dolby Atmos Systems",
-        tagline: "Immersive surround that moves around you",
-        features: ["7.1.4 / 9.1.6 configurations", "Ceiling & height speakers", "ISF/THX calibration"],
-        price: "₹3L",
-        gradient: { "--alv-gradient-from": "rgb(255 215 0 / 0.2) var(--alv-gradient-from-position)", "--alv-gradient-to": "rgb(255 140 0 / 0.1) var(--alv-gradient-to-position)", "--alv-gradient-stops": "var(--alv-gradient-from), var(--alv-gradient-to)" },
-        icon: Speaker,
-    },
-    {
-        title: "4K Laser Projection",
-        tagline: "Cinema-grade visuals in your space",
-        features: ["4K & 8K laser projectors", "120\"+ screen setups", "Ambient light rejection"],
-        price: "₹2.5L",
-        gradient: { "--alv-gradient-from": "rgb(255 215 0 / 0.15) var(--alv-gradient-from-position)", "--alv-gradient-to": "rgb(5 10 24 / 0.2) var(--alv-gradient-to-position)", "--alv-gradient-stops": "var(--alv-gradient-from), var(--alv-gradient-to)" },
-        icon: Monitor,
-    },
-    {
-        title: "Smart Automation",
-        tagline: "One-touch control for your theater",
-        features: ["Lighting scenes", "Motorized curtains & screens", "Voice & app control"],
-        price: "₹1.5L",
-        gradient: { "--alv-gradient-from": "rgb(255 140 0 / 0.15) var(--alv-gradient-from-position)", "--alv-gradient-to": "rgb(255 215 0 / 0.1) var(--alv-gradient-to-position)", "--alv-gradient-stops": "var(--alv-gradient-from), var(--alv-gradient-to)" },
-        icon: Volume2,
-    },
-    {
-        title: "Acoustic Design",
-        tagline: "Sound perfection, engineered",
-        features: ["Room analysis & treatment", "Bass trap placement", "Reflection management"],
-        price: "₹1L",
-        gradient: { "--alv-gradient-from": "rgb(5 10 24 / 0.3) var(--alv-gradient-from-position)", "--alv-gradient-to": "rgb(255 215 0 / 0.1) var(--alv-gradient-to-position)", "--alv-gradient-stops": "var(--alv-gradient-from), var(--alv-gradient-to)" },
-        icon: Headphones,
-    },
+  {
+    title: "Dolby Atmos Systems",
+    tagline: "Immersive 3D audio moving with pinpoint object precision",
+    features: [
+      "7.2.4 & 9.4.6 Discrete channel configurations",
+      "Acoustically transparent screen-matched LCR",
+      "THX Certified Level III & ISF acoustical calibration",
+      "Quad active subwoofer standing wave cancellation",
+    ],
+    price: "₹3.5L – ₹25L+",
+    icon: Speaker,
+  },
+  {
+    title: "4K/8K Laser Projection",
+    tagline: "Ultra-high contrast, DCI-P3 cinema color fidelity",
+    features: [
+      "Sony & JVC native 4K D-ILA / SXRD laser engines",
+      "120″ to 220″ Micro-perforated woven screens",
+      "Motorized multi-aspect ratio masking (16:9 / 2.35:1)",
+      "Zero-reflectance ambient light rejection (ALR)",
+    ],
+    price: "₹4L – ₹30L+",
+    icon: Monitor,
+  },
+  {
+    title: "Smart Cinema Automation",
+    tagline: "Single-touch environment & cinema automation",
+    features: [
+      "Crestron, Control4 & Lutron architectural control",
+      "One-touch scenes: lights fade, screen drops, projector wakes",
+      "Automated acoustic velvet drape & masking integration",
+      "Bespoke iPad & waterproof custom tactile remotes",
+    ],
+    price: "₹1.8L – ₹12L+",
+    icon: Volume2,
+  },
+  {
+    title: "Architectural Acoustics",
+    tagline: "Lab-grade RT60 decay, diffusion & sound isolation",
+    features: [
+      "3D room resonance impulse analysis & modal tuning",
+      "Custom timber quadratic residue diffusers (QRD)",
+      "Room-within-a-room acoustic decoupling (STC 65+)",
+      "High-density fabric wrapped fiberglass absorption panels",
+    ],
+    price: "₹2.5L – ₹15L+",
+    icon: Headphones,
+  },
 ];
+
+// ─── Data: Trust & Accreditations ────────────────────────────────────────
+const ACCREDITATIONS = [
+  { title: "THX Certified", desc: "Level III Acoustic Engineering" },
+  { title: "Dolby Atmos Partner", desc: "Official Cinema Integration Specialist" },
+  { title: "ISF Video Calibration", desc: "DCI Color Science Precision" },
+  { title: "CEDIA Member", desc: "Custom Electronic Design Association" },
+  { title: "5-Year Master Warranty", desc: "Turnkey On-Site Technical Coverage" },
+];
+
+// ─── Data: Projects / Case Studies ────────────────────────────────────────
 const PROJECTS = [
-    { title: "Luxury Villa Cinema", location: "Udaipur", config: "9.2.6 Dolby Atmos" },
-    { title: "Penthouse Theater", location: "Jaipur", config: "7.1.4 DTS:X" },
-    { title: "Farmhouse Cinema", location: "Jodhpur", config: "13.2.8 Reference" },
-    { title: "Corporate AV Room", location: "Udaipur", config: "5.1.2 Atmos" },
-    { title: "Basement Theater", location: "Mumbai", config: "7.2.4 THX" },
-    { title: "Studio Screening Room", location: "Delhi", config: "9.1.6 Atmos" },
+  {
+    title: "Royal Lakefront Villa Cinema",
+    location: "Udaipur, Rajasthan",
+    config: "9.4.6 Dolby Atmos · 165″ Woven Screen",
+    gear: "Trinnov Altitude 32 · Bowers & Wilkins Custom Theatre · Sony 4K Laser",
+    desc: "Private 12-seat palace screening theater with bespoke acoustic timber panels, dual 18″ infrasonic subs, and motorized Starlight ceiling.",
+    tag: "Ultra Luxury",
+  },
+  {
+    title: "Sea-Facing Penthouse Cinema",
+    location: "Worli, Mumbai",
+    config: "7.2.4 Dolby Atmos · 140″ Micro-Perf",
+    gear: "Marantz Cinema 30 · KEF Ci-Reference THX · JVC D-ILA 4K",
+    desc: "Architecturally decoupled room-within-a-room cinema providing 65dB acoustic isolation without structural floor transmission.",
+    tag: "Acoustic Decoupled",
+  },
+  {
+    title: "Heritage Farmhouse Theater",
+    location: "Jaipur, Rajasthan",
+    config: "13.4.8 Reference DCI Cinema",
+    gear: "StormAudio ISP · Wisdom Audio Line Source · Christie 4K Projector",
+    desc: "Grand 18-seat private cinema hall featuring quad corner bass equalization, luxury motorized Italian leather recliners, and D-BOX haptics.",
+    tag: "Flagship DCI",
+  },
+  {
+    title: "Studio Sound Screening Suite",
+    location: "Hauz Khas, New Delhi",
+    config: "7.2.4 Atmos Mix & Screening Room",
+    gear: "Anthem AVM 70 · Genelec SAM Active Array · Barco Laser",
+    desc: "Precision RT60 0.24s mastering acoustic environment designed for both film director previews and immersive spatial audio playback.",
+    tag: "Studio Mastering",
+  },
+  {
+    title: "Hilltop Manor Cinema Lounge",
+    location: "Mount Abu, Rajasthan",
+    config: "7.2.4 THX Surround · 135″ ALR Frame",
+    gear: "Denon AVC-A1H · B&W CT-700 Series · SVS Dual Subwoofers",
+    desc: "Intimate family screening lounge with concealed architectural speakers, suede wall treatments, and one-touch Lutron lighting automation.",
+    tag: "Media Lounge",
+  },
+  {
+    title: "Executive Corporate AV Theater",
+    location: "Gurugram, NCR",
+    config: "9.2.4 Spatial Audio & 220″ Video Wall",
+    gear: "Crestron NVX · QSC Q-Sys DSP · Micro-LED Display",
+    desc: "Multi-functional boardroom and keynote cinema hall with beamforming ceiling microphones and reference audio clarity.",
+    tag: "Corporate Flagship",
+  },
 ];
+
+// ─── Data: Testimonials ────────────────────────────────────────
 const TESTIMONIALS = [
-    { name: "Rajesh Sharma", city: "Udaipur", text: "ALV Store transformed our living room into an incredible cinema. The Dolby Atmos setup is phenomenal!", rating: 5 },
-    { name: "Priya Mehra", city: "Jaipur", text: "Professional installation, excellent sound calibration. Best home theater experience in Rajasthan.", rating: 5 },
-    { name: "Vikram Singh", city: "Udaipur", text: "From consultation to installation, the ALV team delivered a premium cinema room. Highly recommended!", rating: 5 },
-    { name: "Anita Patel", city: "Ahmedabad", text: "The 7.1.4 Atmos setup is beyond anything I've experienced. Every movie feels like a theater!", rating: 5 },
-    { name: "Karan Malhotra", city: "Mumbai", text: "Incredible attention to detail. The acoustic treatment made a massive difference.", rating: 5 },
-    { name: "Neha Agarwal", city: "Delhi", text: "ALV Store's team delivered beyond expectations. Our home cinema is the envy of the neighbourhood.", rating: 5 },
+  {
+    name: "Maharaja Vikramaditya Singh",
+    city: "Udaipur",
+    text: "ALV Store designed our villa cinema to perfection. The 9.4.6 Dolby Atmos setup delivers depth that rivals any commercial IMAX auditorium.",
+    rating: 5,
+    tag: "Villa Cinema 9.4.6",
+  },
+  {
+    name: "Priya & Rajesh Singhania",
+    city: "Jaipur",
+    text: "From 3D raytracing acoustics to the final ISF color calibration, the craftsmanship was impeccable. Truly India's finest cinema installers.",
+    rating: 5,
+    tag: "Reference 7.2.4",
+  },
+  {
+    name: "Arjun Mathur",
+    city: "Mumbai",
+    text: "The acoustic isolation was the real miracle. I can play action movies at reference 105 dB at 2 AM without disturbing the bedrooms next door.",
+    rating: 5,
+    tag: "Acoustic Decoupled Suite",
+  },
+  {
+    name: "Karan Johar Group Executive",
+    city: "Delhi NCR",
+    text: "Our studio screening suite needed perfect RT60 decay and accurate dialogue clarity. ALV's acoustic engineers delivered textbook perfection.",
+    rating: 5,
+    tag: "Mastering Studio",
+  },
+  {
+    name: "Dr. Anita Mehta",
+    city: "Ahmedabad",
+    text: "Also got my vintage McIntosh amplifier restored at their specialist lab. Both their installation and repair services are world-class.",
+    rating: 5,
+    tag: "McIntosh Repair & Cinema",
+  },
 ];
+
+// ─── Data: FAQs ────────────────────────────────────────
 const FAQS = [
-    { q: "What is the cost of a home theater installation?", a: "Setups range from ₹2L to ₹25L+ depending on room size, equipment, and configuration. We offer free consultations." },
-    { q: "Do you provide Dolby Atmos setup?", a: "Yes! We specialize in 5.1.2, 7.1.4, and 9.1.6 Atmos configurations with ceiling and upfiring speakers." },
-    { q: "What brands do you work with?", a: "Premium brands including Sony, JBL, Harman Kardon, Denon, Marantz, KEF, B&W, Sonos, Bose, and more." },
-    { q: "Do you offer after-installation support?", a: "Absolutely. Warranty support, calibration services, and ongoing maintenance for all installations." },
+  {
+    q: "What makes ALV Store's Dolby Atmos cinemas superior to standard home theaters?",
+    a: "Unlike typical consumer AV installations, ALV Store treats each space with architectural acoustics: we compute room mode resonances, apply custom absorption and diffusion panels to hit an optimal 0.25-0.30s RT60 decay time, and install timbre-matched in-wall or in-ceiling speakers laser-aligned to Dolby Atmos specifications.",
+  },
+  {
+    q: "How much does a bespoke home cinema turnkey installation cost?",
+    a: "Turnkey installations range from ₹3.5 Lakhs for compact media dens up to ₹50 Lakhs+ for dedicated private screening estates with multi-tiered motorized leather seating, native 4K laser projection, Starlight ceiling, and 9.4.6 Dolby Atmos sound. We offer detailed itemized quotes following our initial consultation.",
+  },
+  {
+    q: "What brands and equipment do you partner with?",
+    a: "We are authorized system integrators and service partners for Bowers & Wilkins, KEF, Trinnov Audio, Marantz, Denon, McIntosh, Sony 4K Laser, JVC D-ILA, SVS Subwoofers, Crestron, Lutron, and Apple Products.",
+  },
+  {
+    q: "Can you soundproof an existing room without sound leaking into bedrooms?",
+    a: "Yes! We specialize in 'room-within-a-room' acoustic isolation (STC 60-68dB rating). This involves decoupled resilient channels, multi-layer high-density drywall with viscoelastic damping compounds, acoustic perimeter seals, and isolated duct baffles.",
+  },
+  {
+    q: "Do you offer diagnostic and repair services for existing high-end audio equipment?",
+    a: "Yes. Our specialist electronics repair lab performs component-level micro-soldering, amplifier recapping, optical engine laser servicing, speaker driver re-coning, and Apple Silicon hardware diagnostics.",
+  },
+  {
+    q: "What ongoing maintenance and warranty do you provide after installation?",
+    a: "Every ALV installation is backed by our 5-Year Comprehensive On-Site Warranty, including semi-annual audio-visual recalibration visits, firmware optimization, and priority 24/7 technical assistance.",
+  },
 ];
+
 const NAV_LINKS = [
-    { label: "Services", href: "#services" },
-    { label: "Configurator", href: "#configurator" },
-    { label: "Projects", href: "#projects" },
-    { label: "Contact", href: "#consultation" },
+  { label: "3D Acoustic Engine", href: "#acoustic-field" },
+  { label: "Systems", href: "#services" },
+  { label: "Soundstage", href: "#soundstage" },
+  { label: "Configurator", href: "#configurator" },
+  { label: "Portfolio", href: "#projects" },
+  { label: "Repair Lab", href: "#repair-lab" },
+  { label: "Reviews", href: "#testimonials" },
+  { label: "FAQ", href: "#faq" },
 ];
-// ─── Animated letter-by-letter heading ───
-function AnimatedHeading({ text, sx }: {
-    text: string;
-    sx?: SxProps<Theme>;
-}) {
-    const reduced = useReducedMotion();
-    const letters = text.split("");
-    return (<Box initial={reduced ? false : "hidden"} animate="visible" variants={{
-        hidden: {},
-        visible: { transition: { staggerChildren: reduced ? 0 : ANIMATION.HERO_LETTER_DELAY } },
-    }} component={motion.span} sx={sx}>
-      {letters.map((char, i) => (<Box key={i} variants={{
-            hidden: { opacity: 0, y: 12 },
-            visible: { opacity: 1, y: 0, transition: { duration: reduced ? 0 : 0.5, ease: "easeOut" } },
-        }} component={motion.span} sx={{ display: "inline-block" }}>
-          {char === " " ? "\u00A0" : char}
-        </Box>))}
-    </Box>);
-}
-// ─── Section wrapper with scroll animation ───
-function FadeSection({ children, sx, id, style }: {
-    children: React.ReactNode;
-    sx?: SxProps<Theme>;
-    id?: string;
-    style?: React.CSSProperties;
-}) {
-    const ref = useRef(null);
-    const inView = useInView(ref, { once: true, margin: "-80px" });
-    const reduced = useReducedMotion();
-    return (<Box ref={ref} id={id} initial={reduced ? false : { opacity: 0, y: 16 }} animate={reduced || inView ? { opacity: 1, y: 0 } : {}} transition={{ duration: reduced ? 0 : ANIMATION.SECTION_FADE_DURATION, ease: "easeOut" }} style={style as never} component={motion.section} sx={sx}>
-      {children}
-    </Box>);
-}
-// ─── 3D Flip Card ───
-function FlipCard({ service, index }: {
-    service: typeof SERVICES[0];
-    index: number;
-}) {
-    const [flipped, setFlipped] = useState(false);
-    const ref = useRef(null);
-    const inView = useInView(ref, { once: true, margin: "-60px" });
-    const Icon = service.icon;
-    const reduced = useReducedMotion();
-    return (<Box ref={ref} initial={reduced ? false : { opacity: 0, y: 16 }} animate={reduced || inView ? { opacity: 1, y: 0 } : {}} transition={{ duration: reduced ? 0 : 0.4, delay: reduced ? 0 : Math.min(index * ANIMATION.STAGGER_DELAY, .24), ease: "easeOut" }} onMouseEnter={() => setFlipped(true)} onMouseLeave={() => setFlipped(false)} onClick={() => setFlipped(f => !f)} style={{ perspective: "1000px" }} component={motion.div} sx={{ minWidth: "280px", "@media (min-width: 640px)": { minWidth: "320px" }, height: "380px", flexShrink: "0", cursor: "pointer" }}>
-      <Box sx={mergeSx({ position: "relative", width: "100%", height: "100%", transitionProperty: "transform", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "600ms" }, {
-        transformStyle: "preserve-3d",
-        transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
-    })}>
-        {/* Front */}
-        <Box sx={mergeSx(mergeSx({ position: "absolute", inset: "0px", borderRadius: "1rem", borderWidth: "1px", borderColor: "rgb(255 255 255 / 0.08)", backgroundImage: "linear-gradient(to bottom right, var(--alv-gradient-stops))" }, service.gradient, { "--alv-backdrop-blur": "blur(4px)", WebkitBackdropFilter: "var(--alv-backdrop-blur) var(--alv-backdrop-brightness) var(--alv-backdrop-contrast) var(--alv-backdrop-grayscale) var(--alv-backdrop-hue-rotate) var(--alv-backdrop-invert) var(--alv-backdrop-saturate) var(--alv-backdrop-sepia)", backdropFilter: "var(--alv-backdrop-blur) var(--alv-backdrop-brightness) var(--alv-backdrop-contrast) var(--alv-backdrop-grayscale) var(--alv-backdrop-hue-rotate) var(--alv-backdrop-invert) var(--alv-backdrop-saturate) var(--alv-backdrop-sepia)", padding: "2rem", display: "flex", flexDirection: "column", justifyContent: "flex-end" }), { backfaceVisibility: "hidden" })}>
-          <Box sx={{ height: "4rem", width: "4rem", borderRadius: "0.75rem", backgroundColor: "rgb(255 215 0 / 0.1)", borderWidth: "1px", borderColor: "rgb(255 215 0 / 0.2)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "1.5rem" }}>
-            <Box component={Icon} sx={mergeSx({ height: "2rem", width: "2rem" }, { color: CINEMA_COLORS.GOLD })}/>
-          </Box>
-          <Typography component="h3" variant="h3" sx={mergeSx({ fontSize: "1.5rem", lineHeight: "2rem", fontWeight: "700", marginBottom: "0.5rem" }, { fontFamily: TYPOGRAPHY.fontDisplay, color: CINEMA_COLORS.WARM_WHITE })}>
-            {service.title}
-          </Typography>
-          <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem" }, { color: "rgba(255,255,255,0.5)" })}>{service.tagline}</Typography>
-        </Box>
 
-        {/* Back */}
-        <Box sx={mergeSx({ position: "absolute", inset: "0px", borderRadius: "1rem", borderWidth: "1px", borderColor: "rgb(255 215 0 / 0.2)", backgroundColor: "rgb(5 10 24 / 1)", padding: "2rem", display: "flex", flexDirection: "column", justifyContent: "space-between" }, { backfaceVisibility: "hidden", transform: "rotateY(180deg)" })}>
-          <Box>
-            <Typography component="h3" variant="h3" sx={mergeSx({ fontSize: "1.25rem", lineHeight: "1.75rem", fontWeight: "700", marginBottom: "1rem" }, { fontFamily: TYPOGRAPHY.fontDisplay, color: CINEMA_COLORS.GOLD })}>
-              {service.title}
-            </Typography>
-            <Box component="ul" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-              {service.features.map(f => (<Box key={f} component="li" sx={mergeSx({ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "0.875rem", lineHeight: "1.25rem" }, { color: "rgba(255,255,255,0.7)" })}>
-                  <Box component="span" sx={{ color: CINEMA_COLORS.GOLD }}>◆</Box>
-                  {f}
-                </Box>))}
-            </Box>
-          </Box>
-          <Box>
-            <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", marginBottom: "0.75rem" }, { color: "rgba(255,255,255,0.4)" })}>Starting from</Typography>
-            <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "1.875rem", lineHeight: "2.25rem", fontWeight: "700" }, { color: CINEMA_COLORS.GOLD })}>{service.price}</Typography>
-            <ButtonBase onClick={(e) => {
-        e.stopPropagation();
-        scrollToSection("consultation");
-    }} type="button" sx={mergeSx({ marginTop: "1rem", width: "100%", paddingTop: "0.625rem", paddingBottom: "0.625rem", borderRadius: "var(--radius)", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, {
-        border: `1px solid ${CINEMA_COLORS.GOLD}`,
-        color: CINEMA_COLORS.GOLD,
-        background: "transparent",
-    })}>
-              Get Quote
-            </ButtonBase>
-          </Box>
-        </Box>
-      </Box>
-    </Box>);
-}
-// ─── Section Divider ───
-function GoldDivider() {
-    return (<Box sx={{ display: "flex", justifyContent: "center", paddingTop: "0.5rem", paddingBottom: "0.5rem" }}>
-      <Box sx={mergeSx({ width: "8rem", height: "1px" }, { background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.GOLD}60, transparent)` })}/>
-    </Box>);
-}
-// ─── Ambient Glow Orb ───
-function GlowOrb({ sx }: {
-    sx?: SxProps<Theme>;
-}) {
-    return (<Box sx={mergeSx(mergeSx({ position: "absolute", borderRadius: "9999px", "--alv-blur": "blur(120px)", filter: "var(--alv-blur) var(--alv-brightness) var(--alv-contrast) var(--alv-grayscale) var(--alv-hue-rotate) var(--alv-invert) var(--alv-saturate) var(--alv-sepia) var(--alv-drop-shadow)", pointerEvents: "none" }, sx), { background: `radial-gradient(circle, ${CINEMA_COLORS.GOLD}12, transparent 70%)` })}/>);
-}
-// ═══════════════════════════════════════════════
-// MAIN PAGE
-// ═══════════════════════════════════════════════
 export default function HomeTheaterHome() {
-    const navigate = useNavigate();
-    const isMobile = useIsMobile();
-    const reduced = useReducedMotion();
-    const [formData, setFormData] = useState({ name: "", phone: "", city: "", requirement: "", budget: "", room_size: "" });
-    const [submitting, setSubmitting] = useState(false);
-    const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
-    const [mobileMenu, setMobileMenu] = useState(false);
-    const [scrolled, setScrolled] = useState(false);
-    const [lightbox, setLightbox] = useState<number | null>(null);
-    useEffect(() => {
-        const handler = () => setScrolled(window.scrollY > 60);
-        window.addEventListener("scroll", handler, { passive: true });
-        return () => window.removeEventListener("scroll", handler);
-    }, []);
-    // SEO: Dynamic title & meta
-    useEffect(() => {
-        document.title = "ALV Store — Premium Home Theater & Dolby Atmos Installation | Udaipur, Rajasthan";
-        const setMeta = (name: string, content: string) => {
-            let el = document.querySelector(`meta[name="${name}"]`);
-            if (!el) {
-                el = document.createElement("meta");
-                el.setAttribute("name", name);
-                document.head.appendChild(el);
-            }
-            el.setAttribute("content", content);
-        };
-        setMeta("description", "Premium Dolby Atmos home theater installations, 4K laser projection, acoustic design & Apple products. Expert installations in Udaipur, Jaipur & across Rajasthan.");
-        setMeta("robots", "index, follow");
-        // Canonical
-        let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement;
-        if (!canonical) {
-            canonical = document.createElement("link");
-            canonical.rel = "canonical";
-            document.head.appendChild(canonical);
-        }
-        canonical.href = window.location.origin + "/";
-    }, []);
-    const handleLeadSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!formData.name.trim() || !formData.phone.trim()) {
-            toast.error("Name and phone are required");
-            return;
-        }
-        setSubmitting(true);
-        const notes = [
-            formData.requirement && `Requirement: ${formData.requirement}`,
-            formData.budget && `Budget: ${formData.budget}`,
-            formData.room_size && `Room Size: ${formData.room_size}`,
-            formData.city && `City: ${formData.city}`,
-        ].filter(Boolean).join("\n");
-        const { error } = await supabase.from("leads").insert({
-            name: formData.name.trim(),
-            phone: formData.phone.trim(),
-            source: "website",
-            notes,
-            status: "new",
-        });
-        if (error)
-            toast.error("Something went wrong. Please try again.");
-        else {
-            toast.success("Thank you! We'll contact you within 24 hours.");
-            setFormData({ name: "", phone: "", city: "", requirement: "", budget: "", room_size: "" });
-        }
-        setSubmitting(false);
-    };
-    const jsonLd = {
-        "@context": "https://schema.org",
-        "@type": "LocalBusiness",
-        name: "ALV Store - Home Theater Solutions",
-        description: "Premium home theater installation and luxury home cinema solutions in Udaipur, Rajasthan.",
-        url: window.location.origin,
-        telephone: "+91-XXXXXXXXXX",
-        address: { "@type": "PostalAddress", addressLocality: "Udaipur", addressRegion: "Rajasthan", addressCountry: "IN" },
-        areaServed: "Udaipur, Jaipur, Rajasthan",
-        priceRange: "₹₹₹",
-    };
-    return <AnimatedPage><Box sx={mergeSx({ minHeight: "100vh", color: "rgb(255 255 255 / 1)", overflow: "clip", background: "#0E0B14" }, { fontFamily: TYPOGRAPHY.fontBody })}>
-      <Box type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} component="script"/>
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const reduced = useReducedMotion();
 
-      {/* ══════ FIXED NAV ══════ */}
-      <Box component="nav" sx={mergeSx(mergeSx({ position: "fixed", top: "0px", width: "100%", zIndex: "50", transitionProperty: "all", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "500ms", animationDuration: "500ms" }, scrolled ? { "--alv-backdrop-blur": "blur(40px)", WebkitBackdropFilter: "var(--alv-backdrop-blur) var(--alv-backdrop-brightness) var(--alv-backdrop-contrast) var(--alv-backdrop-grayscale) var(--alv-backdrop-hue-rotate) var(--alv-backdrop-invert) var(--alv-backdrop-saturate) var(--alv-backdrop-sepia)", backdropFilter: "var(--alv-backdrop-blur) var(--alv-backdrop-brightness) var(--alv-backdrop-contrast) var(--alv-backdrop-grayscale) var(--alv-backdrop-hue-rotate) var(--alv-backdrop-invert) var(--alv-backdrop-saturate) var(--alv-backdrop-sepia)", borderBottomWidth: "1px", "--alv-shadow": "0 25px 50px -12px rgb(0 0 0 / 0.25)", "--alv-shadow-colored": "0 25px 50px -12px var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" } : { backgroundColor: "transparent" }), {
-        background: scrolled ? "rgba(14,11,20,0.85)" : "transparent",
-        borderColor: scrolled ? "rgba(232,184,108,0.15)" : "transparent",
-    })}>
-        <Box sx={{ maxWidth: "80rem", marginLeft: "auto", marginRight: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: "1.5rem", paddingRight: "1.5rem", paddingTop: "1rem", paddingBottom: "1rem" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <Box sx={mergeSx({ height: "2.5rem", width: "2.5rem", borderRadius: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center" }, { background: `linear-gradient(135deg, ${CINEMA_COLORS.GOLD}, ${CINEMA_COLORS.AMBER})` })}>
-              <Box component={Speaker} sx={{ height: "1.25rem", width: "1.25rem", color: "rgb(0 0 0 / 1)" }}/>
+  // Navigation & Modals State
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [consultModalOpen, setConsultModalOpen] = useState(false);
+  const [repairModalOpen, setRepairModalOpen] = useState(false);
+  const [trackModalOpen, setTrackModalOpen] = useState(false);
+  const [consultSpec, setConsultSpec] = useState<string | undefined>(undefined);
+
+  // Gallery Filter & Lightbox
+  const [activeProjectFilter, setActiveProjectFilter] = useState("All");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  // FAQ Expand
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
+
+  // Quick Consultation Form in Page
+  const [formData, setFormData] = useState({
+    name: "",
+    phone: "",
+    city: "Udaipur",
+    requirement: "",
+    budget: "₹8L - ₹15L",
+    room_size: "medium",
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
+
+  // SEO & Schema Markup
+  useEffect(() => {
+    document.title = "ALV Store — Bespoke Home Cinema, Dolby Atmos & Acoustic Engineering";
+    const setMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute("name", name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+    setMeta(
+      "description",
+      "Premier bespoke home theater installations, architectural acoustics, Dolby Atmos cinema engineering, smart automation, and specialist audio & Apple repair lab."
+    );
+  }, []);
+
+  const handleLeadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim() || !formData.phone.trim()) {
+      toast.error("Name and phone number are required");
+      return;
+    }
+    setSubmitting(true);
+    const notes = [
+      `Requirement: ${formData.requirement}`,
+      `Budget: ${formData.budget}`,
+      `Room Size: ${formData.room_size}`,
+      `City: ${formData.city}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const { error } = await supabase.from("leads").insert({
+      name: formData.name.trim(),
+      phone: formData.phone.trim(),
+      source: "website-inline-form",
+      notes,
+      status: "new",
+    });
+
+    setSubmitting(false);
+    if (error) {
+      toast.error("Something went wrong. Please call us directly.");
+    } else {
+      toast.success("Thank you! Our chief acoustic engineer will contact you within 24 hours.");
+      setFormData({ name: "", phone: "", city: "Udaipur", requirement: "", budget: "₹8L - ₹15L", room_size: "medium" });
+    }
+  };
+
+  const openConsultWithSpec = (specTitle: string) => {
+    setConsultSpec(specTitle);
+    setConsultModalOpen(true);
+  };
+
+  const filteredProjects =
+    activeProjectFilter === "All"
+      ? PROJECTS
+      : PROJECTS.filter((p) => p.tag.toLowerCase().includes(activeProjectFilter.toLowerCase()));
+
+  return (
+    <AnimatedPage>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          color: CINEMA_COLORS.WARM_WHITE,
+          bgcolor: "#09070F",
+          overflowX: "clip",
+          fontFamily: TYPOGRAPHY.fontBody,
+        }}
+      >
+        {/* ══════════════════════════════════════════════════
+            1. FIXED LUXURY NAVIGATION BAR & ACTION CENTER
+        ══════════════════════════════════════════════════ */}
+        <Box
+          component="nav"
+          sx={{
+            position: "fixed",
+            top: 0,
+            width: "100%",
+            zIndex: 100,
+            transition: "all 0.4s ease",
+            bgcolor: scrolled ? "rgba(9, 7, 15, 0.92)" : "rgba(9, 7, 15, 0.6)",
+            backdropFilter: "blur(20px)",
+            borderBottom: scrolled ? "1px solid rgba(232, 184, 108, 0.2)" : "1px solid rgba(255, 255, 255, 0.05)",
+            boxShadow: scrolled ? "0 10px 30px rgba(0, 0, 0, 0.8)" : "none",
+          }}
+        >
+          <Box
+            sx={{
+              maxWidth: "84rem",
+              mx: "auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              px: { xs: 2, sm: 3, md: 4 },
+              py: { xs: 1.25, md: 1.75 },
+            }}
+          >
+            {/* Logo */}
+            <Box
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1.25,
+                cursor: "pointer",
+              }}
+            >
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "0.75rem",
+                  bgcolor: "rgba(232, 184, 108, 0.15)",
+                  border: "1px solid rgba(232, 184, 108, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 0 16px rgba(232, 184, 108, 0.3)",
+                }}
+              >
+                <Box component={Speaker} sx={{ width: 18, height: 18, color: CINEMA_COLORS.GOLD }} />
+              </Box>
+              <Box>
+                <Typography
+                  component="span"
+                  variant="h6"
+                  sx={{
+                    fontFamily: TYPOGRAPHY.fontDisplay,
+                    fontWeight: 700,
+                    letterSpacing: "0.05em",
+                    color: CINEMA_COLORS.WARM_WHITE,
+                    display: "block",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  ALV STORE
+                </Typography>
+                <Typography
+                  component="span"
+                  variant="caption"
+                  sx={{
+                    fontSize: "0.625rem",
+                    letterSpacing: "0.25em",
+                    textTransform: "uppercase",
+                    color: CINEMA_COLORS.GOLD,
+                    fontWeight: 600,
+                  }}
+                >
+                  Cinema & Acoustics
+                </Typography>
+              </Box>
             </Box>
-            <Box component="span" sx={mergeSx({ fontSize: "1.25rem", lineHeight: "1.75rem", fontWeight: "700", letterSpacing: "-0.025em" }, { fontFamily: TYPOGRAPHY.fontDisplay })}>ALV Cinema</Box>
+
+            {/* Desktop Navigation Links */}
+            <Box
+              sx={{
+                display: { xs: "none", lg: "flex" },
+                alignItems: "center",
+                gap: 2.5,
+              }}
+            >
+              {NAV_LINKS.map((link) => (
+                <Box
+                  key={link.href}
+                  component="a"
+                  href={link.href}
+                  sx={{
+                    fontSize: "0.8125rem",
+                    fontWeight: 500,
+                    color: "rgba(245, 239, 227, 0.7)",
+                    textDecoration: "none",
+                    transition: "all 0.2s ease",
+                    letterSpacing: "0.02em",
+                    "&:hover": {
+                      color: CINEMA_COLORS.GOLD,
+                    },
+                  }}
+                >
+                  {link.label}
+                </Box>
+              ))}
+            </Box>
+
+            {/* Action Buttons */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1, sm: 1.5 } }}>
+              {/* Track Order CTA */}
+              <ButtonBase
+                onClick={() => setTrackModalOpen(true)}
+                type="button"
+                sx={{
+                  display: { xs: "none", sm: "inline-flex" },
+                  alignItems: "center",
+                  gap: 0.75,
+                  px: 1.5,
+                  py: 0.75,
+                  borderRadius: "0.5rem",
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  color: "rgba(245, 239, 227, 0.75)",
+                  bgcolor: "rgba(255, 255, 255, 0.04)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  "&:hover": {
+                    bgcolor: "rgba(255, 255, 255, 0.08)",
+                    color: "#fff",
+                  },
+                }}
+              >
+                <Box component={Search} sx={{ width: 13, height: 13 }} />
+                Track Order
+              </ButtonBase>
+
+              {/* Repair Intake CTA */}
+              <ButtonBase
+                onClick={() => setRepairModalOpen(true)}
+                type="button"
+                sx={{
+                  display: { xs: "none", md: "inline-flex" },
+                  alignItems: "center",
+                  gap: 0.75,
+                  px: 1.5,
+                  py: 0.75,
+                  borderRadius: "0.5rem",
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  color: "#C97B6E",
+                  bgcolor: "rgba(201, 123, 110, 0.1)",
+                  border: "1px solid rgba(201, 123, 110, 0.3)",
+                  "&:hover": {
+                    bgcolor: "rgba(201, 123, 110, 0.18)",
+                  },
+                }}
+              >
+                <Box component={Wrench} sx={{ width: 13, height: 13 }} />
+                Repair Intake
+              </ButtonBase>
+
+              {/* Book Consultation Primary CTA */}
+              <ButtonBase
+                onClick={() => {
+                  setConsultSpec(undefined);
+                  setConsultModalOpen(true);
+                }}
+                type="button"
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  px: { xs: 2, sm: 2.5 },
+                  py: 0.875,
+                  borderRadius: "0.625rem",
+                  fontSize: "0.8125rem",
+                  fontWeight: 700,
+                  bgcolor: CINEMA_COLORS.GOLD,
+                  color: "#0E0B14",
+                  boxShadow: "0 0 20px rgba(232, 184, 108, 0.3)",
+                  transition: "all 0.25s ease",
+                  "&:hover": {
+                    bgcolor: "#F4D9A8",
+                    boxShadow: "0 0 28px rgba(232, 184, 108, 0.5)",
+                  },
+                }}
+              >
+                Book Consultation
+                <Box component={ArrowRight} sx={{ width: 14, height: 14 }} />
+              </ButtonBase>
+
+              {/* Mobile Menu Toggle */}
+              <IconButton
+                aria-label="Toggle Navigation"
+                onClick={() => setMobileMenu(true)}
+                sx={{
+                  display: { xs: "inline-flex", lg: "none" },
+                  color: "rgba(245, 239, 227, 0.8)",
+                }}
+              >
+                <Box component={Menu} sx={{ width: 22, height: 22 }} />
+              </IconButton>
+            </Box>
           </Box>
 
-          <Box sx={{ display: "none", "@media (min-width: 768px)": { display: "flex" }, alignItems: "center", gap: "2rem" }}>
-            {NAV_LINKS.map(l => (<Box key={l.href} href={l.href} component="a" sx={mergeSx({ color: "inherit", textDecoration: "none" }, { fontSize: "0.875rem", lineHeight: "1.25rem", transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", "&:hover": { color: "rgb(255 215 0 / 1)" } }, { color: "rgba(255,255,255,0.5)" })}>
-                {l.label}
-              </Box>))}
-          </Box>
+          {/* Mobile Drawer */}
+          <Drawer
+            anchor="right"
+            open={mobileMenu}
+            onClose={() => setMobileMenu(false)}
+            slotProps={{
+              paper: {
+                sx: {
+                  width: "min(340px, 90vw)",
+                  bgcolor: "#0E0B14",
+                  color: CINEMA_COLORS.WARM_WHITE,
+                  p: 3,
+                  borderLeft: "1px solid rgba(232, 184, 108, 0.2)",
+                },
+              },
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
+              <Typography variant="h6" sx={{ fontFamily: TYPOGRAPHY.fontDisplay, fontWeight: 700, color: CINEMA_COLORS.GOLD }}>
+                ALV Cinema
+              </Typography>
+              <IconButton aria-label="Close navigation" onClick={() => setMobileMenu(false)} sx={{ color: "inherit" }}>
+                <Box component={XIcon} sx={{ width: 20, height: 20 }} />
+              </IconButton>
+            </Box>
 
-          <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <ButtonBase onClick={() => scrollToSection("consultation")} type="button" sx={mergeSx({ display: "none", "@media (min-width: 640px)": { display: "flex" }, alignItems: "center", gap: "0.5rem", paddingLeft: "1.25rem", paddingRight: "1.25rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", borderRadius: "var(--radius)", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", transitionProperty: "all", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, {
-        border: `1px solid ${CINEMA_COLORS.GOLD}`,
-        color: CINEMA_COLORS.GOLD,
-        background: "transparent",
-        boxShadow: `0 0 20px ${CINEMA_COLORS.GOLD}22`,
-    })}>
-              Get Quote <Box component={ArrowRight} sx={{ height: "0.875rem", width: "0.875rem" }}/>
-            </ButtonBase>
-            <ButtonBase aria-label="Open site navigation" aria-expanded={mobileMenu} onClick={() => setMobileMenu(true)} type="button" sx={mergeSx({ "@media (min-width: 768px)": { display: "none" } }, { color: "rgba(255,255,255,0.6)" })}>
-              {mobileMenu ? <Box component={XIcon} sx={{ height: "1.5rem", width: "1.5rem" }}/> : <Box component={Menu} sx={{ height: "1.5rem", width: "1.5rem" }}/>}
-            </ButtonBase>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mb: 4 }}>
+              {NAV_LINKS.map((link) => (
+                <Button
+                  key={link.href}
+                  component="a"
+                  href={link.href}
+                  onClick={() => setMobileMenu(false)}
+                  sx={{
+                    color: "rgba(245, 239, 227, 0.85)",
+                    justifyContent: "flex-start",
+                    py: 1,
+                    fontSize: "0.9375rem",
+                    "&:hover": { color: CINEMA_COLORS.GOLD },
+                  }}
+                >
+                  {link.label}
+                </Button>
+              ))}
+            </Box>
+
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setMobileMenu(false);
+                  setTrackModalOpen(true);
+                }}
+                startIcon={<Search size={16} />}
+                sx={{ borderColor: "rgba(232, 184, 108, 0.3)", color: CINEMA_COLORS.GOLD }}
+              >
+                Track Order Status
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setMobileMenu(false);
+                  setRepairModalOpen(true);
+                }}
+                startIcon={<Wrench size={16} />}
+                sx={{ borderColor: "rgba(201, 123, 110, 0.4)", color: "#C97B6E" }}
+              >
+                Repair Lab Intake
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setMobileMenu(false);
+                  setConsultModalOpen(true);
+                }}
+                sx={{ bgcolor: CINEMA_COLORS.GOLD, color: "#000", fontWeight: 700, mt: 1 }}
+              >
+                Book Free Consultation
+              </Button>
+            </Box>
+          </Drawer>
+        </Box>
+
+        {/* ══════════════════════════════════════════════════
+            2. HERO SECTION — IMMERSIVE LUXURY ATMOSPHERE
+        ══════════════════════════════════════════════════ */}
+        <Box
+          component="section"
+          sx={{
+            position: "relative",
+            minHeight: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            pt: { xs: 14, md: 16 },
+            pb: { xs: 8, md: 12 },
+            overflow: "hidden",
+            backgroundImage: "radial-gradient(ellipse at 50% 20%, rgba(42, 27, 61, 0.6), transparent 75%)",
+          }}
+        >
+          {/* Ambient Particles in background */}
+          <Suspense fallback={null}>
+            <CinemaParticles />
+          </Suspense>
+
+          {/* Radial Gold Orbs */}
+          <Box
+            sx={{
+              position: "absolute",
+              top: "15%",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "800px",
+              height: "450px",
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(232, 184, 108, 0.09), transparent 70%)",
+              filter: "blur(120px)",
+              pointerEvents: "none",
+            }}
+          />
+
+          <Box sx={{ maxWidth: "84rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 }, textAlign: "center", position: "relative", zIndex: 10 }}>
+            {/* Top Badge */}
+            <Box
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 1,
+                px: 2.5,
+                py: 0.75,
+                borderRadius: 99,
+                bgcolor: "rgba(232, 184, 108, 0.08)",
+                border: "1px solid rgba(232, 184, 108, 0.25)",
+                mb: 3,
+                boxShadow: "0 0 20px rgba(232, 184, 108, 0.15)",
+              }}
+            >
+              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#4ade80", boxShadow: "0 0 8px #4ade80" }} />
+              <Typography component="span" variant="caption" sx={{ color: CINEMA_COLORS.GOLD, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase" }}>
+                THX Level III & Dolby Atmos Premier Integrator
+              </Typography>
+            </Box>
+
+            {/* Headline */}
+            <Typography
+              component="h1"
+              variant="h1"
+              sx={{
+                fontFamily: TYPOGRAPHY.fontDisplay,
+                fontSize: { xs: "2.75rem", sm: "4rem", md: "5.25rem" },
+                fontWeight: 700,
+                lineHeight: 1.05,
+                color: CINEMA_COLORS.WARM_WHITE,
+                maxWidth: "68rem",
+                mx: "auto",
+                mb: 3,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Acoustic Perfection.{" "}
+              <Box
+                component="span"
+                sx={{
+                  background: "linear-gradient(135deg, #FFF1D6 0%, #E8B86C 50%, #B8862E 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  display: "inline-block",
+                }}
+              >
+                Cinematic Splendor.
+              </Box>
+            </Typography>
+
+            {/* Sub-headline */}
+            <Typography
+              component="p"
+              variant="body1"
+              sx={{
+                fontSize: { xs: "1rem", sm: "1.125rem", md: "1.25rem" },
+                color: "rgba(245, 239, 227, 0.65)",
+                maxWidth: "46rem",
+                mx: "auto",
+                lineHeight: 1.6,
+                mb: 5,
+              }}
+            >
+              Bespoke private screening rooms, architectural acoustic treatments, 9.4.6 Dolby Atmos calibration,
+              smart Crestron automation, and master audiophile equipment restoration across India.
+            </Typography>
+
+            {/* CTA Buttons Row */}
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                mb: { xs: 6, md: 8 },
+              }}
+            >
+              <ButtonBase
+                onClick={() => {
+                  setConsultSpec(undefined);
+                  setConsultModalOpen(true);
+                }}
+                type="button"
+                sx={{
+                  px: 4,
+                  py: 1.75,
+                  borderRadius: "0.75rem",
+                  bgcolor: CINEMA_COLORS.GOLD,
+                  color: "#0E0B14",
+                  fontWeight: 700,
+                  fontSize: "1rem",
+                  boxShadow: "0 0 35px rgba(232, 184, 108, 0.4)",
+                  transition: "all 0.25s ease",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 1.25,
+                  "&:hover": {
+                    bgcolor: "#F4D9A8",
+                    boxShadow: "0 0 50px rgba(232, 184, 108, 0.6)",
+                  },
+                }}
+              >
+                Book Private Consultation
+                <Box component={ArrowRight} sx={{ width: 18, height: 18 }} />
+              </ButtonBase>
+
+              <ButtonBase
+                onClick={() => scrollToSection("acoustic-field")}
+                type="button"
+                sx={{
+                  px: 3.5,
+                  py: 1.75,
+                  borderRadius: "0.75rem",
+                  bgcolor: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(232, 184, 108, 0.3)",
+                  color: CINEMA_COLORS.WARM_WHITE,
+                  fontWeight: 600,
+                  fontSize: "1rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 1,
+                  transition: "all 0.2s ease",
+                  "&:hover": {
+                    bgcolor: "rgba(232, 184, 108, 0.12)",
+                    borderColor: CINEMA_COLORS.GOLD,
+                  },
+                }}
+              >
+                <Box component={Activity} sx={{ width: 18, height: 18, color: CINEMA_COLORS.GOLD }} />
+                Explore 3D Sound Engine
+              </ButtonBase>
+            </Box>
+
+            {/* Trust Badges Strip */}
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", md: "repeat(5, 1fr)" },
+                gap: 2,
+                pt: 4,
+                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                maxWidth: "72rem",
+                mx: "auto",
+              }}
+            >
+              {ACCREDITATIONS.map((acc, i) => (
+                <Box
+                  key={i}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: "0.75rem",
+                    bgcolor: "rgba(255, 255, 255, 0.02)",
+                    border: "1px solid rgba(255, 255, 255, 0.05)",
+                    textAlign: "center",
+                  }}
+                >
+                  <Typography component="p" variant="subtitle2" sx={{ color: CINEMA_COLORS.GOLD, fontWeight: 700, fontSize: "0.8125rem" }}>
+                    {acc.title}
+                  </Typography>
+                  <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.5)", fontSize: "0.6875rem" }}>
+                    {acc.desc}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
           </Box>
         </Box>
 
-        <Drawer anchor="right" open={mobileMenu} onClose={() => setMobileMenu(false)}
-          slotProps={{ paper: { sx: { width: "min(340px, 100vw)", bgcolor: CINEMA_COLORS.DEEP_NAVY, color: CINEMA_COLORS.WARM_WHITE, p: 3 } } }}>
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 4 }}>
-            <Typography variant="h6">ALV Cinema</Typography><IconButton aria-label="Close site navigation" onClick={() => setMobileMenu(false)} sx={{ color: "inherit" }}><XIcon size={20} /></IconButton>
+        {/* ══════════════════════════════════════════════════
+            3. INTERACTIVE 3D ACOUSTIC FIELD ENGINE
+        ══════════════════════════════════════════════════ */}
+        <AcousticFieldVisualizer />
+
+        {/* ══════════════════════════════════════════════════
+            4. 3D ISOMETRIC THEATER ROOM PREVIEW
+        ══════════════════════════════════════════════════ */}
+        <Box
+          component="section"
+          sx={{
+            py: { xs: 8, md: 12 },
+            position: "relative",
+            bgcolor: "#0E0B14",
+            borderBottom: "1px solid rgba(232, 184, 108, 0.12)",
+          }}
+        >
+          <Box sx={{ maxWidth: "80rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 }, textAlign: "center", mb: 4 }}>
+            <Typography
+              component="p"
+              variant="caption"
+              sx={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.25em",
+                color: CINEMA_COLORS.GOLD,
+                mb: 1.5,
+              }}
+            >
+              3D Spatial Architecture
+            </Typography>
+            <Typography
+              component="h2"
+              variant="h2"
+              sx={{
+                fontFamily: TYPOGRAPHY.fontDisplay,
+                fontSize: { xs: "2rem", md: "3rem" },
+                fontWeight: 700,
+                color: CINEMA_COLORS.WARM_WHITE,
+              }}
+            >
+              Your Private Cinema, Visualized
+            </Typography>
+            <Typography
+              component="p"
+              variant="body1"
+              sx={{
+                color: "rgba(245, 239, 227, 0.6)",
+                maxWidth: "34rem",
+                mx: "auto",
+                mt: 1,
+                fontSize: "0.875rem",
+              }}
+            >
+              Scroll through to inspect the isometric wireframe: acoustic diffusers, screen placement, and multi-tier seating.
+            </Typography>
           </Box>
-          <Box component="nav" aria-label="Site navigation" sx={{ display: "grid", gap: 1 }}>
-            {NAV_LINKS.map(link => <Button key={link.href} component="a" href={link.href} onClick={() => setMobileMenu(false)} sx={{ color: "inherit", justifyContent: "flex-start", py: 1.5 }}>{link.label}</Button>)}
-          </Box>
-        </Drawer>
-      </Box>
 
-      {/* ══════ HERO — Speaker Evolution (scroll-pinned) ══════ */}
-      <Suspense fallback={<Box sx={{ height: "100vh", background: "linear-gradient(135deg, #2A1B3D 0%, #1A1228 60%, #0E0B14 100%)" }}/>}>
-        <SpeakerEvolution />
-      </Suspense>
-
-      {/* Curtain divider */}
-      <Box sx={{ position: "relative", height: "80px", background: "linear-gradient(180deg, transparent 0%, rgba(232,184,108,0.05) 50%, transparent 100%)", overflow: "hidden", "&::before,&::after": { content: "''", position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", height: "1px", width: "200px", background: "linear-gradient(90deg, transparent, #E8B86C, transparent)" }, "&::after": { width: "6px", height: "6px", borderRadius: "50%", background: "#E8B86C", boxShadow: "0 0 20px rgba(232,184,108,0.6)" } }}/>
-
-      {/* ══════ SOUNDSTAGE — 7.1.4 Atmos diagram ══════ */}
-      <Suspense fallback={<Box sx={{ height: "600px", background: "linear-gradient(180deg, #1A1228 0%, #0E0B14 100%)" }}/>}>
-        <SoundstageSection />
-      </Suspense>
-
-      <Box sx={{ position: "relative", height: "80px", background: "linear-gradient(180deg, transparent 0%, rgba(232,184,108,0.05) 50%, transparent 100%)", overflow: "hidden", "&::before,&::after": { content: "''", position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", height: "1px", width: "200px", background: "linear-gradient(90deg, transparent, #E8B86C, transparent)" }, "&::after": { width: "6px", height: "6px", borderRadius: "50%", background: "#E8B86C", boxShadow: "0 0 20px rgba(232,184,108,0.6)" } }}/>
-
-      {/* ══════ SERVICES — Ivory lobby section ══════ */}
-      <Box sx={{ background: "linear-gradient(180deg, #F7F3EC 0%, #EFE7D8 100%)", position: "relative" }}>
-        <FadeSection id="services" sx={{ paddingTop: "6rem", paddingBottom: "6rem", position: "relative" }}>
-          <Box sx={{ maxWidth: "80rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
-            <Box sx={{ textAlign: "center", marginBottom: "4rem" }}>
-              <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.3em", marginBottom: "1rem", color: "rgb(184 134 46 / 1)" }}>
-                Our Signature Systems
-              </Typography>
-              <Typography component="h2" variant="h2" sx={mergeSx({ color: "rgb(43 31 18 / 1)" }, { fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, lineHeight: TYPOGRAPHY.scale.h2.lineHeight })}>
-                Crafted For <Box component="span" sx={{ background: "linear-gradient(135deg, #F4D9A8 0%, #E8B86C 50%, #B8862E 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Perfection</Box>
-              </Typography>
-              <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", marginTop: "1rem", maxWidth: "36rem", marginLeft: "auto", marginRight: "auto", color: "rgb(43 31 18 / 0.6)" }}>
-                Four signature systems. Designed, installed, calibrated.
-              </Typography>
-              <Box initial={reduced ? false : { width: 0 }} animate={reduced ? { width: 80 } : undefined} whileInView={{ width: 80 }} viewport={{ once: true }} transition={{ duration: reduced ? 0 : 0.8, delay: reduced ? 0 : 0.3 }} style={{ background: `linear-gradient(90deg, transparent, ${CINEMA_COLORS.CHAMPAGNE}, transparent)` }} component={motion.div} sx={{ height: "2px", marginLeft: "auto", marginRight: "auto", marginTop: "1.5rem" }}/>
-            </Box>
-
-            <Box sx={{ display: "flex", "@media (min-width: 768px)": { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", overflow: "visible", paddingBottom: "0px" }, gap: "1.5rem", overflowX: "auto", paddingBottom: "1rem", scrollSnapType: "x var(--alv-scroll-snap-strictness)", "--alv-scroll-snap-strictness": "mandatory", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
-              {SERVICES.map((s, i) => (<Box key={s.title} sx={{ scrollSnapAlign: "center" }}>
-                  <FlipCard service={s} index={i}/>
-                </Box>))}
-            </Box>
-          </Box>
-        </FadeSection>
-      </Box>
-
-      <Box sx={{ position: "relative", height: "80px", background: "linear-gradient(180deg, transparent 0%, rgba(232,184,108,0.05) 50%, transparent 100%)", overflow: "hidden", "&::before,&::after": { content: "''", position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", height: "1px", width: "200px", background: "linear-gradient(90deg, transparent, #E8B86C, transparent)" }, "&::after": { width: "6px", height: "6px", borderRadius: "50%", background: "#E8B86C", boxShadow: "0 0 20px rgba(232,184,108,0.6)" } }}/>
-
-      {/* ══════ 3D THEATER ROOM PREVIEW ══════ */}
-      <FadeSection sx={{ paddingTop: "4rem", paddingBottom: "4rem", position: "relative" }}>
-        <GlowOrb sx={{ width: "400px", height: "400px", top: "0px", left: "25%" }}/>
-        {/* Ambient particle field (canvas + framer-motion, no WebGL) */}
-        <Suspense fallback={null}>
-          <CinemaParticles />
-        </Suspense>
-        <Box sx={{ maxWidth: "80rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1.5rem", paddingRight: "1.5rem", textAlign: "center", marginBottom: "2rem", position: "relative", zIndex: "10" }}>
-          <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.25em", marginBottom: "1rem" }, { color: CINEMA_COLORS.GOLD })}>3D Room Preview</Typography>
-          <Typography component="h2" variant="h2" sx={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE }}>
-            Your Cinema, Visualized
-          </Typography>
-          <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem", marginTop: "0.75rem", maxWidth: "32rem", marginLeft: "auto", marginRight: "auto" }, { color: "rgba(255,255,255,0.4)" })}>
-            Scroll to explore a wireframe theater room — speakers, screen, and seating come alive as you move.
-          </Typography>
-        </Box>
-        {!isMobile && (<Suspense fallback={<Box sx={{ height: "500px" }}/>}>
+          <Suspense fallback={<Box sx={{ height: { xs: "360px", md: "500px" } }} />}>
             <TheaterRoom3D />
-          </Suspense>)}
-        {isMobile && (<Box sx={mergeSx({ height: "300px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "1rem", marginLeft: "1.5rem", marginRight: "1.5rem" }, { background: "rgba(255,215,0,0.03)", border: "1px solid rgba(255,215,0,0.08)" })}>
-            <Box sx={{ textAlign: "center" }}>
-              <Box component={Monitor} sx={mergeSx({ height: "4rem", width: "4rem", marginLeft: "auto", marginRight: "auto", marginBottom: "1rem" }, { color: "rgba(255,215,0,0.15)" })}/>
-              <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem" }, { color: "rgba(255,255,255,0.3)" })}>View on desktop for 3D experience</Typography>
-            </Box>
-          </Box>)}
-      </FadeSection>
+          </Suspense>
+        </Box>
 
-      <GoldDivider />
+        {/* ══════════════════════════════════════════════════
+            5. DOLBY ATMOS SOUNDSTAGE SECTION
+        ══════════════════════════════════════════════════ */}
+        <Suspense fallback={<Box sx={{ height: "600px", bgcolor: "#1A1228" }} />}>
+          <SoundstageSection />
+        </Suspense>
 
-      {/* ══════ CONFIGURATOR ══════ */}
-      <Configurator />
-
-      <GoldDivider />
-
-      {/* ══════ PROJECT GALLERY — "Now Showing" on ivory ══════ */}
-      <Box sx={{ background: "linear-gradient(180deg, #F7F3EC 0%, #EFE7D8 100%)", position: "relative" }}>
-        <FadeSection id="projects" sx={{ paddingTop: "6rem", paddingBottom: "6rem", position: "relative" }}>
-          <Box sx={{ maxWidth: "80rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
-            <Box sx={{ textAlign: "center", marginBottom: "3rem" }}>
-              <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.3em", marginBottom: "1rem", color: "rgb(184 134 46 / 1)" }}>Portfolio</Typography>
-              <Typography component="h2" variant="h2" sx={mergeSx({ color: "rgb(43 31 18 / 1)", marginBottom: "1rem" }, { fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size })}>
-                Now <Box component="span" sx={{ background: "linear-gradient(135deg, #F4D9A8 0%, #E8B86C 50%, #B8862E 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Showing</Box>
+        {/* ══════════════════════════════════════════════════
+            6. SIGNATURE SYSTEMS (FOUR SIGNATURE PACKAGES)
+        ══════════════════════════════════════════════════ */}
+        <Box
+          id="services"
+          component="section"
+          sx={{
+            py: { xs: 8, md: 12 },
+            position: "relative",
+            background: "linear-gradient(180deg, #F7F3EC 0%, #EFE7D8 100%)",
+            color: "#2B1F12",
+            scrollMarginTop: { xs: "4.5rem", md: "5.5rem" },
+          }}
+        >
+          <Box sx={{ maxWidth: "80rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 } }}>
+            <Box sx={{ textAlign: "center", mb: { xs: 4, md: 6 } }}>
+              <Typography
+                component="p"
+                variant="caption"
+                sx={{
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.3em",
+                  color: "#B8862E",
+                  mb: 1.5,
+                }}
+              >
+                Signature Engineering
               </Typography>
-              <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "rgb(43 31 18 / 0.6)", maxWidth: "28rem", marginLeft: "auto", marginRight: "auto" }}>
-                Real installations across Rajasthan, Mumbai & Delhi.
+              <Typography
+                component="h2"
+                variant="h2"
+                sx={{
+                  fontFamily: TYPOGRAPHY.fontDisplay,
+                  fontSize: { xs: "2.25rem", md: "3.25rem" },
+                  fontWeight: 700,
+                  color: "#2B1F12",
+                }}
+              >
+                Crafted for{" "}
+                <Box
+                  component="span"
+                  sx={{
+                    background: "linear-gradient(135deg, #B8862E 0%, #E8B86C 50%, #8A5F1C 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                  }}
+                >
+                  Pure Immersion
+                </Box>
+              </Typography>
+              <Typography
+                component="p"
+                variant="body1"
+                sx={{
+                  color: "rgba(43, 31, 18, 0.7)",
+                  maxWidth: "36rem",
+                  mx: "auto",
+                  mt: 1.5,
+                  fontSize: "0.9375rem",
+                }}
+              >
+                Four core disciplines integrated under one master engineering blueprint.
               </Typography>
             </Box>
 
-            {/* Marquee strip */}
-            <Box sx={{ overflow: "hidden", marginBottom: "3rem", paddingTop: "1rem", paddingBottom: "1rem", borderTopWidth: "1px", borderBottomWidth: "1px", borderColor: "rgb(184 134 46 / 0.2)" }}>
-              <Marquee label="Featured projects" gap={6}>
-                {PROJECTS.map((p, i) => (<Box key={i} component="span" sx={mergeSx({ color: "rgb(184 134 46 / 1)", fontSize: "0.75rem", lineHeight: "1rem", textTransform: "uppercase", letterSpacing: "0.4em" }, { fontFamily: TYPOGRAPHY.fontDisplay })}>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" },
+                gap: 3,
+              }}
+            >
+              {SERVICES.map((s, i) => {
+                const IconComponent = s.icon;
+                return (
+                  <Box
+                    key={s.title}
+                    sx={{
+                      p: 3,
+                      borderRadius: "1.25rem",
+                      bgcolor: "rgba(255, 255, 255, 0.8)",
+                      border: "1px solid rgba(184, 134, 46, 0.2)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      boxShadow: "0 10px 25px rgba(43, 31, 18, 0.06)",
+                      transition: "all 0.3s ease",
+                      "&:hover": {
+                        transform: "translateY(-6px)",
+                        boxShadow: "0 20px 40px rgba(184, 134, 46, 0.15)",
+                        borderColor: "#B8862E",
+                      },
+                    }}
+                  >
+                    <Box>
+                      <Box
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: "0.875rem",
+                          bgcolor: "rgba(184, 134, 46, 0.12)",
+                          border: "1px solid rgba(184, 134, 46, 0.25)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          mb: 2.5,
+                        }}
+                      >
+                        <Box component={IconComponent} sx={{ width: 24, height: 24, color: "#B8862E" }} />
+                      </Box>
+                      <Typography
+                        component="h3"
+                        variant="h6"
+                        sx={{
+                          fontFamily: TYPOGRAPHY.fontDisplay,
+                          fontWeight: 700,
+                          color: "#2B1F12",
+                          mb: 1,
+                        }}
+                      >
+                        {s.title}
+                      </Typography>
+                      <Typography component="p" variant="body2" sx={{ color: "rgba(43, 31, 18, 0.7)", mb: 2.5, fontSize: "0.8125rem", lineHeight: 1.5 }}>
+                        {s.tagline}
+                      </Typography>
+
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mb: 3 }}>
+                        {s.features.map((feat, idx) => (
+                          <Box key={idx} sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+                            <Box component="span" sx={{ color: "#B8862E", fontSize: "0.75rem", mt: 0.25 }}>
+                              ◆
+                            </Box>
+                            <Typography component="p" variant="caption" sx={{ color: "rgba(43, 31, 18, 0.75)", fontSize: "0.75rem", lineHeight: 1.4 }}>
+                              {feat}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ pt: 2, borderTop: "1px solid rgba(184, 134, 46, 0.15)" }}>
+                      <Typography component="p" variant="caption" sx={{ color: "rgba(43, 31, 18, 0.5)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Starting From
+                      </Typography>
+                      <Typography component="p" variant="h6" sx={{ fontFamily: TYPOGRAPHY.fontDisplay, fontWeight: 700, color: "#B8862E", mb: 1.5 }}>
+                        {s.price}
+                      </Typography>
+                      <ButtonBase
+                        onClick={() => openConsultWithSpec(`${s.title} Package`)}
+                        type="button"
+                        sx={{
+                          width: "100%",
+                          py: 1,
+                          borderRadius: "0.5rem",
+                          border: "1px solid #B8862E",
+                          color: "#2B1F12",
+                          fontWeight: 700,
+                          fontSize: "0.8125rem",
+                          transition: "all 0.2s ease",
+                          "&:hover": {
+                            bgcolor: "#B8862E",
+                            color: "#fff",
+                          },
+                        }}
+                      >
+                        Enquire Setup
+                      </ButtonBase>
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+        </Box>
+
+        {/* ══════════════════════════════════════════════════
+            7. SPECIALIST REPAIR LAB & INTAKE SECTION
+        ══════════════════════════════════════════════════ */}
+        <Box
+          id="repair-lab"
+          component="section"
+          sx={{
+            py: { xs: 8, md: 12 },
+            position: "relative",
+            bgcolor: "#0E0B14",
+            scrollMarginTop: { xs: "4.5rem", md: "5.5rem" },
+            borderTop: "1px solid rgba(232, 184, 108, 0.15)",
+            borderBottom: "1px solid rgba(232, 184, 108, 0.15)",
+          }}
+        >
+          <Box sx={{ maxWidth: "80rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 } }}>
+            <Box
+              sx={{
+                p: { xs: 3, sm: 4, md: 6 },
+                borderRadius: "1.5rem",
+                bgcolor: "rgba(18, 14, 28, 0.75)",
+                border: "1px solid rgba(201, 123, 110, 0.3)",
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", lg: "1.2fr 0.8fr" },
+                gap: 4,
+                alignItems: "center",
+                backgroundImage: "radial-gradient(circle at top left, rgba(201, 123, 110, 0.08), transparent 70%)",
+              }}
+            >
+              <Box>
+                <Chip
+                  label="Certified Electronics Lab"
+                  size="small"
+                  sx={{
+                    bgcolor: "rgba(201, 123, 110, 0.15)",
+                    color: "#C97B6E",
+                    border: "1px solid rgba(201, 123, 110, 0.35)",
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    mb: 2,
+                  }}
+                />
+                <Typography
+                  component="h2"
+                  variant="h3"
+                  sx={{
+                    fontFamily: TYPOGRAPHY.fontDisplay,
+                    fontSize: { xs: "1.75rem", md: "2.5rem" },
+                    fontWeight: 700,
+                    color: CINEMA_COLORS.WARM_WHITE,
+                    mb: 1.5,
+                  }}
+                >
+                  Master Audiophile & Apple Repair Lab
+                </Typography>
+                <Typography component="p" variant="body1" sx={{ color: "rgba(245, 239, 227, 0.65)", lineHeight: 1.6, mb: 3 }}>
+                  ALV Store operates a specialized hardware diagnostic and restoration laboratory in Rajasthan. From
+                  discrete power transistor recapping in vintage McIntosh/Marantz amplifiers, to laser optical block servicing
+                  and Apple Silicon board repairs with original diagnostic schematics.
+                </Typography>
+
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2, mb: 4 }}>
+                  {[
+                    "Component-Level Micro Soldering",
+                    "AV Receiver Protection Circuit Reset",
+                    "Audiophile Loudspeaker Re-Coning",
+                    "Laser Optical Engine Realignment",
+                    "Apple Silicon Mac Logic Board Repair",
+                    "Genuine OEM Parts with 90-Day Warranty",
+                  ].map((item, idx) => (
+                    <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Box component={CheckCircle2} sx={{ width: 16, height: 16, color: "#4ade80", flexShrink: 0 }} />
+                      <Typography component="span" variant="body2" sx={{ color: "rgba(245, 239, 227, 0.8)", fontSize: "0.8125rem" }}>
+                        {item}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+                  <ButtonBase
+                    onClick={() => setRepairModalOpen(true)}
+                    type="button"
+                    sx={{
+                      px: 3,
+                      py: 1.25,
+                      borderRadius: "0.625rem",
+                      bgcolor: "#C97B6E",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: "0.875rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 1,
+                      boxShadow: "0 0 20px rgba(201, 123, 110, 0.35)",
+                      "&:hover": { bgcolor: "#d98d80" },
+                    }}
+                  >
+                    <Box component={Wrench} sx={{ width: 16, height: 16 }} />
+                    Log Repair Intake
+                  </ButtonBase>
+
+                  <ButtonBase
+                    onClick={() => setTrackModalOpen(true)}
+                    type="button"
+                    sx={{
+                      px: 2.5,
+                      py: 1.25,
+                      borderRadius: "0.625rem",
+                      bgcolor: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      color: CINEMA_COLORS.WARM_WHITE,
+                      fontWeight: 600,
+                      fontSize: "0.875rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 1,
+                      "&:hover": { bgcolor: "rgba(255, 255, 255, 0.1)" },
+                    }}
+                  >
+                    <Box component={Search} sx={{ width: 16, height: 16 }} />
+                    Track Repair Status
+                  </ButtonBase>
+                </Box>
+              </Box>
+
+              {/* Lab Visual Card */}
+              <Box
+                sx={{
+                  p: 3,
+                  borderRadius: "1rem",
+                  bgcolor: "rgba(10, 8, 16, 0.7)",
+                  border: "1px solid rgba(232, 184, 108, 0.2)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <Typography component="p" variant="subtitle2" sx={{ color: CINEMA_COLORS.GOLD, fontWeight: 700 }}>
+                    Lab Diagnostic Queue
+                  </Typography>
+                  <Chip label="Live Bench Status" size="small" sx={{ height: 18, fontSize: "0.625rem", bgcolor: "rgba(74, 222, 128, 0.15)", color: "#4ade80" }} />
+                </Box>
+                {[
+                  { device: "Marantz Cinema 40 AVR", issue: "HDMI 2.1 Handshake Diagnostic", status: "Bench 1: Testing" },
+                  { device: "B&W 800 Diamond D3", issue: "Crossover Capacitor Calibration", status: "Bench 2: Soak Run" },
+                  { device: "MacBook Pro M3 Max", issue: "Anode Power Rail Micro-Solder", status: "Bench 3: Completed" },
+                ].map((row, idx) => (
+                  <Box key={idx} sx={{ p: 1.5, borderRadius: "0.5rem", bgcolor: "rgba(255, 255, 255, 0.03)" }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                      <Typography component="p" variant="caption" sx={{ color: CINEMA_COLORS.WARM_WHITE, fontWeight: 700 }}>
+                        {row.device}
+                      </Typography>
+                      <Typography component="p" variant="caption" sx={{ color: CINEMA_COLORS.GOLD, fontSize: "0.6875rem" }}>
+                        {row.status}
+                      </Typography>
+                    </Box>
+                    <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.45)" }}>
+                      {row.issue}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* ══════════════════════════════════════════════════
+            8. INTERACTIVE CONFIGURATOR
+        ══════════════════════════════════════════════════ */}
+        <Configurator onBookSetup={openConsultWithSpec} />
+
+        {/* ══════════════════════════════════════════════════
+            9. PORTFOLIO GALLERY ("NOW SHOWING")
+        ══════════════════════════════════════════════════ */}
+        <Box
+          id="projects"
+          component="section"
+          sx={{
+            py: { xs: 8, md: 12 },
+            position: "relative",
+            bgcolor: "#09070F",
+            scrollMarginTop: { xs: "4.5rem", md: "5.5rem" },
+          }}
+        >
+          <Box sx={{ maxWidth: "80rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 } }}>
+            <Box sx={{ textAlign: "center", mb: { xs: 4, md: 6 } }}>
+              <Typography
+                component="p"
+                variant="caption"
+                sx={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.3em",
+                  color: CINEMA_COLORS.GOLD,
+                  mb: 1.5,
+                }}
+              >
+                Exclusive Portfolio
+              </Typography>
+              <Typography
+                component="h2"
+                variant="h2"
+                sx={{
+                  fontFamily: TYPOGRAPHY.fontDisplay,
+                  fontSize: { xs: "2.25rem", md: "3.25rem" },
+                  fontWeight: 700,
+                  color: CINEMA_COLORS.WARM_WHITE,
+                  mb: 1.5,
+                }}
+              >
+                Now{" "}
+                <Box
+                  component="span"
+                  sx={{
+                    background: "linear-gradient(135deg, #F4D9A8 0%, #E8B86C 50%, #B8862E 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                  }}
+                >
+                  Showing
+                </Box>
+              </Typography>
+              <Typography
+                component="p"
+                variant="body1"
+                sx={{
+                  color: "rgba(245, 239, 227, 0.6)",
+                  maxWidth: "34rem",
+                  mx: "auto",
+                  fontSize: "0.9375rem",
+                }}
+              >
+                Award-winning residential and commercial theater installations across India.
+              </Typography>
+
+              {/* Filter Pills */}
+              <Box sx={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 1, mt: 3 }}>
+                {["All", "Ultra Luxury", "Acoustic Decoupled", "Flagship DCI", "Studio Mastering"].map((filter) => {
+                  const isSelected = activeProjectFilter === filter;
+                  return (
+                    <ButtonBase
+                      key={filter}
+                      onClick={() => setActiveProjectFilter(filter)}
+                      type="button"
+                      sx={{
+                        px: 2,
+                        py: 0.75,
+                        borderRadius: "99px",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        border: isSelected ? "1px solid #E8B86C" : "1px solid rgba(255, 255, 255, 0.1)",
+                        bgcolor: isSelected ? "rgba(232, 184, 108, 0.15)" : "rgba(255, 255, 255, 0.03)",
+                        color: isSelected ? CINEMA_COLORS.GOLD : "rgba(245, 239, 227, 0.65)",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      {filter}
+                    </ButtonBase>
+                  );
+                })}
+              </Box>
+            </Box>
+
+            {/* Marquee Strip of Cities */}
+            <Box
+              sx={{
+                mb: 4,
+                py: 1.5,
+                borderTop: "1px solid rgba(232, 184, 108, 0.15)",
+                borderBottom: "1px solid rgba(232, 184, 108, 0.15)",
+                overflow: "hidden",
+              }}
+            >
+              <Marquee label="Featured project locations" gap={6}>
+                {PROJECTS.map((p, i) => (
+                  <Box
+                    key={i}
+                    component="span"
+                    sx={{
+                      color: CINEMA_COLORS.GOLD,
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      letterSpacing: "0.25em",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     ★ {p.title} · {p.location}
-                  </Box>))}
+                  </Box>
+                ))}
               </Marquee>
             </Box>
 
-            <Box sx={{ columns: "1", "@media (min-width: 640px)": { columns: "2" }, "@media (min-width: 1024px)": { columns: "3" }, gap: "1.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-              {PROJECTS.map((p, i) => {
-            const heights = [{ height: "16rem" }, { height: "20rem" }, { height: "14rem" }, { height: "18rem" }, { height: "15rem" }, { height: "20rem" }];
-            return (<Box key={p.title} data-ui-group role="button" tabIndex={0} aria-label={`View ${p.title}`} initial={reduced ? false : { opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: reduced ? 0 : 0.4, delay: reduced ? 0 : Math.min(i * .045, .24) }} onClick={() => setLightbox(i)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setLightbox(i); } }} style={{ background: `linear-gradient(135deg, #1A1228, #0E0B14)`, border: "1px solid rgba(232,184,108,0.2)" }} component={motion.div} sx={mergeSx(heights[i], { breakInside: "avoid", borderRadius: "1rem", overflow: "hidden", position: "relative", cursor: "pointer", "--alv-shadow": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", "--alv-shadow-colored": "0 20px 25px -5px var(--alv-shadow-color), 0 8px 10px -6px var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" })}>
-                    <Box sx={{ position: "absolute", inset: "0px", display: "flex", alignItems: "center", justifyContent: "center", transitionProperty: "transform", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "500ms", animationDuration: "500ms", "[data-ui-group]:hover &": { "--alv-scale-x": "1.1", "--alv-scale-y": "1.1", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))" } }}>
-                      <Box component={Monitor} sx={mergeSx({ height: "4rem", width: "4rem" }, { color: "rgba(232,184,108,0.18)" })}/>
+            {/* Projects Grid */}
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(3, 1fr)" },
+                gap: 3,
+              }}
+            >
+              {filteredProjects.map((proj, idx) => (
+                <Box
+                  key={proj.title}
+                  onClick={() => setLightboxIndex(idx)}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`View details of ${proj.title}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setLightboxIndex(idx);
+                    }
+                  }}
+                  sx={{
+                    borderRadius: "1.25rem",
+                    bgcolor: "rgba(18, 14, 28, 0.8)",
+                    border: "1px solid rgba(232, 184, 108, 0.2)",
+                    p: 3,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    minHeight: "260px",
+                    transition: "all 0.3s ease",
+                    position: "relative",
+                    overflow: "hidden",
+                    "&:hover": {
+                      transform: "translateY(-4px)",
+                      borderColor: CINEMA_COLORS.GOLD,
+                      boxShadow: "0 15px 35px rgba(232, 184, 108, 0.15)",
+                    },
+                  }}
+                >
+                  <Box>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+                      <Chip
+                        label={proj.tag}
+                        size="small"
+                        sx={{
+                          height: 20,
+                          fontSize: "0.6875rem",
+                          bgcolor: "rgba(232, 184, 108, 0.12)",
+                          color: CINEMA_COLORS.GOLD,
+                          border: "1px solid rgba(232, 184, 108, 0.25)",
+                        }}
+                      />
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "rgba(245, 239, 227, 0.5)", fontSize: "0.75rem" }}>
+                        <Box component={MapPin} sx={{ width: 12, height: 12, color: CINEMA_COLORS.GOLD }} />
+                        {proj.location}
+                      </Box>
                     </Box>
-                    <Box sx={{ position: "absolute", inset: "0px", backgroundImage: "linear-gradient(to top, var(--alv-gradient-stops))", "--alv-gradient-from": "rgb(0 0 0 / 0.85) var(--alv-gradient-from-position)", "--alv-gradient-to": "transparent var(--alv-gradient-to-position)", "--alv-gradient-stops": "var(--alv-gradient-from), rgb(0 0 0 / 0.3) var(--alv-gradient-via-position), var(--alv-gradient-to)", opacity: "0", "[data-ui-group]:hover &, [data-ui-group]:focus-visible &": { opacity: "1" }, transitionProperty: "opacity", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "300ms", animationDuration: "300ms", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", paddingBottom: "1.5rem", gap: "0.25rem" }}>
-                      <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "1.125rem", lineHeight: "1.75rem", fontWeight: "700", color: "rgb(232 184 108 / 1)" }, { fontFamily: TYPOGRAPHY.fontDisplay })}>{p.title}</Typography>
-                      <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "rgb(245 239 227 / 0.7)" }}>
-                        <Box component={MapPin} sx={{ height: "0.75rem", width: "0.75rem", display: "inline", marginRight: "0.25rem" }}/>{p.location}
-                      </Typography>
-                      <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "rgb(245 239 227 / 0.5)" }}>{p.config}</Typography>
-                    </Box>
-                  </Box>);
-        })}
+
+                    <Typography
+                      component="h3"
+                      variant="h6"
+                      sx={{
+                        fontFamily: TYPOGRAPHY.fontDisplay,
+                        fontWeight: 700,
+                        color: CINEMA_COLORS.WARM_WHITE,
+                        mb: 1,
+                      }}
+                    >
+                      {proj.title}
+                    </Typography>
+                    <Typography component="p" variant="body2" sx={{ color: CINEMA_COLORS.GOLD, fontSize: "0.8125rem", fontWeight: 600, mb: 1 }}>
+                      {proj.config}
+                    </Typography>
+                    <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.55)", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.5 }}>
+                      {proj.desc}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ pt: 2, mt: 2, borderTop: "1px solid rgba(255, 255, 255, 0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <Typography component="span" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.5)" }}>
+                      Click to inspect blueprints & gear
+                    </Typography>
+                    <Box component={ExternalLink} sx={{ width: 14, height: 14, color: CINEMA_COLORS.GOLD }} />
+                  </Box>
+                </Box>
+              ))}
             </Box>
           </Box>
-        </FadeSection>
-      </Box>
+        </Box>
 
-      <Box sx={{ position: "relative", height: "80px", background: "linear-gradient(180deg, transparent 0%, rgba(232,184,108,0.05) 50%, transparent 100%)", overflow: "hidden", "&::before,&::after": { content: "''", position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", height: "1px", width: "200px", background: "linear-gradient(90deg, transparent, #E8B86C, transparent)" }, "&::after": { width: "6px", height: "6px", borderRadius: "50%", background: "#E8B86C", boxShadow: "0 0 20px rgba(232,184,108,0.6)" } }}/>
+        {/* Project Detail Lightbox Modal (MUI FormDialog) */}
+        <FormDialog
+          open={lightboxIndex !== null}
+          onClose={() => setLightboxIndex(null)}
+          title={lightboxIndex !== null ? filteredProjects[lightboxIndex]?.title : "Cinema Showcase"}
+          paperSx={{ bgcolor: "#120E1C", color: CINEMA_COLORS.WARM_WHITE, border: "1px solid rgba(232, 184, 108, 0.3)" }}
+          actions={
+            <Button
+              variant="contained"
+              onClick={() => {
+                const title = lightboxIndex !== null ? filteredProjects[lightboxIndex]?.title : "Featured Cinema";
+                setLightboxIndex(null);
+                openConsultWithSpec(`Inquiry regarding setup similar to ${title}`);
+              }}
+              sx={{ bgcolor: CINEMA_COLORS.GOLD, color: "#000", fontWeight: 700 }}
+            >
+              Enquire About This Setup
+            </Button>
+          }
+        >
+          {lightboxIndex !== null && (
+            <Box sx={{ py: 1 }}>
+              <Box
+                sx={{
+                  height: 160,
+                  borderRadius: 2,
+                  mb: 2.5,
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: "rgba(232, 184, 108, 0.08)",
+                  border: "1px dashed rgba(232, 184, 108, 0.3)",
+                }}
+              >
+                <Box component={Monitor} sx={{ width: 56, height: 56, color: CINEMA_COLORS.GOLD, opacity: 0.6 }} />
+              </Box>
+              <Typography component="p" variant="subtitle1" sx={{ color: CINEMA_COLORS.GOLD, fontWeight: 700, mb: 0.5 }}>
+                {filteredProjects[lightboxIndex]?.config}
+              </Typography>
+              <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.6)", display: "block", mb: 2 }}>
+                Location: {filteredProjects[lightboxIndex]?.location}
+              </Typography>
+              <Typography component="p" variant="body2" sx={{ color: "rgba(245, 239, 227, 0.8)", mb: 2, lineHeight: 1.6 }}>
+                {filteredProjects[lightboxIndex]?.desc}
+              </Typography>
+              <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                <Typography component="p" variant="caption" sx={{ color: CINEMA_COLORS.GOLD, fontWeight: 700, display: "block", mb: 0.5 }}>
+                  Commissioned Engineering Stack:
+                </Typography>
+                <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.65)" }}>
+                  {filteredProjects[lightboxIndex]?.gear}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </FormDialog>
 
-      <FormDialog open={lightbox !== null} onClose={() => setLightbox(null)} title={lightbox !== null ? PROJECTS[lightbox].title : "Project"}
-        paperSx={{ bgcolor: CINEMA_COLORS.DEEP_NAVY, color: CINEMA_COLORS.WARM_WHITE }}
-        actions={<Button variant="contained" onClick={() => { setLightbox(null); scrollToSection("consultation"); }} sx={{ bgcolor: CINEMA_COLORS.GOLD, color: CINEMA_COLORS.BLACK }}>Enquire About This Setup</Button>}>
-        {lightbox !== null && <Box sx={{ textAlign: "center" }}>
-          <Box sx={{ height: 180, borderRadius: 3, mb: 3, display: "grid", placeItems: "center", bgcolor: "rgba(255,215,0,.05)" }}><Monitor size={64} color="rgba(255,215,0,.25)" /></Box>
-          <Typography variant="body2" sx={{ color: "rgba(255,255,255,.7)", mb: 1 }}>{PROJECTS[lightbox].location}</Typography>
-          <Typography variant="body2" sx={{ color: "rgba(255,255,255,.6)" }}>{PROJECTS[lightbox].config}</Typography>
-        </Box>}
-      </FormDialog>
-
-      <GoldDivider />
-
-      {/* ══════ TESTIMONIALS — Auto-Scroll Carousel ══════ */}
-      <FadeSection sx={mergeSx({ paddingTop: "6rem", paddingBottom: "6rem", overflow: "hidden" }, { background: CINEMA_COLORS.DEEP_NAVY })}>
-        <Box sx={{ maxWidth: "80rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
-          <Box sx={{ textAlign: "center", marginBottom: "4rem" }}>
-            <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.25em", marginBottom: "1rem" }, { color: CINEMA_COLORS.GOLD })}>Testimonials</Typography>
-            <Typography component="h2" variant="h2" sx={{ fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE }}>
-              What Our Clients Say
+        {/* ══════════════════════════════════════════════════
+            10. TESTIMONIALS & CASE STUDIES
+        ══════════════════════════════════════════════════ */}
+        <Box
+          id="testimonials"
+          component="section"
+          sx={{
+            py: { xs: 8, md: 12 },
+            position: "relative",
+            bgcolor: "#0E0B14",
+            scrollMarginTop: { xs: "4.5rem", md: "5.5rem" },
+            borderTop: "1px solid rgba(232, 184, 108, 0.12)",
+            borderBottom: "1px solid rgba(232, 184, 108, 0.12)",
+          }}
+        >
+          <Box sx={{ maxWidth: "80rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 }, textAlign: "center", mb: 6 }}>
+            <Typography
+              component="p"
+              variant="caption"
+              sx={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.25em",
+                color: CINEMA_COLORS.GOLD,
+                mb: 1.5,
+              }}
+            >
+              Client Acclaim
+            </Typography>
+            <Typography
+              component="h2"
+              variant="h2"
+              sx={{
+                fontFamily: TYPOGRAPHY.fontDisplay,
+                fontSize: { xs: "2rem", md: "3rem" },
+                fontWeight: 700,
+                color: CINEMA_COLORS.WARM_WHITE,
+              }}
+            >
+              What Our Patrons Say
             </Typography>
           </Box>
+
+          <Box sx={{ position: "relative" }}>
+            <Marquee label="Client testimonials" duration={ANIMATION.CAROUSEL_SPEED}>
+              {TESTIMONIALS.map((t, i) => (
+                <Box
+                  key={i}
+                  sx={{
+                    display: "inline-block",
+                    width: "360px",
+                    borderRadius: "1.25rem",
+                    p: 3,
+                    bgcolor: "rgba(255, 255, 255, 0.03)",
+                    border: "1px solid rgba(232, 184, 108, 0.2)",
+                    backdropFilter: "blur(12px)",
+                    whiteSpace: "normal",
+                    mx: 1.5,
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+                      <Box
+                        sx={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          bgcolor: "rgba(232, 184, 108, 0.15)",
+                          color: CINEMA_COLORS.GOLD,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 700,
+                          fontSize: "0.875rem",
+                        }}
+                      >
+                        {t.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .slice(0, 2)}
+                      </Box>
+                      <Box>
+                        <Typography component="p" variant="subtitle2" sx={{ color: CINEMA_COLORS.WARM_WHITE, fontWeight: 700 }}>
+                          {t.name}
+                        </Typography>
+                        <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.45)" }}>
+                          {t.city}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: "flex", color: CINEMA_COLORS.GOLD }}>
+                      {Array.from({ length: t.rating }).map((_, rIdx) => (
+                        <Box key={rIdx} component={Star} sx={{ width: 14, height: 14, fill: "currentColor" }} />
+                      ))}
+                    </Box>
+                  </Box>
+
+                  <Chip
+                    label={t.tag}
+                    size="small"
+                    sx={{
+                      height: 18,
+                      fontSize: "0.625rem",
+                      bgcolor: "rgba(232, 184, 108, 0.1)",
+                      color: CINEMA_COLORS.GOLD,
+                      mb: 1.5,
+                    }}
+                  />
+
+                  <Typography component="p" variant="body2" sx={{ color: "rgba(245, 239, 227, 0.75)", lineHeight: 1.6, fontStyle: "italic" }}>
+                    "{t.text}"
+                  </Typography>
+                </Box>
+              ))}
+            </Marquee>
+          </Box>
         </Box>
 
-        {/* Infinite scrolling row */}
-        <Box data-ui-group sx={{ position: "relative" }}>
-          <Marquee label="Client testimonials" duration={ANIMATION.CAROUSEL_SPEED}>
-            {TESTIMONIALS.map((t, i) => (<Box key={i} sx={mergeSx({ display: "inline-block", width: "340px", borderRadius: "1rem", padding: "1.5rem", flexShrink: "0", whiteSpace: "normal" }, {
-            background: CINEMA_COLORS.GLASS_BG,
-            border: `1px solid ${CINEMA_COLORS.GLASS_BORDER}`,
-            backdropFilter: "blur(12px)",
-        })}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-                  <Box sx={mergeSx({ height: "2.5rem", width: "2.5rem", borderRadius: "9999px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "700" }, { background: "rgba(255,215,0,0.1)", color: CINEMA_COLORS.GOLD })}>
-                    {t.name.split(" ").map(n => n[0]).join("")}
-                  </Box>
-                  <Box>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }, { color: CINEMA_COLORS.WARM_WHITE })}>{t.name}</Typography>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.75rem", lineHeight: "1rem" }, { color: "rgba(255,255,255,0.3)" })}>{t.city}</Typography>
-                  </Box>
-                </Box>
-                <Box sx={{ display: "flex", gap: "0.125rem", marginBottom: "0.75rem" }}>
-                  {Array.from({ length: t.rating }).map((_, j) => (<Box key={j} component={Star} sx={mergeSx({ height: "0.875rem", width: "0.875rem", fill: "currentColor" }, { color: CINEMA_COLORS.GOLD })}/>))}
-                </Box>
-                <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.625" }, { color: "rgba(255,255,255,0.6)" })}>"{t.text}"</Typography>
-              </Box>))}
-          </Marquee>
-        </Box>
-      </FadeSection>
-
-      <GoldDivider />
-
-      {/* ══════ CONSULTATION / CONTACT FORM ══════ */}
-      <FadeSection id="consultation" sx={{ paddingTop: "6rem", paddingBottom: "6rem", position: "relative" }}>
-        <GlowOrb sx={{ width: "350px", height: "350px", bottom: "0px", left: "0px" }}/>
-        <Box sx={{ maxWidth: "80rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "4rem" }}>
-            <Box>
-              <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.25em", marginBottom: "1rem" }, { color: CINEMA_COLORS.GOLD })}>Get In Touch</Typography>
-              <Typography component="h2" variant="h2" sx={mergeSx({ marginBottom: "1.5rem" }, { fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size, color: CINEMA_COLORS.WARM_WHITE })}>
-                Free Consultation
+        {/* ══════════════════════════════════════════════════
+            11. FREQUENTLY ASKED QUESTIONS
+        ══════════════════════════════════════════════════ */}
+        <Box
+          id="faq"
+          component="section"
+          sx={{
+            py: { xs: 8, md: 12 },
+            position: "relative",
+            bgcolor: "#09070F",
+            scrollMarginTop: { xs: "4.5rem", md: "5.5rem" },
+          }}
+        >
+          <Box sx={{ maxWidth: "52rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 } }}>
+            <Box sx={{ textAlign: "center", mb: 5 }}>
+              <Typography
+                component="p"
+                variant="caption"
+                sx={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.25em",
+                  color: CINEMA_COLORS.GOLD,
+                  mb: 1.5,
+                }}
+              >
+                Engineering Clarity
               </Typography>
-              <Typography component="p" variant="body1" sx={mergeSx({ marginBottom: "2rem" }, { color: "rgba(255,255,255,0.4)" })}>
-                Tell us about your space and requirements. Our experts will design the perfect cinema experience for you.
+              <Typography
+                component="h2"
+                variant="h2"
+                sx={{
+                  fontFamily: TYPOGRAPHY.fontDisplay,
+                  fontSize: { xs: "2rem", md: "2.75rem" },
+                  fontWeight: 700,
+                  color: CINEMA_COLORS.WARM_WHITE,
+                }}
+              >
+                Questions & Answers
               </Typography>
-
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                  <Box sx={mergeSx({ height: "2.5rem", width: "2.5rem", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center" }, { background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.15)" })}>
-                    <Box component={Phone} sx={mergeSx({ height: "1rem", width: "1rem" }, { color: CINEMA_COLORS.GOLD })}/>
-                  </Box>
-                  <Box>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }, { color: CINEMA_COLORS.WARM_WHITE })}>Call Us</Typography>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem" }, { color: "rgba(255,255,255,0.4)" })}>+91-XXXXXXXXXX</Typography>
-                  </Box>
-                </Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                  <Box sx={mergeSx({ height: "2.5rem", width: "2.5rem", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center" }, { background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.15)" })}>
-                    <Box component={Mail} sx={mergeSx({ height: "1rem", width: "1rem" }, { color: CINEMA_COLORS.GOLD })}/>
-                  </Box>
-                  <Box>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }, { color: CINEMA_COLORS.WARM_WHITE })}>Email</Typography>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem" }, { color: "rgba(255,255,255,0.4)" })}>info@alvstore.com</Typography>
-                  </Box>
-                </Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                  <Box sx={mergeSx({ height: "2.5rem", width: "2.5rem", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center" }, { background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.15)" })}>
-                    <Box component={MapPin} sx={mergeSx({ height: "1rem", width: "1rem" }, { color: CINEMA_COLORS.GOLD })}/>
-                  </Box>
-                  <Box>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }, { color: CINEMA_COLORS.WARM_WHITE })}>Visit</Typography>
-                    <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.875rem", lineHeight: "1.25rem" }, { color: "rgba(255,255,255,0.4)" })}>Udaipur, Rajasthan, India</Typography>
-                  </Box>
-                </Box>
-              </Box>
             </Box>
 
-            <Box onSubmit={handleLeadSubmit} component="form" sx={mergeSx({ borderRadius: "1rem", padding: "2rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.25rem" } }, { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" })}>
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
-                <Box>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              {FAQS.map((faq, i) => {
+                const isOpen = expandedFaq === i;
+                return (
+                  <Box
+                    key={i}
+                    sx={{
+                      borderRadius: "1rem",
+                      bgcolor: isOpen ? "rgba(232, 184, 108, 0.08)" : "rgba(255, 255, 255, 0.02)",
+                      border: isOpen ? "1px solid rgba(232, 184, 108, 0.35)" : "1px solid rgba(255, 255, 255, 0.06)",
+                      overflow: "hidden",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <ButtonBase
+                      onClick={() => setExpandedFaq(isOpen ? null : i)}
+                      type="button"
+                      sx={{
+                        width: "100%",
+                        p: { xs: 2, sm: 2.5 },
+                        textAlign: "left",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        color: CINEMA_COLORS.WARM_WHITE,
+                      }}
+                    >
+                      <Typography component="span" variant="subtitle2" sx={{ fontWeight: 600, fontSize: "0.9375rem", pr: 2 }}>
+                        {faq.q}
+                      </Typography>
+                      <Box
+                        component={ChevronDown}
+                        sx={{
+                          width: 18,
+                          height: 18,
+                          color: CINEMA_COLORS.GOLD,
+                          transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                          transition: "transform 0.2s ease",
+                          flexShrink: 0,
+                        }}
+                      />
+                    </ButtonBase>
 
-                  <TextField value={formData.name} onChange={e => setFormData(d => ({ ...d, name: e.target.value }))} placeholder="Your name" label={"Name *"} size="small" fullWidth sx={{ backgroundColor: "rgb(255 255 255 / 0.05)", borderColor: "rgb(255 255 255 / 0.1)", color: "rgb(255 255 255 / 1)", "&::placeholder": { color: "rgb(255 255 255 / 0.2)" } }}/>
-                </Box>
-                <Box>
+                    <AnimatePresence>
+                      {isOpen && (
+                        <Box
+                          component={motion.div}
+                          initial={reduced ? false : { height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25 }}
+                        >
+                          <Typography
+                            component="p"
+                            variant="body2"
+                            sx={{
+                              px: { xs: 2, sm: 2.5 },
+                              pb: 2.5,
+                              color: "rgba(245, 239, 227, 0.7)",
+                              lineHeight: 1.6,
+                              fontSize: "0.875rem",
+                            }}
+                          >
+                            {faq.a}
+                          </Typography>
+                        </Box>
+                      )}
+                    </AnimatePresence>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+        </Box>
 
-                  <TextField value={formData.phone} onChange={e => setFormData(d => ({ ...d, phone: e.target.value }))} placeholder="+91" label={"Phone *"} size="small" fullWidth sx={{ backgroundColor: "rgb(255 255 255 / 0.05)", borderColor: "rgb(255 255 255 / 0.1)", color: "rgb(255 255 255 / 1)", "&::placeholder": { color: "rgb(255 255 255 / 0.2)" } }}/>
-                </Box>
-              </Box>
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
-                <Box>
-
-                  <TextField value={formData.city} onChange={e => setFormData(d => ({ ...d, city: e.target.value }))} placeholder="Udaipur" label={"City"} size="small" fullWidth sx={{ backgroundColor: "rgb(255 255 255 / 0.05)", borderColor: "rgb(255 255 255 / 0.1)", color: "rgb(255 255 255 / 1)", "&::placeholder": { color: "rgb(255 255 255 / 0.2)" } }}/>
-                </Box>
-                <Box>
-
-                  <TextField value={formData.budget} label={"Budget Range"} select size="small" fullWidth onChange={event => (v => setFormData(d => ({ ...d, budget: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ backgroundColor: "rgb(255 255 255 / 0.05)", borderColor: "rgb(255 255 255 / 0.1)", color: "rgb(255 255 255 / 1)" }}><MenuItem value="" disabled>{"Select"}</MenuItem>
-                      <MenuItem value="2-5L">₹2-5 Lakhs</MenuItem>
-                      <MenuItem value="5-10L">₹5-10 Lakhs</MenuItem>
-                      <MenuItem value="10-25L">₹10-25 Lakhs</MenuItem>
-                      <MenuItem value="25L+">₹25 Lakhs+</MenuItem>
-                    </TextField>
-                </Box>
-              </Box>
+        {/* ══════════════════════════════════════════════════
+            12. ON-PAGE CONSULTATION BOOKING SECTION
+        ══════════════════════════════════════════════════ */}
+        <Box
+          id="consultation"
+          component="section"
+          sx={{
+            py: { xs: 8, md: 12 },
+            position: "relative",
+            bgcolor: "#0E0B14",
+            scrollMarginTop: { xs: "4.5rem", md: "5.5rem" },
+            borderTop: "1px solid rgba(232, 184, 108, 0.15)",
+          }}
+        >
+          <Box sx={{ maxWidth: "80rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 } }}>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", lg: "1fr 1.2fr" },
+                gap: { xs: 4, md: 6 },
+                alignItems: "center",
+              }}
+            >
+              {/* Left Column: Direct Contact Info */}
               <Box>
+                <Typography
+                  component="p"
+                  variant="caption"
+                  sx={{
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.25em",
+                    color: CINEMA_COLORS.GOLD,
+                    mb: 1.5,
+                  }}
+                >
+                  Initiate Your Project
+                </Typography>
+                <Typography
+                  component="h2"
+                  variant="h2"
+                  sx={{
+                    fontFamily: TYPOGRAPHY.fontDisplay,
+                    fontSize: { xs: "2.25rem", md: "3rem" },
+                    fontWeight: 700,
+                    color: CINEMA_COLORS.WARM_WHITE,
+                    mb: 2,
+                  }}
+                >
+                  Schedule an On-Site Acoustic Consultation
+                </Typography>
+                <Typography component="p" variant="body1" sx={{ color: "rgba(245, 239, 227, 0.65)", mb: 4, lineHeight: 1.6 }}>
+                  Our lead acoustic consultant and THX calibration engineers will assess your room volume, wall materials,
+                  and speaker directivity to formulate a bespoke proposal.
+                </Typography>
 
-                <TextField value={formData.room_size} label={"Room Size"} select size="small" fullWidth onChange={event => (v => setFormData(d => ({ ...d, room_size: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ backgroundColor: "rgb(255 255 255 / 0.05)", borderColor: "rgb(255 255 255 / 0.1)", color: "rgb(255 255 255 / 1)" }}><MenuItem value="" disabled>{"Select"}</MenuItem>
-                    <MenuItem value="small">Small (up to 150 sqft)</MenuItem>
-                    <MenuItem value="medium">Medium (150-300 sqft)</MenuItem>
-                    <MenuItem value="large">Large (300-500 sqft)</MenuItem>
-                    <MenuItem value="xlarge">Extra Large (500+ sqft)</MenuItem>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+                  {[
+                    { icon: Phone, title: "Direct Lab Phone", value: "+91 98290 00000" },
+                    { icon: Mail, title: "Executive Inquiries", value: "consult@alvstore.com" },
+                    { icon: MapPin, title: "Flagship Showroom", value: "Udaipur & Jaipur, Rajasthan, India" },
+                  ].map((c, i) => {
+                    const IconComp = c.icon;
+                    return (
+                      <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                        <Box
+                          sx={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: "0.75rem",
+                            bgcolor: "rgba(232, 184, 108, 0.1)",
+                            border: "1px solid rgba(232, 184, 108, 0.25)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Box component={IconComp} sx={{ width: 18, height: 18, color: CINEMA_COLORS.GOLD }} />
+                        </Box>
+                        <Box>
+                          <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.5)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            {c.title}
+                          </Typography>
+                          <Typography component="p" variant="body2" sx={{ color: CINEMA_COLORS.WARM_WHITE, fontWeight: 600 }}>
+                            {c.value}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+
+              {/* Right Column: Form Card */}
+              <Box
+                component="form"
+                onSubmit={handleLeadSubmit}
+                sx={{
+                  p: { xs: 3, sm: 4 },
+                  borderRadius: "1.5rem",
+                  bgcolor: "rgba(18, 14, 28, 0.8)",
+                  border: "1px solid rgba(232, 184, 108, 0.25)",
+                  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.6)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                }}
+              >
+                <Typography component="h3" variant="h6" sx={{ fontFamily: TYPOGRAPHY.fontDisplay, fontWeight: 700, color: CINEMA_COLORS.GOLD, mb: 1 }}>
+                  Request Consultation & 3D Layout
+                </Typography>
+
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
+                  <TextField
+                    label="Full Name *"
+                    size="small"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData((d) => ({ ...d, name: e.target.value }))}
+                    sx={{ bgcolor: "rgba(255, 255, 255, 0.04)" }}
+                  />
+                  <TextField
+                    label="Phone Number *"
+                    size="small"
+                    required
+                    placeholder="+91"
+                    value={formData.phone}
+                    onChange={(e) => setFormData((d) => ({ ...d, phone: e.target.value }))}
+                    sx={{ bgcolor: "rgba(255, 255, 255, 0.04)" }}
+                  />
+                </Box>
+
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
+                  <TextField
+                    label="City / Region"
+                    size="small"
+                    value={formData.city}
+                    onChange={(e) => setFormData((d) => ({ ...d, city: e.target.value }))}
+                    sx={{ bgcolor: "rgba(255, 255, 255, 0.04)" }}
+                  />
+                  <TextField
+                    label="Target Budget"
+                    size="small"
+                    select
+                    value={formData.budget}
+                    onChange={(e) => setFormData((d) => ({ ...d, budget: e.target.value }))}
+                    sx={{ bgcolor: "rgba(255, 255, 255, 0.04)" }}
+                  >
+                    <MenuItem value="₹3L - ₹6L">₹3 Lakhs – ₹6 Lakhs</MenuItem>
+                    <MenuItem value="₹8L - ₹15L">₹8 Lakhs – ₹15 Lakhs</MenuItem>
+                    <MenuItem value="₹15L - ₹30L">₹15 Lakhs – ₹30 Lakhs</MenuItem>
+                    <MenuItem value="₹30L+ Bespoke">₹30 Lakhs+ (Ultra Flagship)</MenuItem>
                   </TextField>
-              </Box>
-              <Box>
+                </Box>
 
-                <TextField value={formData.requirement} onChange={e => setFormData(d => ({ ...d, requirement: e.target.value }))} placeholder="Describe your dream home theater..." label={"Requirements"} size="small" fullWidth multiline sx={{ backgroundColor: "rgb(255 255 255 / 0.05)", borderColor: "rgb(255 255 255 / 0.1)", color: "rgb(255 255 255 / 1)", "&::placeholder": { color: "rgb(255 255 255 / 0.2)" }, minHeight: "100px" }}/>
+                <TextField
+                  label="Space Details & Preferred Cinema System"
+                  size="small"
+                  multiline
+                  rows={3}
+                  placeholder="Tell us about your room (e.g. 15×22ft living room, basement cinema, 9.4.6 Atmos requirements)..."
+                  value={formData.requirement}
+                  onChange={(e) => setFormData((d) => ({ ...d, requirement: e.target.value }))}
+                  sx={{ bgcolor: "rgba(255, 255, 255, 0.04)" }}
+                />
+
+                <ButtonBase
+                  type="submit"
+                  disabled={submitting}
+                  sx={{
+                    width: "100%",
+                    py: 1.5,
+                    borderRadius: "0.75rem",
+                    bgcolor: CINEMA_COLORS.GOLD,
+                    color: "#0E0B14",
+                    fontWeight: 700,
+                    fontSize: "0.9375rem",
+                    boxShadow: "0 0 24px rgba(232, 184, 108, 0.35)",
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      bgcolor: "#F4D9A8",
+                      boxShadow: "0 0 32px rgba(232, 184, 108, 0.5)",
+                    },
+                    "&:disabled": { opacity: 0.6 },
+                  }}
+                >
+                  {submitting ? "Sending Request..." : "Request Free Architectural Consultation"}
+                </ButtonBase>
               </Box>
-              <ButtonBase type="submit" disabled={submitting} sx={mergeSx({ width: "100%", paddingTop: "0.75rem", paddingBottom: "0.75rem", borderRadius: "var(--radius)", fontSize: "1rem", lineHeight: "1.5rem", fontWeight: "600", transitionProperty: "all", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", "&:disabled": { opacity: "0.5" } }, {
-        background: CINEMA_COLORS.GOLD,
-        color: CINEMA_COLORS.BLACK,
-        boxShadow: `0 0 20px ${CINEMA_COLORS.GOLD}22`,
-    })}>
-                {submitting ? "Sending..." : "Request Free Consultation"}
-              </ButtonBase>
             </Box>
           </Box>
         </Box>
-      </FadeSection>
 
-      {/* ══════ FAQ — Ivory ══════ */}
-      <Box sx={{ background: "linear-gradient(180deg, #F7F3EC 0%, #EFE7D8 100%)" }}>
-        <FadeSection sx={{ paddingTop: "6rem", paddingBottom: "6rem" }}>
-          <Box sx={{ maxWidth: "48rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
-            <Box sx={{ textAlign: "center", marginBottom: "3rem" }}>
-              <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.3em", marginBottom: "1rem", color: "rgb(184 134 46 / 1)" }}>FAQ</Typography>
-              <Typography component="h2" variant="h2" sx={mergeSx({ color: "rgb(43 31 18 / 1)" }, { fontFamily: TYPOGRAPHY.fontDisplay, fontSize: TYPOGRAPHY.scale.h2.size })}>
-                Questions, <Box component="span" sx={{ background: "linear-gradient(135deg, #F4D9A8 0%, #E8B86C 50%, #B8862E 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Answered</Box>
+        {/* ══════════════════════════════════════════════════
+            13. LUXURY STOREFRONT FOOTER
+        ══════════════════════════════════════════════════ */}
+        <Box
+          component="footer"
+          sx={{
+            py: 6,
+            bgcolor: "#06040A",
+            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+          }}
+        >
+          <Box sx={{ maxWidth: "80rem", mx: "auto", px: { xs: 2, sm: 3, md: 4 } }}>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
+                gap: 4,
+                mb: 6,
+              }}
+            >
+              <Box>
+                <Typography component="h4" variant="h6" sx={{ fontFamily: TYPOGRAPHY.fontDisplay, fontWeight: 700, color: CINEMA_COLORS.GOLD, mb: 1.5 }}>
+                  ALV Store & Cinema
+                </Typography>
+                <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.5)", lineHeight: 1.6, display: "block" }}>
+                  India's premier turnkey home cinema engineering company. Certified Dolby Atmos systems, bespoke room acoustics,
+                  and specialist audio equipment restoration.
+                </Typography>
+              </Box>
+
+              <Box>
+                <Typography component="h5" variant="subtitle2" sx={{ color: CINEMA_COLORS.WARM_WHITE, fontWeight: 700, mb: 1.5 }}>
+                  Cinema Engineering
+                </Typography>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {["Dolby Atmos 9.4.6 Systems", "4K Laser Projection", "Acoustic Suede Paneling", "Crestron Cinema Automation"].map((t) => (
+                    <Typography key={t} component="span" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.5)" }}>
+                      {t}
+                    </Typography>
+                  ))}
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography component="h5" variant="subtitle2" sx={{ color: CINEMA_COLORS.WARM_WHITE, fontWeight: 700, mb: 1.5 }}>
+                  Specialist Services
+                </Typography>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <ButtonBase onClick={() => setRepairModalOpen(true)} sx={{ justifyContent: "flex-start", color: "rgba(245, 239, 227, 0.5)", fontSize: "0.75rem", "&:hover": { color: CINEMA_COLORS.GOLD } }}>
+                    Audio & AVR Lab Repair Intake
+                  </ButtonBase>
+                  <ButtonBase onClick={() => setTrackModalOpen(true)} sx={{ justifyContent: "flex-start", color: "rgba(245, 239, 227, 0.5)", fontSize: "0.75rem", "&:hover": { color: CINEMA_COLORS.GOLD } }}>
+                    Track Repair Job Status
+                  </ButtonBase>
+                  <ButtonBase onClick={() => navigate("/login")} sx={{ justifyContent: "flex-start", color: "rgba(245, 239, 227, 0.5)", fontSize: "0.75rem", "&:hover": { color: CINEMA_COLORS.GOLD } }}>
+                    Staff & Client Portal Login
+                  </ButtonBase>
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography component="h5" variant="subtitle2" sx={{ color: CINEMA_COLORS.WARM_WHITE, fontWeight: 700, mb: 1.5 }}>
+                  Accreditations
+                </Typography>
+                <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.5)", lineHeight: 1.6, display: "block" }}>
+                  THX Level III Acoustic Integrator · Dolby Atmos Certified · ISF Level III Video Calibration Specialist.
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                pt: 3,
+                borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 2,
+              }}
+            >
+              <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.35)", fontSize: "0.75rem" }}>
+                © {new Date().getFullYear()} ALV Store Private Limited. All rights reserved.
+              </Typography>
+              <Typography component="p" variant="caption" sx={{ color: "rgba(245, 239, 227, 0.35)", fontSize: "0.75rem" }}>
+                Crafted for elite acoustics and bespoke entertainment spaces.
               </Typography>
             </Box>
-            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-              {FAQS.map((faq, i) => (<Box key={i} sx={mergeSx({ borderRadius: "0.75rem", overflow: "hidden", transitionProperty: "all", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", borderWidth: "1px" }, {
-            background: expandedFaq === i ? "rgba(232,184,108,0.08)" : "rgba(255,255,255,0.6)",
-            borderColor: expandedFaq === i ? "rgba(232,184,108,0.4)" : "rgba(184,134,46,0.15)",
-            boxShadow: expandedFaq === i ? "0 8px 24px rgba(232,184,108,0.12)" : "0 2px 8px rgba(43,31,18,0.04)",
-        })}>
-                  <ButtonBase aria-expanded={expandedFaq === i} aria-controls={`faq-${i}`} onClick={() => setExpandedFaq(expandedFaq === i ? null : i)} type="button" sx={{ width: "100%", textAlign: "left", paddingLeft: "1.5rem", paddingRight: "1.5rem", paddingTop: "1.25rem", paddingBottom: "1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <Box component="span" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "rgb(43 31 18 / 1)" }}>{faq.q}</Box>
-                    <Box component={ChevronDown} sx={mergeSx({ height: "1rem", width: "1rem", transitionProperty: "transform", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", color: "rgb(184 134 46 / 1)" }, expandedFaq === i ? { "--alv-rotate": "180deg", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))" } : {})}/>
-                  </ButtonBase>
-                  <AnimatePresence>
-                    {expandedFaq === i && (<Box id={`faq-${i}`} initial={reduced ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.28 }} component={motion.div}>
-                        <Typography component="p" variant="body1" sx={{ paddingLeft: "1.5rem", paddingRight: "1.5rem", paddingBottom: "1.25rem", fontSize: "0.875rem", lineHeight: "1.625", color: "rgb(43 31 18 / 0.7)" }}>{faq.a}</Typography>
-                      </Box>)}
-                  </AnimatePresence>
-                </Box>))}
-            </Box>
-          </Box>
-        </FadeSection>
-      </Box>
-
-      {/* ══════ FOOTER ══════ */}
-      <Box component="footer" sx={mergeSx({ paddingTop: "3rem", paddingBottom: "3rem" }, { borderTop: "1px solid rgba(255,255,255,0.05)" })}>
-        <Box sx={{ maxWidth: "80rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
-          <Box sx={{ display: "flex", flexDirection: "column", "@media (min-width: 768px)": { flexDirection: "row" }, alignItems: "center", justifyContent: "space-between", gap: "1.5rem" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <Box sx={mergeSx({ height: "2.25rem", width: "2.25rem", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center" }, { background: `linear-gradient(135deg, ${CINEMA_COLORS.GOLD}, ${CINEMA_COLORS.AMBER})` })}>
-                <Box component={Speaker} sx={{ height: "1rem", width: "1rem", color: "rgb(0 0 0 / 1)" }}/>
-              </Box>
-              <Box component="span" sx={mergeSx({ fontSize: "1rem", lineHeight: "1.5rem", fontWeight: "700" }, { fontFamily: TYPOGRAPHY.fontDisplay })}>ALV Cinema</Box>
-            </Box>
-            <Box sx={mergeSx({ display: "flex", alignItems: "center", gap: "1.5rem", fontSize: "0.75rem", lineHeight: "1rem" }, { color: "rgba(255,255,255,0.25)" })}>
-              <Box component="span">Dolby Atmos</Box>
-              <Box component="span">4K Projection</Box>
-              <Box component="span">Acoustic Design</Box>
-              <Box component="span">Smart Automation</Box>
-            </Box>
-            <Typography component="p" variant="body1" sx={mergeSx({ fontSize: "0.75rem", lineHeight: "1rem" }, { color: "rgba(255,255,255,0.15)" })}>© {new Date().getFullYear()} ALV Store. All rights reserved.</Typography>
           </Box>
         </Box>
-      </Box>
 
-      <WhatsAppFloat />
-    </Box></AnimatedPage>;
+        {/* ══════════════════════════════════════════════════
+            14. ACTION MODALS & WHATSAPP FLOATER
+        ══════════════════════════════════════════════════ */}
+        <ConsultationModal
+          open={consultModalOpen}
+          onClose={() => setConsultModalOpen(false)}
+          initialSpec={consultSpec}
+        />
+        <RepairIntakeModal
+          open={repairModalOpen}
+          onClose={() => setRepairModalOpen(false)}
+        />
+        <TrackOrderModal
+          open={trackModalOpen}
+          onClose={() => setTrackModalOpen(false)}
+        />
+
+        <WhatsAppFloat />
+      </Box>
+    </AnimatedPage>
+  );
 }

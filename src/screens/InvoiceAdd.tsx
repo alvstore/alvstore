@@ -1,14 +1,20 @@
 "use client";
 
-import { Box, Button, Card, CardContent, Divider, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import {
+    Autocomplete, Box, Button, Card, CardContent, Divider, FormLabel,
+    IconButton, MenuItem, Switch, TableBody, TableCell, TableHead,
+    TableRow, TextField, Tooltip, Typography, createFilterOptions
+} from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { AnimatedPage, DataTable, PageHeader, toast } from "@/components/mui";
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "@/lib/router-compat";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate, useParams, useSearchParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Send, Eye, Save, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Send, Eye, Save, Trash2, Plus, UserPlus } from "lucide-react";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
+import { CustomerQuickDialog, type CustomerData } from "@/components/customers/CustomerQuickDialog";
 interface Product {
     id: string;
     name: string;
@@ -38,6 +44,7 @@ export default function InvoiceAdd() {
         id: string;
     }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [employees, setEmployees] = useState<{
@@ -49,6 +56,8 @@ export default function InvoiceAdd() {
     const isEditing = !!editId;
     // Form state
     const [customerId, setCustomerId] = useState("");
+    const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
+    const [customerSearchInput, setCustomerSearchInput] = useState("");
     const [dueDate, setDueDate] = useState("");
     const [dateIssued] = useState(new Date().toISOString().split("T")[0]);
     const [notes, setNotes] = useState("");
@@ -61,6 +70,23 @@ export default function InvoiceAdd() {
     // Toggles
     const [showPaymentTerms, setShowPaymentTerms] = useState(true);
     const [showClientNotes, setShowClientNotes] = useState(true);
+
+    const customerFilter = useMemo(
+      () =>
+        createFilterOptions<Customer>({
+          stringify: (option) =>
+            [option.name, option.phone, option.email, option.gst_number].filter(Boolean).join(" "),
+        }),
+      []
+    );
+
+    useEffect(() => {
+        if (editId) return;
+        const paramId = searchParams?.get("customerId") || searchParams?.get("customer_id");
+        if (paramId && !customerId) {
+            setCustomerId(paramId);
+        }
+    }, [searchParams, editId, customerId]);
     useEffect(() => {
         Promise.all([
             supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
@@ -222,17 +248,195 @@ export default function InvoiceAdd() {
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
                   <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                    <TextField type="date" value={dateIssued} label={"Date Issued"} size="small" fullWidth slotProps={{ htmlInput: { readOnly: true } }} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}/>
+                    <TextField type="date" value={dateIssued} label={"Date Issued"} size="small" fullWidth slotProps={{ htmlInput: { readOnly: true }, inputLabel: { shrink: true } }} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}/>
                   </Box>
                   <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                    <TextField type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} label={"Due Date"} size="small" fullWidth/>
+                    <TextField type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} label={"Due Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
                   </Box>
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
                   <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
-
-                    <TextField value={customerId} label={"Invoice To"} select size="small" fullWidth onChange={event => setCustomerId(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select customer"}</MenuItem>{customers.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</TextField>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary" }}>
+                        Invoice To *
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="text"
+                        startIcon={<Box component={UserPlus} sx={{ width: 14, height: 14 }} />}
+                        onClick={() => setQuickCustomerOpen(true)}
+                        sx={{ fontSize: "11px", py: 0, px: 0.75, minHeight: "auto", fontWeight: 600 }}
+                      >
+                        + Add New Customer
+                      </Button>
+                    </Box>
+                    <Autocomplete
+                      size="small"
+                      fullWidth
+                      options={customers}
+                      value={selectedCustomer}
+                      getOptionLabel={(option) => {
+                        if (typeof option === "string") return option;
+                        return option?.name || "";
+                      }}
+                      isOptionEqualToValue={(option, val) => !!option?.id && !!val?.id && option.id === val.id}
+                      onInputChange={(_, newInputValue, reason) => {
+                        if (reason === "input") {
+                          setCustomerSearchInput(newInputValue);
+                        } else if (reason === "reset" || reason === "clear") {
+                          setCustomerSearchInput("");
+                        }
+                      }}
+                      onChange={(_, newValue) => {
+                        if (!newValue) {
+                          setCustomerId("");
+                          setCustomerSearchInput("");
+                          return;
+                        }
+                        if ((newValue as any).isAddNew) {
+                          const typed = (newValue as any).typedName || customerSearchInput.trim();
+                          setCustomerSearchInput(typed);
+                          setQuickCustomerOpen(true);
+                          return;
+                        }
+                        setCustomerId(newValue.id);
+                        setCustomerSearchInput("");
+                      }}
+                      filterOptions={(options, params) => {
+                        const filtered = customerFilter(options, params);
+                        const { inputValue } = params;
+                        const trimmed = inputValue.trim();
+                        const exists = options.some(
+                          (o) => o.name.toLowerCase() === trimmed.toLowerCase()
+                        );
+                        const actionItems: any[] = [];
+                        if (trimmed !== "" && !exists) {
+                          actionItems.push({
+                            id: "__add_new_typed__",
+                            name: `+ Add "${trimmed}" as new customer`,
+                            typedName: trimmed,
+                            isAddNew: true,
+                            isNotFound: filtered.length === 0,
+                          });
+                        } else {
+                          actionItems.push({
+                            id: "__add_new_general__",
+                            name: "+ Add new customer",
+                            typedName: "",
+                            isAddNew: true,
+                            isNotFound: false,
+                          });
+                        }
+                        return [...actionItems, ...filtered];
+                      }}
+                      renderOption={(props, option) => {
+                        const { key, ...otherProps } = props;
+                        const isAction = (option as any).isAddNew;
+                        if (isAction) {
+                          return (
+                            <Box
+                              key={key}
+                              component="li"
+                              {...otherProps}
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1.25,
+                                py: 1,
+                                px: 2,
+                                color: "primary.main",
+                                fontWeight: 600,
+                                borderBottom: (t) => `1px dashed ${t.palette.divider}`,
+                                backgroundColor: (t) => alpha(t.palette.primary.main, 0.05),
+                                "&:hover": { backgroundColor: (t) => alpha(t.palette.primary.main, 0.12) },
+                                cursor: "pointer",
+                              }}
+                            >
+                              <Box component={UserPlus} sx={{ width: 16, height: 16, flexShrink: 0 }} />
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: "primary.main" }}>
+                                  {option.name}
+                                </Typography>
+                                {(option as any).isNotFound && (
+                                  <Typography variant="caption" sx={{ color: "text.secondary", display: "block", fontSize: "11px" }}>
+                                    No existing customer found matching "{(option as any).typedName}". Click or press Enter to create.
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                          );
+                        }
+                        return (
+                          <Box key={key} component="li" {...otherProps} sx={{ py: 0.75, px: 2 }}>
+                            <Box sx={{ width: "100%" }}>
+                              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {option.name}
+                                </Typography>
+                                {option.gst_number && (
+                                  <Box component="span" sx={{ fontSize: "10px", fontFamily: "monospace", px: 0.5, py: 0.125, borderRadius: 0.5, bgcolor: (t) => alpha(t.palette.primary.main, 0.08), color: "primary.main", fontWeight: 600 }}>
+                                    GST
+                                  </Box>
+                                )}
+                              </Box>
+                              {(option.phone || option.email) && (
+                                <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "11px", display: "block" }}>
+                                  {[option.phone, option.email].filter(Boolean).join(" · ")}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        );
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          placeholder="Search or select customer..."
+                          slotProps={{
+                            ...params.slotProps,
+                            inputLabel: { shrink: true },
+                            input: {
+                              ...params.slotProps?.input,
+                              endAdornment: (
+                                <>
+                                  {params.slotProps?.input?.endAdornment}
+                                  <Tooltip title="Add new customer">
+                                    <IconButton
+                                      size="small"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setQuickCustomerOpen(true);
+                                      }}
+                                      edge="end"
+                                      aria-label="Add new customer"
+                                      sx={{ mr: 0.5 }}
+                                    >
+                                      <Box component={Plus} sx={{ width: 16, height: 16 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                </>
+                              ),
+                            },
+                          }}
+                        />
+                      )}
+                      noOptionsText={
+                        <Box sx={{ py: 1, textAlign: "center" }}>
+                          <Typography variant="body2" sx={{ color: "text.secondary", mb: 1, fontSize: "0.8125rem" }}>
+                            No customer found matching "{customerSearchInput}"
+                          </Typography>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            startIcon={<Box component={UserPlus} sx={{ width: 14, height: 14 }} />}
+                            onClick={() => setQuickCustomerOpen(true)}
+                          >
+                            + Add New Customer
+                          </Button>
+                        </Box>
+                      }
+                    />
                   </Box>
                   {selectedCustomer && (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", padding: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.125rem" } }}>
                       <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", color: "hsl(var(--foreground))" }}>{selectedCustomer.name}</Typography>
@@ -397,5 +601,16 @@ export default function InvoiceAdd() {
           </Card>
         </Box>
       </Box>
+
+      <CustomerQuickDialog
+        open={quickCustomerOpen}
+        onClose={() => setQuickCustomerOpen(false)}
+        initialName={customerSearchInput}
+        onCustomerCreated={(newCust) => {
+          setCustomers((prev) => [newCust as any, ...prev]);
+          setCustomerId(newCust.id);
+          setCustomerSearchInput("");
+        }}
+      />
     </Box></AnimatedPage>;
 }

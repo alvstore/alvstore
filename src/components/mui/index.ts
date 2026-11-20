@@ -23,4 +23,5 @@ export { ChecklistWidget } from "./widgets/ChecklistWidget";
 export { AgendaWidget, type AgendaItem } from "./widgets/AgendaWidget";
 export { WorkloadCalendar } from "./widgets/WorkloadCalendar";
 export { DistributionWidget } from "./widgets/DistributionWidget";
+export { InventoryWatchWidget, type LowStockItem } from "./widgets/InventoryWatchWidget";
 export { Marquee } from "./Marquee";
