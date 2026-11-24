@@ -1,7 +1,9 @@
 import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
-const API = process.env.API_SERVER_URL ?? "http://127.0.0.1:4000";
+const API =
+  process.env.API_SERVER_URL ??
+  (process.env.NODE_ENV === "production" ? "http://195.35.46.243:4000" : "http://127.0.0.1:4000");
 
 class AuthenticationUnavailable extends CredentialsSignin {
   code = "service_unavailable";
