@@ -87,22 +87,6 @@ export const EXHIBITS: Exhibit[] = [
   },
 ];
 
-export const COLLECTION: {
-  name: string;
-  detail: string;
-  brand: string;
-  from: string;
-}[] = [
-  { name: "Floor-standing loudspeakers", detail: "Three-way towers & stand-mounts", brand: "Bowers & Wilkins · KEF", from: "₹1.2 L" },
-  { name: "Centre & surround", detail: "In-wall, in-ceiling, on-wall", brand: "KEF · Monitor Audio", from: "₹38 K" },
-  { name: "Reference subwoofers", detail: "Sealed, ported, dual-stack", brand: "SVS · REL", from: "₹64 K" },
-  { name: "4K laser projection", detail: "D-ILA, SXRD, UST", brand: "Sony · JVC", from: "₹4.0 L" },
-  { name: "Projection screens", detail: "Woven AT & ALR, motorised masking", brand: "Screen Innovations", from: "₹1.1 L" },
-  { name: "AV receivers & processors", detail: "9.4.6 spatial audio", brand: "Denon · Marantz · Trinnov", from: "₹1.8 L" },
-  { name: "Two-channel separates", detail: "Integrated, valve, streaming DACs", brand: "McIntosh · Marantz", from: "₹2.4 L" },
-  { name: "Room automation", detail: "Lighting, drapes, one-touch scenes", brand: "Crestron · Lutron", from: "₹1.8 L" },
-  { name: "Acoustic treatment & fabrics", detail: "Absorption, diffusion, bass traps, stretch fabric", brand: "Vicoustic · Artnovion", from: "₹95 K" },
-];
 
 export const REPAIRS = [
   {
