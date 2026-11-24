@@ -2,12 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
+import { PageLoading } from "@/components/layout/PageLoading";
 
-const Page = dynamic(() => import("@/screens/InvoicePreview"), { ssr: false });
+const Page = dynamic(() => import("@/screens/InvoicePreview"), { ssr: false, loading: PageLoading });
 
 export default function RoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<PageLoading />}>
       <Page />
     </Suspense>
   );

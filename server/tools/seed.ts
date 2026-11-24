@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma, pool } from "../src/db.js";
 import { serverRoot } from "../src/env.js";
+import { DEFAULT_FINANCE_CATEGORIES } from "../src/lib/default-finance-categories.js";
 
 const email = (process.env.ADMIN_EMAIL ?? "admin@alvstore.in").trim().toLowerCase();
 const password = process.env.ADMIN_PASSWORD ?? "admin123";
@@ -21,10 +22,9 @@ try {
     await tx.userRoles.upsert({ where: { user_id_role: { user_id: admin.id, role: "admin" } }, update: {}, create: { user_id: admin.id, role: "admin" } });
     if (!await tx.businessSettings.findFirst()) await tx.businessSettings.create({ data: { company_name: "ALV Store" } });
 
-    for (const [name, type] of [
-      ["POS Sales", "income"], ["Repair Income", "income"], ["Service Income", "income"], ["Other Income", "income"],
-      ["Salary", "expense"], ["Rent", "expense"], ["Purchase", "expense"], ["Utilities", "expense"], ["Maintenance", "expense"], ["Misc Expense", "expense"],
-    ]) if (!await tx.financeCategories.findFirst({ where: { name, type } })) await tx.financeCategories.create({ data: { name, type } });
+    for (const [name, type] of DEFAULT_FINANCE_CATEGORIES) {
+      if (!await tx.financeCategories.findFirst({ where: { name, type } })) await tx.financeCategories.create({ data: { name, type } });
+    }
 
     for (const [name, charge] of [["iPhone", 750], ["Android", 500], ["Laptop", 2600], ["MacBook", 3500], ["Tablet", 1000], ["Other", 500]] as const) {
       if (!await tx.serviceChargeCategories.findFirst({ where: { name } })) await tx.serviceChargeCategories.create({ data: { name, default_charge: charge } });

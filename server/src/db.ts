@@ -1,14 +1,14 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
-import { env } from "./env.js";
+import { env, isEmbeddedPostgresUrl } from "./env.js";
 
-const url = new URL(env.databaseUrl);
-const embedded = ["127.0.0.1", "localhost"].includes(url.hostname) && url.port === (process.env.PGLITE_SOCKET_PORT ?? "5433");
+// PGlite serializes socket clients; cap embedded pools to a single queued connection.
+const embedded = isEmbeddedPostgresUrl(env.databaseUrl);
 const pool = new pg.Pool({
   connectionString: env.databaseUrl,
   max: embedded ? 1 : 5,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: embedded ? 15_000 : 5000,
   idleTimeoutMillis: 30_000,
   keepAlive: true,
 });

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Box, useMediaQuery, type Theme } from "@mui/material";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import { useLocation } from "@/lib/router-compat";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
@@ -34,9 +34,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <Box data-app-shell-content sx={{ ml: { xs: 0, md: `${collapsed ? sidebarDimensions.compact : sidebarDimensions.expanded}px` }, minWidth: 0, minHeight: "100dvh", display: "flex", flexDirection: "column", transition: { xs: "none", md: reduced ? "none" : `margin-left ${sidebarTransition}` }, "@media print": { ml: 0, transition: "none" } }}>
       <AppHeader onMobileMenuToggle={() => setMobileOpen(true)} mobileNavigationOpen={mobileOpen} mobileMenuRef={mobileMenuRef} searchOpen={searchOpen} onSearchOpenChange={setSearchOpen} />
       <Box component="main" id="main-content" sx={{ flex: 1, minWidth: 0, p: { xs: 2, md: 3, lg: 4 } }}>
-        <AnimatePresence mode="wait">
-          <Box component={motion.div} key={pathname} initial={false} animate={{ opacity: 1 }} exit={{ opacity: reduced ? 1 : 0 }} transition={{ duration: reduced ? 0 : 0.12 }}>{children}</Box>
-        </AnimatePresence>
+        {children}
       </Box>
     </Box>
   </Box>;

@@ -2,7 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import net from "node:net";
 import path from "node:path";
-import { env, serverRoot } from "../src/env.js";
+import { env, isEmbeddedPostgresUrl, serverRoot } from "../src/env.js";
 
 export const dataDir = process.env.PGLITE_DATA_DIR ?? path.join(serverRoot, ".pgdata");
 export const socketHost = process.env.PGLITE_SOCKET_HOST ?? "0.0.0.0";
@@ -12,15 +12,7 @@ export const socketConnectHost =
 export const socketPort = Number(process.env.PGLITE_SOCKET_PORT ?? 5433);
 
 export function isLocalDatabase(databaseUrl: string) {
-  try {
-    const url = new URL(databaseUrl);
-    return (
-      ["127.0.0.1", "localhost", "0.0.0.0", socketConnectHost].includes(url.hostname) &&
-      Number(url.port) === socketPort
-    );
-  } catch {
-    return false;
-  }
+  return isEmbeddedPostgresUrl(databaseUrl);
 }
 
 export function socketAvailable(port: number, host = socketConnectHost): Promise<boolean> {

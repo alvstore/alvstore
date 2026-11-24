@@ -67,8 +67,16 @@ test("the page shell does not suppress first-load reveals and widget staggering 
   const shell = fs.readFileSync(path.join(root, "src/components/layout/AppLayout.tsx"), "utf8");
   const section = fs.readFileSync(path.join(root, "src/components/mui/MotionSection.tsx"), "utf8");
   assert.doesNotMatch(shell, /<AnimatePresence[^>]*initial=\{false\}/);
+  assert.doesNotMatch(shell, /<AnimatePresence[^>]*mode=["']wait["']/);
   assert.match(section, /whileInView=/);
   assert.match(section, /once:\s*true/);
   assert.match(section, /entranceDelay\(index\)/);
   assert.match(section, /@media print/);
+});
+
+test("chunk load failures trigger safe one-shot reload detection", async () => {
+  const { isChunkLoadError } = await importTypescript("src/lib/chunk-reload.ts");
+  assert.equal(isChunkLoadError(new Error("ChunkLoadError: Loading chunk 123 failed.")), true);
+  assert.equal(isChunkLoadError(new Error("Failed to fetch dynamically imported module: https://x/a.js")), true);
+  assert.equal(isChunkLoadError(new Error("Request failed (503)")), false);
 });

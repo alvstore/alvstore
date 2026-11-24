@@ -48,4 +48,20 @@ export const env = {
   appOrigin: process.env.APP_ORIGIN ?? "http://localhost:3000",
 };
 
+export function isEmbeddedPostgresUrl(databaseUrl: string): boolean {
+  try {
+    const url = new URL(databaseUrl);
+    const pglitePort = process.env.PGLITE_SOCKET_PORT ?? "5433";
+    const localHosts = new Set([
+      "127.0.0.1",
+      "localhost",
+      "0.0.0.0",
+      ...(process.env.PGLITE_CONNECT_HOST ? [process.env.PGLITE_CONNECT_HOST] : []),
+    ]);
+    return localHosts.has(url.hostname) && url.port === pglitePort;
+  } catch {
+    return false;
+  }
+}
+
 export { serverRoot };
