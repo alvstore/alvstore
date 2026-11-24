@@ -751,6 +751,7 @@ test("the studio enquiry composes a complete note and validates contact details"
   const form = page.getByRole("form", { name: "Write to us" });
   await form.getByLabel("Your name").fill("Ananya Rao");
   await form.getByLabel("Phone").fill("9829012345");
+  await form.getByLabel("Email address").fill("ananya@example.com");
   await form.getByLabel("City").fill("Jaipur");
   await form.getByLabel("The room, in your words").fill("5.4 m by 4.1 m, one window, mostly films at night.");
   // The submit action hands off to the visitor's mail app; intercept the navigation.
@@ -759,7 +760,7 @@ test("the studio enquiry composes a complete note and validates contact details"
   await navigation;
   await expect.poll(() => page.evaluate(() => document.activeElement?.tagName ?? "")).toBeTruthy();
   await form.getByLabel("Phone").fill("123");
-  await page.getByText("A 10-digit number is enough.").waitFor({ state: "visible" }).catch(() => {});
+  await page.getByText(/A 10-digit.*mandatory|A 10-digit number is enough/i).waitFor({ state: "visible" }).catch(() => {});
   expect(errors.filter(error => !/mailto:|ERR_|net::/i.test(error))).toEqual([]);
 });
 

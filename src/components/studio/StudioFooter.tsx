@@ -79,7 +79,7 @@ export function StudioFooter() {
 
         <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 2, pt: 3 }}>
           <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontWeight: 500, fontSize: "0.64rem" }}>
-            © {year} ALVStore Private Limited. All rights reserved.
+            © {year} ALVStore. All rights reserved.
           </Typography>
           <Button
             onClick={scrollToTop}

@@ -30,6 +30,7 @@ const ROOM_TYPES = ["A private cinema", "A 4K laser projector setup", "A dedicat
 export function VisitSection() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [city, setCity] = useState("");
   const [room, setRoom] = useState(ROOM_TYPES[0]);
   const [note, setNote] = useState("");
@@ -44,15 +45,17 @@ export function VisitSection() {
       note.trim() ? `${note.trim()}` : null,
       ``,
       `Name: ${name.trim() || "—"}`,
-      `Phone: ${phone.trim() || "—"}`,
+      `Mobile: ${phone.trim() || "—"}`,
+      `Email: ${email.trim() || "—"}`,
       `City: ${city.trim() || "—"}`,
     ].filter(line => line !== null);
     return lines.join("\n");
-  }, [name, phone, city, room, note]);
+  }, [name, phone, email, city, room, note]);
 
   const nameOk = name.trim().length > 1;
   const phoneOk = phone.replace(/\D/g, "").length >= 10;
-  const valid = nameOk && phoneOk;
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const valid = nameOk && phoneOk && emailOk;
 
   const sendMail = () => {
     setTouched(true);
@@ -225,6 +228,7 @@ export function VisitSection() {
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
               <TextField
                 label="Your name"
+                required
                 value={name}
                 onChange={event => setName(event.target.value)}
                 onBlur={() => setTouched(true)}
@@ -235,14 +239,29 @@ export function VisitSection() {
                 sx={studioFieldSx}
               />
               <TextField
-                label="Phone"
+                label="Mobile / Phone"
+                required
                 value={phone}
                 onChange={event => setPhone(event.target.value)}
                 onBlur={() => setTouched(true)}
                 error={touched && !phoneOk}
-                helperText={touched && !phoneOk ? "A 10-digit number is enough." : " "}
+                helperText={touched && !phoneOk ? "A 10-digit mobile number is mandatory." : " "}
                 autoComplete="tel"
                 inputMode="tel"
+                variant="standard"
+                sx={studioFieldSx}
+              />
+              <TextField
+                label="Email address"
+                required
+                type="email"
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+                onBlur={() => setTouched(true)}
+                error={touched && !emailOk}
+                helperText={touched && !emailOk ? "A valid email address is mandatory." : " "}
+                autoComplete="email"
+                inputMode="email"
                 variant="standard"
                 sx={studioFieldSx}
               />
@@ -255,13 +274,23 @@ export function VisitSection() {
                 variant="standard"
                 sx={studioFieldSx}
               />
-              <TextField select label="This is about" value={room} onChange={event => setRoom(event.target.value)} variant="standard" sx={studioFieldSx}>
-                {ROOM_TYPES.map(type => (
-                  <MenuItem key={type} value={type} sx={{ fontFamily: FONT.text, fontSize: "0.95rem" }}>
-                    {type}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <Box sx={{ gridColumn: { sm: "1 / -1" } }}>
+                <TextField
+                  select
+                  fullWidth
+                  label="This is about"
+                  value={room}
+                  onChange={event => setRoom(event.target.value)}
+                  variant="standard"
+                  sx={studioFieldSx}
+                >
+                  {ROOM_TYPES.map(type => (
+                    <MenuItem key={type} value={type} sx={{ fontFamily: FONT.text, fontSize: "0.95rem" }}>
+                      {type}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Box>
             </Box>
 
             <TextField
