@@ -118,7 +118,12 @@
   --alv-backdrop-sepia:  ;
 }
 html { scroll-behavior: smooth; }
-body { margin: 0; font-feature-settings: "cv02", "cv03", "cv04", "cv11"; }
+body { margin: 0; font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; font-feature-settings: "cv02", "cv03", "cv04", "cv11"; }
+
+/* The public studio sets its own type; keep DM Sans for the ERP screens. */
+[data-static-speaker-evolution] { background: #EAE7DD; }
+[data-static-speaker-evolution] ::selection { background: #9C7B49; color: #F6F4EE; }
+[data-static-speaker-evolution] :focus-visible { outline-color: #9C7B49; }
 h1, h2, h3, h4, h5, h6 { letter-spacing: -0.015em; }
 ul, ol { list-style: none; margin: 0; padding: 0; }
 img, svg, canvas { display: block; vertical-align: middle; }

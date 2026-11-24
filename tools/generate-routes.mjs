@@ -14,8 +14,7 @@ const appDir = path.join(repoRoot, "src", "app");
 // [routePath, importPath, group] — group: "public" | "app" | "redirect"
 const routes = [
   // public
-  ["/", "@/screens/public/HomeTheaterHome", "public"],
-  ["/landing", "@/screens/LandingPage", "public"],
+  ["/", "@/screens/public/AlvStudioHome", "public"],
   ["/login", "@/screens/Login", "public"],
   ["/signup", "@/screens/Signup", "public"],
   ["/forgot-password", "@/screens/ForgotPassword", "public"],
@@ -24,8 +23,7 @@ const routes = [
   ["/job/public/[token]", "@/screens/PublicJobSheet", "public"],
   ["/invoice/public/[token]", "@/screens/PublicInvoice", "public"],
   ["/delivery-report/[token]", "@/screens/PublicDeliveryReport", "public"],
-  ["/home-theater", "@/screens/public/HomeTheaterHome", "public"],
-  ["/contact", "@/screens/public/HomeTheaterContact", "public"],
+  ["/contact", "@/screens/public/AlvStudioContact", "public"],
 
   // protected (app group)
   ["/dashboard", "@/screens/Dashboard", "app"],

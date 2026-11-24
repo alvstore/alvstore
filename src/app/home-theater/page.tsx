@@ -1,14 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import dynamic from "next/dynamic";
-import { Suspense } from "react";
-
-const Page = dynamic(() => import("@/screens/public/HomeTheaterHome"), { ssr: false });
-
-export default function RoutePage() {
-  return (
-    <Suspense fallback={null}>
-      <Page />
-    </Suspense>
-  );
+/** The old storefront route; the gallery now lives at the root. */
+export default function LegacyStorefrontRoute() {
+  redirect("/");
 }

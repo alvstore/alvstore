@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
 
-const Page = dynamic(() => import("@/screens/public/HomeTheaterContact"), { ssr: false });
+const Page = dynamic(() => import("@/screens/public/AlvStudioContact"), { ssr: false });
 
 export default function RoutePage() {
   return (

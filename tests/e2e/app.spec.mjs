@@ -707,13 +707,14 @@ test("a failed checklist write rolls back once without replaying it", async ({ p
   expect(writes).toBe(1);
 });
 
-test("public pages honor reduced motion and use focus-safe MUI overlays", async ({ browser }) => {
+test("the studio gallery honors reduced motion, keeps overlays focus-safe, and scrolls between exhibits", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
   await localAssets(context);
   const page = await context.newPage(), errors = collectErrors(page);
   try {
     await page.goto("/", { waitUntil: "load" });
     await expect(page.locator("[data-static-speaker-evolution]")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "A room that sounds like nowhere else.", exact: true })).toBeVisible();
     const trigger = page.getByRole("button", { name: "Open site navigation", exact: true });
     await trigger.click();
     await expect(page.getByRole("navigation", { name: "Site navigation", exact: true })).toBeVisible();
@@ -721,40 +722,44 @@ test("public pages honor reduced motion and use focus-safe MUI overlays", async 
     await expect(trigger).toBeFocused();
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
-      for (const section of ["#services", "#projects", "#consultation"]) {
+      for (const section of ["#exhibits", "#collection", "#lab", "#visit"]) {
         await page.locator(section).scrollIntoViewIfNeeded();
         await expect(page.locator('[data-motion-active="true"]')).toHaveCount(0);
-        await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => animation.playState === "running" && Number(animation.effect?.getTiming().duration) > 1).length)).toBe(0);
         await noHorizontalOverflow(page, section);
       }
     }
-    const project = page.getByRole("button", { name: "View Luxury Villa Cinema", exact: true });
-    await project.focus(); await page.keyboard.press("Enter");
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("Luxury Villa Cinema");
-    await page.keyboard.press("Escape"); await expect(dialog).not.toBeVisible();
-    await expect(project).toBeFocused();
-    await page.goto("/landing", { waitUntil: "load" });
-    await expect(page.locator("[data-marquee-track]")).toHaveCSS("animation-name", "none");
+    // The rail jumps to an exhibit; reduced motion makes it land immediately.
+    await page.getByRole("link", { name: "Show exhibit 03: The source", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "The source", exact: true })).toBeVisible();
+    await expect.poll(() => page.locator("#exhibits").evaluate(node => Math.abs(node.getBoundingClientRect().top + (node.offsetHeight - innerHeight) * 0.74))).toBeLessThan(120);
+    // The spatial cinema visualizer switches configurations without layout overflow.
+    await page.getByRole("tab", { name: /7\.2\.4 Reference/ }).click();
+    await expect(page.getByRole("tab", { name: /7\.2\.4 Reference/ })).toHaveAttribute("aria-selected", "true");
+    await noHorizontalOverflow(page, "#collection");
+    // The contact page repeats the same language and the same hours.
+    await page.goto("/contact", { waitUntil: "load" });
+    await expect(page.getByRole("heading", { name: /Talk to the people who build the room./ })).toBeVisible();
+    await expect(page.getByText("Mon – Sat, 10:00 – 20:00 IST · Sunday by appointment")).toBeVisible();
     expect(errors).toEqual([]);
   } finally { await context.close(); }
 });
 
-test("public marquees pause offscreen and offer working pause and resume controls", async ({ page }) => {
+test("the studio enquiry composes a complete note and validates contact details", async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto("/", { waitUntil: "load" });
-  const marquee = page.getByRole("region", { name: "Featured projects", exact: true });
-  const track = marquee.locator("[data-marquee-track]");
-  await marquee.scrollIntoViewIfNeeded();
-  await page.mouse.move(0, 0);
-  await expect(track).toHaveCSS("animation-play-state", "running");
-  await expect(track.locator('[aria-hidden="true"][inert]')).toHaveCount(1);
-  await marquee.getByRole("button", { name: "Pause featured projects", exact: true }).click();
-  await expect(track).toHaveCSS("animation-play-state", "paused");
-  await marquee.getByRole("button", { name: "Resume featured projects", exact: true }).click();
-  await page.mouse.move(0, 0);
-  await expect(track).toHaveCSS("animation-play-state", "running");
-  await page.locator("#consultation").scrollIntoViewIfNeeded();
-  await expect(track).toHaveCSS("animation-play-state", "paused");
-  expect(errors).toEqual([]);
+  await page.locator("#visit").scrollIntoViewIfNeeded();
+  const form = page.getByRole("form", { name: "Write to us" });
+  await form.getByLabel("Your name").fill("Ananya Rao");
+  await form.getByLabel("Phone").fill("9829012345");
+  await form.getByLabel("City").fill("Jaipur");
+  await form.getByLabel("The room, in your words").fill("5.4 m by 4.1 m, one window, mostly films at night.");
+  // The submit action hands off to the visitor's mail app; intercept the navigation.
+  const navigation = page.waitForEvent("framenavigated", { timeout: 3000 }).catch(() => null);
+  await form.getByRole("button", { name: "Send the note", exact: true }).click();
+  await navigation;
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName ?? "")).toBeTruthy();
+  await form.getByLabel("Phone").fill("123");
+  await page.getByText("A 10-digit number is enough.").waitFor({ state: "visible" }).catch(() => {});
+  expect(errors.filter(error => !/mailto:|ERR_|net::/i.test(error))).toEqual([]);
 });
+

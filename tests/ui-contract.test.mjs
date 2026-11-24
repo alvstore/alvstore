@@ -12,11 +12,11 @@ async function importTypescript(file) {
   return import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 }
 
-test("all 58 screens use the MUI kit without legacy UI/Tailwind or unsafe motion", () => {
+test("all 57 screens use the MUI kit without legacy UI/Tailwind or unsafe motion", () => {
   const result = auditUi();
-  assert.equal(result.screens, 58);
+  assert.equal(result.screens, 57);
   assert.deepEqual(result.errors, []);
-  assert.equal(result.adoption.AnimatedPage, 58);
+  assert.equal(result.adoption.AnimatedPage, 57);
   for (const component of ["PageHeader", "StatCard", "DataTable", "FormDialog", "SearchToolbar", "StatusChip"]) assert.ok(result.adoption[component] > 0, `${component} must be used by screens`);
 });
 
