@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="alv-emerald" x1="24" y1="16" x2="488" y2="496" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="55%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="124" fill="url(#alv-emerald)"/>
+  
+  <g transform="translate(252, 256) skewX(-5) translate(-256, -256)">
+    <path d="M98 176 H148 L194 336 H150 L138 292 H104 L92 336 H48 L98 176 Z M111 262 H131 L121 218 L111 262 Z" fill="#FFFFFF" fill-rule="evenodd"/>
+    <path d="M210 176 H252 V300 H304 V336 H210 V176 Z" fill="#FFFFFF"/>
+    <path d="M300 176 H346 L375 288 L404 176 H450 L398 336 H352 L300 176 Z" fill="#FFFFFF"/>
+    <circle cx="444" cy="316" r="21" fill="#A7F3D0"/>
+  </g>
+
+</svg>
