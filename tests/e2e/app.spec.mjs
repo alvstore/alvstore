@@ -482,6 +482,8 @@ test("task form, status tabs, dashboard checklist, and persistence work", async 
   await expect(dialog).not.toBeVisible();
   const created = (await data(request, "tasks", "select", undefined, [eq("title", title)]))[0];
   expect(created).toBeTruthy(); records.unshift({ table: "tasks", id: created.id });
+  await expect(page.getByText(title, { exact: true })).toBeVisible();
+  await page.getByRole("group", { name: "Task view", exact: true }).getByRole("button", { name: "Table", exact: true }).click();
   const row = page.getByRole("row").filter({ has: page.getByRole("button", { name: title, exact: true }) });
   await row.getByRole("combobox").click();
   await page.getByRole("option", { name: "completed", exact: true }).click();

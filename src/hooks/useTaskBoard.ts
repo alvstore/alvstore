@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/mui/ToastProvider";
+import { normalizeTaskStatus } from "@/lib/task-lanes";
 
 export interface TaskRecord {
   id: string;
@@ -50,7 +51,11 @@ export function useTaskBoard() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw new Error(error.message);
-      return data ?? [];
+      return (data ?? []).map((task) => ({
+        ...task,
+        status: normalizeTaskStatus(task.status),
+        priority: task.priority || "medium",
+      }));
     },
   });
 

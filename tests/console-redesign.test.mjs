@@ -132,3 +132,97 @@ test("Dashboard uses Materialize bento row + MetricStrip + Recent invoices table
   assert.match(dashSrc, /label="Repair completion"/);
   assert.match(dashSrc, /aria-label="Refresh dashboard"/);
 });
+
+test("pill-style supports hsl() inputs, opaque solidHeaderBg, and WCAG AA solidTextTone", async () => {
+  const { pastelPillColors, solidHeaderBg, solidTextTone } = await importTs("src/lib/pill-style.ts");
+
+  const hslPill = pastelPillColors("hsl(239, 84%, 67%)", "hsl(0, 0%, 100%)", false);
+  const hslBg = blendOver(hslPill.backgroundColor, "#ffffff");
+  assert.ok(getContrastRatio(hslPill.color, hslBg) >= 4.5, "hsl pill light contrast < 4.5");
+
+  for (const [surface, isDark] of [
+    ["#ffffff", false],
+    ["#11161c", true],
+  ]) {
+    const hdr = solidHeaderBg(surface, isDark);
+    const parsed = decomposeColor(hdr);
+    assert.ok(parsed.values.length === 3 || parsed.values[3] === 1, `Header bg not opaque: ${hdr}`);
+  }
+
+  const lightAmber = solidTextTone("#f59e0b", "#ffffff", false);
+  assert.ok(getContrastRatio(lightAmber, "#ffffff") >= 4.5, `Amber text on white < 4.5: ${lightAmber}`);
+
+  const darkIndigo = solidTextTone("#4f46e5", "#11161c", true);
+  assert.ok(getContrastRatio(darkIndigo, "#11161c") >= 4.5, `Indigo text on dark < 4.5: ${darkIndigo}`);
+});
+
+test("summarizeInvoices excludes $0 drafts from paidCount and computePaymentUpdate guards precision & bounds", async () => {
+  const { summarizeInvoices, computePaymentUpdate } = await importTs("src/lib/invoice-metrics.ts");
+
+  const draftStats = summarizeInvoices([
+    { id: "d1", invoice_number: "INV-000", customer_id: "c1", total: 0, paid_amount: 0, payment_status: "unpaid", status: "draft", customers: null },
+  ]);
+  assert.equal(draftStats.paidCount, 0);
+  assert.equal(draftStats.unpaidCount, 1);
+
+  const partial = computePaymentUpdate(200, 100.1, 0.2);
+  assert.deepEqual(partial, {
+    valid: true,
+    nextPaid: 100.3,
+    paymentStatus: "partial",
+    invoiceStatus: "partial",
+    remaining: 99.7,
+  });
+
+  const paid = computePaymentUpdate(200, 100.3, 99.7);
+  assert.deepEqual(paid, {
+    valid: true,
+    nextPaid: 200,
+    paymentStatus: "paid",
+    invoiceStatus: "paid",
+    remaining: 0,
+  });
+
+  for (const badAmount of [0, -10, Number.NaN, Number.POSITIVE_INFINITY, 300]) {
+    assert.equal(computePaymentUpdate(200, 100.3, badAmount).valid, false);
+  }
+});
+
+test("task-lanes computes full-lane neighbors independent of filters and coalesces nullable status", async () => {
+  const { TASK_LANES, getAdjacentLanes, normalizeTaskStatus, formatTaskStatus } = await importTs("src/lib/task-lanes.ts");
+  assert.equal(TASK_LANES.length, 3);
+  assert.equal(getAdjacentLanes("pending").prev, null);
+  assert.equal(getAdjacentLanes("pending").next?.id, "in_progress");
+  assert.equal(getAdjacentLanes("in_progress").prev?.id, "pending");
+  assert.equal(getAdjacentLanes("in_progress").next?.id, "completed");
+  assert.equal(getAdjacentLanes("completed").prev?.id, "in_progress");
+  assert.equal(getAdjacentLanes("completed").next, null);
+  assert.equal(normalizeTaskStatus(null), "pending");
+  assert.equal(normalizeTaskStatus("unknown"), "pending");
+  assert.equal(formatTaskStatus(null), "Pending");
+  assert.equal(formatTaskStatus("in_progress"), "In Progress");
+});
+
+test("calendar-utils handles multi-day overlap intersection and strict category filtering", async () => {
+  const { eventIntersectsDay, matchesCategoryFilter } = await importTs("src/lib/calendar-utils.ts");
+
+  const multiDay = { start_date: "2026-11-20T10:00:00", end_date: "2026-11-22T14:00:00" };
+  assert.equal(eventIntersectsDay(multiDay, new Date("2026-11-19T12:00:00")), false);
+  assert.equal(eventIntersectsDay(multiDay, new Date("2026-11-20T12:00:00")), true);
+  assert.equal(eventIntersectsDay(multiDay, new Date("2026-11-21T12:00:00")), true);
+  assert.equal(eventIntersectsDay(multiDay, new Date("2026-11-22T12:00:00")), true);
+  assert.equal(eventIntersectsDay(multiDay, new Date("2026-11-23T12:00:00")), false);
+
+  const openEnded = { start_date: "2026-11-20T10:00:00", end_date: null };
+  assert.equal(eventIntersectsDay(openEnded, new Date("2026-11-20T12:00:00")), true);
+  assert.equal(eventIntersectsDay(openEnded, new Date("2026-11-21T12:00:00")), false);
+
+  const allOn = { personal: true, business: true, family: true, holiday: true, etc: true };
+  const allOff = { personal: false, business: false, family: false, holiday: false, etc: false };
+  const partialOn = { personal: true, business: false, family: true, holiday: true, etc: true };
+  assert.equal(matchesCategoryFilter("unknown_cat", allOn), true);
+  assert.equal(matchesCategoryFilter("unknown_cat", allOff), false);
+  assert.equal(matchesCategoryFilter("unknown_cat", partialOn), false);
+  assert.equal(matchesCategoryFilter("business", partialOn), false);
+  assert.equal(matchesCategoryFilter("personal", partialOn), true);
+});

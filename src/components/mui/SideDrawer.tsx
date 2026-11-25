@@ -118,6 +118,7 @@ export function SideDrawer({
         <Box sx={{ borderBottom: 1, borderColor: "divider", px: 3, flexShrink: 0 }}>
           <Tabs
             value={activeTab}
+            aria-label="Drawer sections"
             onChange={(_event, val: string) => onTabChange(val)}
             variant="standard"
             sx={{ minHeight: 40 }}
@@ -127,6 +128,7 @@ export function SideDrawer({
                 key={tab.value}
                 value={tab.value}
                 label={tab.label}
+                disabled={busy}
                 sx={{ minHeight: 40, px: 1.5, mr: 1.5, fontSize: 13, fontWeight: 600 }}
               />
             ))}

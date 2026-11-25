@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Alert, Avatar, Box, Button, Card, Chip, Divider, IconButton, MenuItem,
+  Alert, Avatar, Box, Button, Card, CardActionArea, Chip, Divider, IconButton, MenuItem,
   Tab, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -15,19 +15,14 @@ import { useTaskBoard, type TaskRecord as Task } from "@/hooks/useTaskBoard";
 import { supabase } from "@/integrations/supabase/client";
 import { taskSummary } from "@/lib/task-summary";
 import { localDateKey } from "@/lib/widget-data";
-import { pastelPillColors } from "@/lib/pill-style";
+import { pastelPillColors, solidHeaderBg, solidTextTone } from "@/lib/pill-style";
+import { TASK_LANES, formatTaskStatus, getAdjacentLanes, normalizeTaskStatus } from "@/lib/task-lanes";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Calendar, CheckCircle2, ClipboardList,
   Clock, LayoutGrid, List, Plus, Trash2, Zap,
 } from "lucide-react";
 
 type TaskViewMode = "board" | "table";
-
-const LANES = [
-  { id: "pending", label: "Pending", accent: "warning" as const },
-  { id: "in_progress", label: "In Progress", accent: "info" as const },
-  { id: "completed", label: "Completed", accent: "success" as const },
-];
 
 const emptyForm = {
   title: "",
@@ -64,14 +59,23 @@ export default function Tasks() {
   const [staffList, setStaffList] = useState<{ user_id: string; full_name: string | null }[]>([]);
 
   useEffect(() => {
-    void supabase.from("profiles").select("user_id, full_name").then(({ data }) => setStaffList(data || []));
+    let active = true;
+    void supabase
+      .from("profiles")
+      .select("user_id, full_name")
+      .then(({ data }) => {
+        if (active) setStaffList(data || []);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const tasks = useMemo(
     () =>
       board.tasks.filter(
         (task) =>
-          (statusFilter === "all" || task.status === statusFilter) &&
+          (statusFilter === "all" || normalizeTaskStatus(task.status) === statusFilter) &&
           task.title.toLowerCase().includes(search.trim().toLowerCase())
       ),
     [board.tasks, statusFilter, search]
@@ -159,14 +163,14 @@ export default function Tasks() {
     return pastelPillColors(muiTheme.palette.warning.main, paperBg, isDark);
   };
 
-  const pendingCount = board.tasks.filter((t) => t.status === "pending").length;
-  const inProgressCount = board.tasks.filter((t) => t.status === "in_progress").length;
+  const pendingCount = board.tasks.filter((t) => normalizeTaskStatus(t.status) === "pending").length;
+  const inProgressCount = board.tasks.filter((t) => normalizeTaskStatus(t.status) === "in_progress").length;
 
-  const visibleLanes = statusFilter === "all" ? LANES : LANES.filter((l) => l.id === statusFilter);
+  const visibleLanes = statusFilter === "all" ? TASK_LANES : TASK_LANES.filter((l) => l.id === statusFilter);
 
   return (
     <AnimatedPage>
-      <Box sx={{ display: "grid", gap: 3 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 3, minWidth: 0 }}>
         <PageHeader
           title="Task Management"
           subtitle="Create and track tasks across your team"
@@ -224,7 +228,8 @@ export default function Tasks() {
               {
                 id: "progress",
                 label: "Team Completion",
-                value: `${summary.percent}%`,
+                value: Math.round(summary.percent),
+                formatter: (val) => `${Math.round(val)}%`,
                 caption: `${summary.completed} / ${summary.total} done`,
                 icon: <CheckCircle2 size={20} />,
                 accent: "success",
@@ -288,19 +293,21 @@ export default function Tasks() {
             sx={{
               display: "grid",
               gridTemplateColumns: {
-                xs: `repeat(${visibleLanes.length}, minmax(268px, 1fr))`,
+                xs: "minmax(0, 1fr)",
+                md: `repeat(${Math.min(2, visibleLanes.length)}, minmax(0, 1fr))`,
                 lg: `repeat(${visibleLanes.length}, minmax(0, 1fr))`,
               },
               gap: 2.25,
-              overflowX: "auto",
               pb: 1,
+              minWidth: 0,
               alignItems: "start",
             }}
           >
-            {visibleLanes.map((lane, laneIdx) => {
-              const laneTasks = tasks.filter((t) => t.status === lane.id);
+            {visibleLanes.map((lane) => {
+              const laneTasks = tasks.filter((t) => normalizeTaskStatus(t.status) === lane.id);
               const laneColor = muiTheme.palette[lane.accent].main;
               const laneBadgeStyle = pastelPillColors(laneColor, muiTheme.palette.background.default, isDark);
+              const { prev: prevLane, next: nextLane } = getAdjacentLanes(lane.id);
 
               return (
                 <Box key={lane.id} sx={{ display: "grid", gap: 1.5, minWidth: 0 }}>
@@ -319,7 +326,12 @@ export default function Tasks() {
                     </Box>
                     {isAdminOrStaff && (
                       <Tooltip title={`Add to ${lane.label}`}>
-                        <IconButton size="small" aria-label={`Add task to ${lane.label}`} onClick={() => openNew(lane.id)}>
+                        <IconButton
+                          size="small"
+                          aria-label={`Add task to ${lane.label}`}
+                          onClick={() => openNew(lane.id)}
+                          sx={{ minWidth: 36, minHeight: 36 }}
+                        >
                           <Plus size={16} />
                         </IconButton>
                       </Tooltip>
@@ -337,20 +349,19 @@ export default function Tasks() {
                     </Card>
                   ) : (
                     laneTasks.map((t) => {
-                      const overdue = Boolean(t.due_date && t.due_date < today && t.status !== "completed");
+                      const safeStatus = normalizeTaskStatus(t.status);
+                      const safePriority = t.priority ?? "medium";
+                      const overdue = Boolean(t.due_date && t.due_date < today && safeStatus !== "completed");
                       const staffName = getStaffName(t.assigned_to);
                       const initials = staffName === "Unassigned" ? "—" : staffName.slice(0, 2).toUpperCase();
                       const busyMove = board.pendingIds.includes(t.id);
-                      const prevLane = laneIdx > 0 ? LANES[laneIdx - 1] : null;
-                      const nextLane = laneIdx < LANES.length - 1 ? LANES[laneIdx + 1] : null;
 
                       return (
                         <Card
                           key={t.id}
-                          onClick={() => openEdit(t)}
                           sx={{
-                            p: 2,
-                            cursor: "pointer",
+                            p: 0,
+                            overflow: "hidden",
                             transition: "transform 160ms ease, border-color 160ms ease",
                             "&:hover": {
                               transform: "translateY(-2px)",
@@ -358,20 +369,20 @@ export default function Tasks() {
                             },
                           }}
                         >
-                          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1.25 }}>
+                          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: 2, pt: 1.5, pb: 0.25 }}>
                             <Chip
                               size="small"
-                              label={t.priority}
+                              label={safePriority}
                               sx={{
                                 height: 22,
                                 fontSize: 11,
                                 fontWeight: 650,
                                 textTransform: "capitalize",
                                 borderRadius: "6px",
-                                ...priorityPillStyle(t.priority),
+                                ...priorityPillStyle(safePriority),
                               }}
                             />
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }} onClick={(e) => e.stopPropagation()}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
                               {prevLane && (
                                 <Tooltip title={`Move to ${prevLane.label}`}>
                                   <IconButton
@@ -379,6 +390,7 @@ export default function Tasks() {
                                     disabled={busyMove}
                                     aria-label={`Move ${t.title} to ${prevLane.label}`}
                                     onClick={() => void board.updateStatus(t.id, prevLane.id)}
+                                    sx={{ minWidth: 36, minHeight: 36 }}
                                   >
                                     <ArrowLeft size={14} />
                                   </IconButton>
@@ -391,6 +403,7 @@ export default function Tasks() {
                                     disabled={busyMove}
                                     aria-label={`Move ${t.title} to ${nextLane.label}`}
                                     onClick={() => void board.updateStatus(t.id, nextLane.id)}
+                                    sx={{ minWidth: 36, minHeight: 36 }}
                                   >
                                     <ArrowRight size={14} />
                                   </IconButton>
@@ -399,76 +412,87 @@ export default function Tasks() {
                             </Box>
                           </Box>
 
-                          <Typography variant="body2" sx={{ fontWeight: 650, lineHeight: 1.4, mb: t.description ? 0.5 : 0 }}>
-                            {t.title}
-                          </Typography>
-                          {t.description && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
-                                lineHeight: 1.45,
-                              }}
-                            >
-                              {t.description}
-                            </Typography>
-                          )}
-
-                          <Box
+                          <CardActionArea
+                            onClick={() => openEdit(t)}
                             sx={{
-                              mt: 1.75,
-                              pt: 1.25,
-                              borderTop: 1,
-                              borderColor: "divider",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 1,
+                              px: 2,
+                              pb: 2,
+                              pt: 0.75,
+                              display: "block",
+                              textAlign: "left",
                             }}
                           >
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, flexWrap: "wrap" }}>
-                              {t.due_date && (
-                                <Box
-                                  sx={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 0.5,
-                                    color: overdue ? "error.main" : "text.secondary",
-                                    fontSize: 11,
-                                    fontWeight: overdue ? 650 : 500,
-                                  }}
-                                >
-                                  <Calendar size={12} />
-                                  {new Date(`${t.due_date}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                                </Box>
-                              )}
-                              {t.related_entity_type && (
-                                <Chip
-                                  size="small"
-                                  variant="outlined"
-                                  label={t.related_entity_type.replace(/_/g, " ")}
-                                  sx={{ height: 20, fontSize: 10, textTransform: "capitalize" }}
-                                />
-                              )}
-                            </Box>
-                            <Tooltip title={staffName}>
-                              <Avatar
+                            <Typography variant="body2" sx={{ fontWeight: 650, lineHeight: 1.4, mb: t.description ? 0.5 : 0 }}>
+                              {t.title}
+                            </Typography>
+                            {t.description && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
                                 sx={{
-                                  width: 26,
-                                  height: 26,
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  ...pastelPillColors(muiTheme.palette.primary.main, paperBg, isDark),
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden",
+                                  lineHeight: 1.45,
                                 }}
                               >
-                                {initials}
-                              </Avatar>
-                            </Tooltip>
-                          </Box>
+                                {t.description}
+                              </Typography>
+                            )}
+
+                            <Box
+                              sx={{
+                                mt: 1.75,
+                                pt: 1.25,
+                                borderTop: 1,
+                                borderColor: "divider",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 1,
+                              }}
+                            >
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, flexWrap: "wrap" }}>
+                                {t.due_date && (
+                                  <Box
+                                    sx={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 0.5,
+                                      color: overdue ? solidTextTone(muiTheme.palette.error.main, paperBg, isDark) : "text.secondary",
+                                      fontSize: 11,
+                                      fontWeight: overdue ? 650 : 500,
+                                    }}
+                                  >
+                                    <Calendar size={12} />
+                                    {new Date(`${t.due_date}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                                  </Box>
+                                )}
+                                {t.related_entity_type && (
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    label={t.related_entity_type.replace(/_/g, " ")}
+                                    sx={{ height: 20, fontSize: 10, textTransform: "capitalize" }}
+                                  />
+                                )}
+                              </Box>
+                              <Tooltip title={staffName}>
+                                <Avatar
+                                  sx={{
+                                    width: 26,
+                                    height: 26,
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    ...pastelPillColors(muiTheme.palette.primary.main, paperBg, isDark),
+                                  }}
+                                >
+                                  {initials}
+                                </Avatar>
+                              </Tooltip>
+                            </Box>
+                          </CardActionArea>
                         </Card>
                       );
                     })
@@ -504,7 +528,7 @@ export default function Tasks() {
               }
               sx={{
                 "& thead th": {
-                  bgcolor: isDark ? alpha(muiTheme.palette.common.white, 0.04) : "#F5F5F7",
+                  bgcolor: solidHeaderBg(paperBg, isDark),
                   fontSize: "11px",
                   fontWeight: 650,
                   textTransform: "uppercase",
@@ -524,55 +548,63 @@ export default function Tasks() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {tasks.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell sx={{ fontWeight: 500 }}>
-                      <Button
-                        variant="text"
-                        onClick={() => openEdit(t)}
-                        sx={{ textAlign: "left", justifyContent: "flex-start", color: "text.primary", fontSize: 12.5, fontWeight: 600 }}
-                      >
-                        {t.title}
-                      </Button>
-                    </TableCell>
-                    <TableCell>
-                      <StatusChip
-                        label={t.priority}
-                        sx={{ fontWeight: 650, textTransform: "capitalize", ...priorityPillStyle(t.priority) }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        value={t.status}
-                        select
-                        size="small"
-                        fullWidth
-                        disabled={board.pendingIds.includes(t.id)}
-                        aria-label={`Status for ${t.title}`}
-                        onChange={(event) => void board.updateStatus(t.id, event.target.value)}
-                        slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-                        sx={{ width: "126px", fontSize: "0.75rem" }}
-                      >
-                        {["pending", "in_progress", "completed"].map((s) => (
-                          <MenuItem key={s} value={s} sx={{ fontSize: "0.78rem", textTransform: "capitalize" }}>
-                            {s.replace(/_/g, " ")}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </TableCell>
-                    <TableCell sx={{ display: { xs: "none", sm: "table-cell" }, fontSize: "0.85rem" }}>
-                      {getStaffName(t.assigned_to)}
-                    </TableCell>
-                    <TableCell sx={{ display: { xs: "none", md: "table-cell" }, fontSize: "0.85rem", color: "text.secondary" }}>
-                      {t.due_date ? new Date(`${t.due_date}T00:00:00`).toLocaleDateString("en-IN") : "—"}
-                    </TableCell>
-                    <TableCell sx={{ textAlign: "right" }}>
-                      <Button onClick={() => openEdit(t)} variant="outlined" size="small" sx={{ minHeight: 32, fontSize: "0.75rem" }}>
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {tasks.map((t) => {
+                  const safePriority = t.priority ?? "medium";
+                  const safeStatus = normalizeTaskStatus(t.status);
+                  return (
+                    <TableRow key={t.id}>
+                      <TableCell sx={{ fontWeight: 500 }}>
+                        <Button
+                          variant="text"
+                          onClick={() => openEdit(t)}
+                          sx={{ minHeight: 36, textAlign: "left", justifyContent: "flex-start", color: "text.primary", fontSize: 12.5, fontWeight: 600 }}
+                        >
+                          {t.title}
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <StatusChip
+                          label={safePriority}
+                          sx={{ fontWeight: 650, textTransform: "capitalize", ...priorityPillStyle(safePriority) }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          value={safeStatus}
+                          select
+                          size="small"
+                          fullWidth
+                          disabled={board.pendingIds.includes(t.id)}
+                          aria-label={`Status for ${t.title}`}
+                          onChange={(event) => void board.updateStatus(t.id, event.target.value)}
+                          slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+                          sx={{ width: "126px", fontSize: "0.75rem" }}
+                        >
+                          {TASK_LANES.map((lane) => (
+                            <MenuItem
+                              key={lane.id}
+                              value={lane.id}
+                              sx={{ fontSize: "0.78rem", textTransform: "capitalize" }}
+                            >
+                              {lane.id.replace(/_/g, " ")}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </TableCell>
+                      <TableCell sx={{ display: { xs: "none", sm: "table-cell" }, fontSize: "0.85rem" }}>
+                        {getStaffName(t.assigned_to)}
+                      </TableCell>
+                      <TableCell sx={{ display: { xs: "none", md: "table-cell" }, fontSize: "0.85rem", color: "text.secondary" }}>
+                        {t.due_date ? new Date(`${t.due_date}T00:00:00`).toLocaleDateString("en-IN") : "—"}
+                      </TableCell>
+                      <TableCell sx={{ textAlign: "right" }}>
+                        <Button onClick={() => openEdit(t)} variant="outlined" size="small" sx={{ minHeight: 36, fontSize: "0.75rem" }}>
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </DataTable>
           </Card>
@@ -668,7 +700,7 @@ export default function Tasks() {
                   onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
                   slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
                 >
-                  {LANES.map((l) => (
+                  {TASK_LANES.map((l) => (
                     <MenuItem key={l.id} value={l.id}>
                       {l.label}
                     </MenuItem>
@@ -694,6 +726,9 @@ export default function Tasks() {
                 slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
               >
                 <MenuItem value="">Unassigned</MenuItem>
+                {form.assigned_to && !staffList.some((s) => s.user_id === form.assigned_to) && (
+                  <MenuItem value={form.assigned_to}>Assigned user</MenuItem>
+                )}
                 {staffList.map((s) => (
                   <MenuItem key={s.user_id} value={s.user_id}>
                     {s.full_name || "Unnamed"}
@@ -706,7 +741,7 @@ export default function Tasks() {
                 select
                 size="small"
                 fullWidth
-                onChange={(e) => setForm((p) => ({ ...p, related_entity_type: e.target.value }))}
+                onChange={(e) => setForm((p) => ({ ...p, related_entity_type: e.target.value, related_entity_id: "" }))}
                 slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
               >
                 <MenuItem value="">None</MenuItem>
@@ -727,13 +762,13 @@ export default function Tasks() {
                   <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 1.5 }}>
                     <Chip
                       size="small"
-                      label={activeTask.status.replace(/_/g, " ")}
-                      sx={{ fontWeight: 650, textTransform: "capitalize", ...statusPillStyle(activeTask.status) }}
+                      label={formatTaskStatus(activeTask.status)}
+                      sx={{ fontWeight: 650, textTransform: "capitalize", ...statusPillStyle(normalizeTaskStatus(activeTask.status)) }}
                     />
                     <Chip
                       size="small"
-                      label={`${activeTask.priority} priority`}
-                      sx={{ fontWeight: 650, textTransform: "capitalize", ...priorityPillStyle(activeTask.priority) }}
+                      label={`${activeTask.priority ?? "medium"} priority`}
+                      sx={{ fontWeight: 650, textTransform: "capitalize", ...priorityPillStyle(activeTask.priority ?? "medium") }}
                     />
                   </Box>
                   <Divider sx={{ my: 1.5 }} />
@@ -762,13 +797,17 @@ export default function Tasks() {
                     Quick Move Stage
                   </Typography>
                   <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                    {LANES.map((l) => (
+                    {TASK_LANES.map((l) => (
                       <Button
                         key={l.id}
                         size="small"
-                        variant={activeTask.status === l.id ? "contained" : "outlined"}
-                        disabled={board.pendingIds.includes(activeTask.id) || activeTask.status === l.id}
-                        onClick={() => void board.updateStatus(activeTask.id, l.id)}
+                        variant={normalizeTaskStatus(activeTask.status) === l.id ? "contained" : "outlined"}
+                        disabled={board.pendingIds.includes(activeTask.id) || normalizeTaskStatus(activeTask.status) === l.id}
+                        onClick={() => {
+                          void board.updateStatus(activeTask.id, l.id);
+                          setForm((p) => ({ ...p, status: l.id }));
+                        }}
+                        sx={{ minHeight: 36 }}
                       >
                         {l.label}
                       </Button>

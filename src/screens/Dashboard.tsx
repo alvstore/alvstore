@@ -25,7 +25,8 @@ import { useNavigate } from "@/lib/router-compat";
 import { completionPercent, dailySeries, localDateKey } from "@/lib/widget-data";
 import { taskSummary } from "@/lib/task-summary";
 import { controlFeedback } from "@/lib/motion-presets";
-import { pastelPillColors } from "@/lib/pill-style";
+import { pastelPillColors, solidHeaderBg, solidTextTone } from "@/lib/pill-style";
+import { formatTaskStatus } from "@/lib/task-lanes";
 
 const integer = (value: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value);
 const sum = (rows: any[] | null, column: string) =>
@@ -45,7 +46,12 @@ async function fetchKpis() {
     supabase.from("finance_transactions").select("amount, type").gte("date", localDateKey(monthStart)).lte("date", localDateKey(today)),
     supabase.from("products").select("id", { count: "exact", head: true }).or("stock_quantity.lte.low_stock_threshold"),
     supabase.from("customers").select("id", { count: "exact", head: true }),
-    supabase.from("invoices").select("total, paid_amount").gte("created_at", monthStart.toISOString()).lt("created_at", tomorrow),
+    supabase
+      .from("invoices")
+      .select("total, paid_amount")
+      .neq("status", "cancelled")
+      .gte("created_at", monthStart.toISOString())
+      .lt("created_at", tomorrow),
   ]);
   assertResults(results);
   const [sales, pending, accounts, finance, stock, customers, invoices] = results;
@@ -94,7 +100,8 @@ async function fetchRepairs() {
 async function fetchRecentInvoices() {
   const { data, error } = await supabase
     .from("invoices")
-    .select("id, invoice_number, total, paid_amount, payment_status, created_at, customers(name)")
+    .select("id, invoice_number, total, paid_amount, payment_status, status, created_at, customers(name)")
+    .neq("status", "cancelled")
     .order("created_at", { ascending: false })
     .limit(5);
   if (error) throw new Error(error.message);
@@ -162,7 +169,7 @@ export default function Dashboard() {
         allDay: true,
         kind: "task" as const,
         completed: task.status === "completed",
-        detail: `${task.priority} priority · ${task.status.replace(/_/g, " ")}`,
+        detail: `${task.priority ?? "medium"} priority · ${formatTaskStatus(task.status)}`,
       })),
   ];
 
@@ -213,20 +220,20 @@ export default function Dashboard() {
       id: `tsk-${task.id}`,
       color: task.status === "completed" ? muiTheme.palette.info.main : muiTheme.palette.warning.main,
       title: task.title,
-      subtitle: `${task.priority} priority · ${task.status.replace(/_/g, " ")}`,
+      subtitle: `${task.priority ?? "medium"} priority · ${formatTaskStatus(task.status)}`,
       time: task.due_date ? format(new Date(`${task.due_date}T00:00:00`), "d MMM") : "No due date",
     })),
   ];
 
   return (
     <AnimatedPage>
-      <Box sx={{ display: "grid", gap: 3 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 3, minWidth: 0 }}>
         <PageHeader
           title="Dashboard"
           subtitle={
             <>
               {greeting},{" "}
-              <Box component="span" sx={{ color: "primary.main", fontWeight: 600 }}>
+              <Box component="span" sx={{ color: solidTextTone(muiTheme.palette.primary.main, paperBg, isDark), fontWeight: 600 }}>
                 {firstName}
               </Box>
               . Welcome back — here’s your store at a glance.
@@ -237,7 +244,14 @@ export default function Dashboard() {
               <Chip variant="outlined" size="small" label={format(new Date(), "EEE, d MMM")} sx={{ fontSize: 11 }} />
               <Tooltip title="Refresh dashboard">
                 <Box component="span">
-                  <IconButton aria-label="Refresh dashboard" aria-busy={refreshing} loading={refreshing} onClick={refresh} size="small">
+                  <IconButton
+                    aria-label="Refresh dashboard"
+                    aria-busy={refreshing}
+                    loading={refreshing}
+                    onClick={refresh}
+                    size="small"
+                    sx={{ minWidth: 36, minHeight: 36 }}
+                  >
                     <Refresh fontSize="small" />
                   </IconButton>
                 </Box>
@@ -270,7 +284,7 @@ export default function Dashboard() {
                 px: 1.25,
                 py: 0.35,
                 borderRadius: "9999px",
-                bgcolor: alpha(muiTheme.palette.success.main, 0.12),
+                bgcolor: paidPill.backgroundColor,
                 border: `1px solid ${alpha(muiTheme.palette.success.main, 0.25)}`,
               }}
             >
@@ -295,19 +309,37 @@ export default function Dashboard() {
                   },
                 }}
               />
-              <Typography variant="caption" sx={{ fontSize: 10.5, fontWeight: 700, color: "success.main", letterSpacing: ".04em" }}>
+              <Typography variant="caption" sx={{ fontSize: 10.5, fontWeight: 700, color: paidPill.color, letterSpacing: ".04em" }}>
                 STORE ACTIVE
               </Typography>
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: 12 }}>
-              <Box component="span" sx={{ fontWeight: 650, color: "text.primary" }}>{repairs?.active ?? 0}</Box> active repairs ·{" "}
-              <Box component="span" sx={{ fontWeight: 650, color: "text.primary" }}>{work.total - work.completed}</Box> pending tasks ·{" "}
-              {kpis?.lowStock ? (
-                <Box component="span" sx={{ color: "warning.main", fontWeight: 650 }}>
+              <Box component="span" sx={{ fontWeight: 650, color: "text.primary" }}>
+                {repairsQuery.isPending || repairsQuery.isError ? "—" : repairs?.active ?? 0}
+              </Box>{" "}
+              active repairs ·{" "}
+              <Box component="span" sx={{ fontWeight: 650, color: "text.primary" }}>
+                {board.isPending || board.isError ? "—" : work.total - work.completed}
+              </Box>{" "}
+              pending tasks ·{" "}
+              {kpiQuery.isError ? (
+                <Box component="span" sx={{ color: "text.secondary", fontWeight: 600 }}>Stock unavailable</Box>
+              ) : kpiQuery.isPending ? (
+                <Box component="span" sx={{ color: "text.secondary", fontWeight: 600 }}>Checking stock…</Box>
+              ) : kpis?.lowStock ? (
+                <Box
+                  component="span"
+                  sx={{ color: solidTextTone(muiTheme.palette.warning.main, paperBg, isDark), fontWeight: 650 }}
+                >
                   {kpis.lowStock} low stock item{kpis.lowStock > 1 ? "s" : ""}
                 </Box>
               ) : (
-                <Box component="span" sx={{ color: "success.main", fontWeight: 600 }}>Stock healthy</Box>
+                <Box
+                  component="span"
+                  sx={{ color: solidTextTone(muiTheme.palette.success.main, paperBg, isDark), fontWeight: 600 }}
+                >
+                  Stock healthy
+                </Box>
               )}
             </Typography>
           </Box>
@@ -340,17 +372,18 @@ export default function Dashboard() {
           </Alert>
         )}
 
-        {/* Row 1: Materialize CRM Bento Hero + 4 Compact KPI / Sparkline Cards */}
+        {/* Row 1: Materialize CRM Bento Hero + Balanced Primary KPIs */}
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "minmax(0, 1.85fr) repeat(4, minmax(0, 1fr))" },
+            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" },
             gap: 2,
           }}
         >
           {/* Hero Performance Card */}
           <Card
             sx={{
+              gridColumn: { xs: "auto", sm: "1 / -1", lg: "span 2" },
               p: 2.5,
               borderRadius: "16px",
               display: "flex",
@@ -368,26 +401,45 @@ export default function Dashboard() {
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.25 }}>
                 {format(new Date(), "MMMM yyyy")} performance
               </Typography>
-              <Typography
-                component="div"
-                sx={{ fontSize: { xs: 24, sm: 28 }, fontWeight: 750, color: "primary.main", letterSpacing: "-0.04em", fontVariantNumeric: "tabular-nums" }}
-              >
-                {kpiQuery.isError ? "—" : <CountUp value={kpis?.revenue ?? 0} formatter={money} />}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, mb: 1.75 }}>
-                {Math.round(collection)}% of monthly billing collected
-              </Typography>
-              <Button variant="contained" size="small" onClick={() => navigate("/invoices")} sx={{ borderRadius: "8px" }}>
+              {kpiQuery.isPending ? (
+                <>
+                  <Skeleton width={150} height={38} />
+                  <Skeleton width={190} height={18} sx={{ mt: 0.5, mb: 1.75 }} />
+                </>
+              ) : (
+                <>
+                  <Typography
+                    component="div"
+                    sx={{
+                      fontSize: { xs: 24, sm: 28 },
+                      fontWeight: 750,
+                      color: solidTextTone(muiTheme.palette.primary.main, paperBg, isDark),
+                      letterSpacing: "-0.04em",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {kpiQuery.isError ? "—" : <CountUp value={kpis?.revenue ?? 0} formatter={money} />}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, mb: 1.75 }}>
+                    {kpiQuery.isError ? "Monthly collection unavailable" : `${Math.round(collection)}% of monthly billing collected`}
+                  </Typography>
+                </>
+              )}
+              <Button variant="contained" size="small" onClick={() => navigate("/invoices")} sx={{ borderRadius: "8px", minHeight: 36 }}>
                 View Invoices
               </Button>
             </Box>
             <Box sx={{ flexShrink: 0, display: { xs: "none", sm: "block" } }}>
-              <ProgressRing
-                size={96}
-                value={Math.round(collection)}
-                label="Monthly invoice collection"
-                color="primary"
-              />
+              {kpiQuery.isPending ? (
+                <Skeleton variant="circular" width={96} height={96} />
+              ) : (
+                <ProgressRing
+                  size={96}
+                  value={kpiQuery.isError ? 0 : Math.round(collection)}
+                  label="Monthly invoice collection"
+                  color="primary"
+                />
+              )}
             </Box>
           </Card>
 
@@ -410,33 +462,11 @@ export default function Dashboard() {
             isCurrency
             icon={<Receipt fontSize="small" />}
             accent="primary"
-            trend={`${Math.round(collection)}% paid`}
+            trend={kpiQuery.isError ? "Unavailable" : `${Math.round(collection)}% paid`}
             caption="Value invoiced"
             loading={kpiQuery.isPending}
             index={2}
             onClick={() => navigate("/invoices")}
-          />
-          <StatCard
-            label="Cash Balance"
-            value={kpiValue(kpis?.totalBalance)}
-            isCurrency
-            icon={<AccountBalanceWallet fontSize="small" />}
-            accent="info"
-            caption="Active accounts"
-            loading={kpiQuery.isPending}
-            index={3}
-            onClick={() => navigate("/finance")}
-          />
-          <StatCard
-            label="Store Vitality"
-            value={kpiQuery.isError ? "—" : `${vitalityScore}%`}
-            icon={<TrendingUp fontSize="small" />}
-            accent={vitalityScore >= 75 ? "success" : "warning"}
-            trend={repairs?.completed ? `${repairs.completed} done` : "Live"}
-            caption="Cross-module pulse"
-            loading={kpiQuery.isPending || repairsQuery.isPending}
-            index={4}
-            onClick={() => navigate("/reports")}
           />
         </Box>
 
@@ -445,6 +475,16 @@ export default function Dashboard() {
           loading={kpiQuery.isPending || repairsQuery.isPending}
           index={1}
           items={[
+            {
+              id: "cash-balance",
+              label: "Cash Balance",
+              value: kpiValue(kpis?.totalBalance),
+              isCurrency: true,
+              caption: "Active accounts",
+              icon: <AccountBalanceWallet fontSize="small" />,
+              accent: "info",
+              onClick: () => navigate("/finance"),
+            },
             {
               id: "pending-payments",
               label: "Pending Payments",
@@ -456,28 +496,19 @@ export default function Dashboard() {
               onClick: () => navigate("/payments"),
             },
             {
-              id: "customers",
-              label: "Customers",
-              value: kpiValue(kpis?.totalCustomers),
-              caption: "CRM directory",
-              icon: <People fontSize="small" />,
-              accent: "primary",
-              onClick: () => navigate("/customers"),
-            },
-            {
               id: "repairs",
               label: "Active Repairs",
               value: repairsQuery.isError ? "—" : repairs?.active ?? 0,
               caption: "Open & ready jobs",
               icon: <Build fontSize="small" />,
-              accent: "info",
+              accent: "primary",
               onClick: () => navigate("/repairs"),
             },
             {
               id: "low-stock",
               label: "Low Stock Items",
               value: kpiValue(kpis?.lowStock),
-              caption: "At reorder level",
+              caption: kpis?.totalCustomers !== undefined ? `${integer(kpis.totalCustomers)} CRM customers` : "At reorder level",
               icon: <Inventory2 fontSize="small" />,
               accent: kpis?.lowStock ? "error" : "success",
               onClick: () => navigate("/inventory"),
@@ -485,18 +516,8 @@ export default function Dashboard() {
           ]}
         />
 
-        {/* Row 2: Repair Pipeline + Sales Activity + Repair Momentum */}
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1fr) minmax(0,1.55fr) minmax(0,1fr)" }, gap: 2.5 }}>
-          <DistributionWidget
-            title="Repair pipeline"
-            subtitle="Every job, by its current stage."
-            items={repairs?.items ?? []}
-            loading={repairsQuery.isPending}
-            error={repairsQuery.error?.message}
-            onRetry={() => void repairsQuery.refetch()}
-            formatter={integer}
-            index={0}
-          />
+        {/* Row 2 (Above Fold): Sales Activity + Repair Momentum */}
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1.7fr) minmax(0,1fr)" }, gap: 2.5 }}>
           <TrendChart
             title="Sales activity"
             subtitle="A little perspective on your daily sales."
@@ -505,18 +526,18 @@ export default function Dashboard() {
             loading={salesQuery.isPending}
             error={salesQuery.error?.message}
             onRetry={() => void salesQuery.refetch()}
-            index={1}
+            index={0}
           />
           <WidgetCard
             title="Repair momentum"
             subtitle="A clear view of your team’s repair progress."
             eyebrow="OPERATIONS"
             featured
-            index={2}
+            index={1}
             error={repairsQuery.error?.message}
             onRetry={() => void repairsQuery.refetch()}
             action={
-              <Button size="small" endIcon={<NorthEast sx={{ fontSize: 13 }} />} onClick={() => navigate("/repairs")}>
+              <Button size="small" endIcon={<NorthEast sx={{ fontSize: 13 }} />} onClick={() => navigate("/repairs")} sx={{ minHeight: 36 }}>
                 Jobs
               </Button>
             }
@@ -531,7 +552,7 @@ export default function Dashboard() {
                   caption={`${repairs.completed} of ${repairs.total} non-rejected jobs repaired`}
                 />
                 <Box sx={{ mt: 2.5, display: "flex", gap: 1, alignItems: "center", justifyContent: "center", color: "text.secondary" }}>
-                  <CheckCircleOutlined sx={{ fontSize: 15, color: "success.main" }} />
+                  <CheckCircleOutlined sx={{ fontSize: 15, color: solidTextTone(muiTheme.palette.success.main, paperBg, isDark) }} />
                   <Typography variant="caption">Includes quality check, invoiced &amp; delivered</Typography>
                 </Box>
               </>
@@ -601,23 +622,45 @@ export default function Dashboard() {
           />
         </Box>
 
-        {/* Row 4: Materialize Financial + Activity Timeline (Left) & Recent Invoices Table (Right) */}
+        {/* Row 4 (Below Initial 1000px Fold): Repair Pipeline, Financial & Activity Timeline (Left) + Recent Invoices & Inventory (Right) */}
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1fr) minmax(0,1.6fr)" }, gap: 2.5 }}>
           <Box sx={{ display: "grid", gap: 2.5, alignContent: "start" }}>
-            <WidgetCard title="Financial overview" subtitle={format(new Date(), "MMMM yyyy")} index={0} error={kpiQuery.error?.message} onRetry={() => void kpiQuery.refetch()}>
+            <DistributionWidget
+              title="Repair pipeline"
+              subtitle="Every job, by its current stage."
+              items={repairs?.items ?? []}
+              loading={repairsQuery.isPending}
+              error={repairsQuery.error?.message}
+              onRetry={() => void repairsQuery.refetch()}
+              formatter={integer}
+              index={0}
+            />
+            <WidgetCard title="Financial overview" subtitle={format(new Date(), "MMMM yyyy")} index={1} error={kpiQuery.error?.message} onRetry={() => void kpiQuery.refetch()}>
               {kpiQuery.isPending ? (
                 <Skeleton height={160} />
               ) : (
                 <>
                   {[
-                    { label: "Income recorded", value: kpis?.revenue ?? 0, color: "success.main" },
-                    { label: "Expenses recorded", value: kpis?.expenses ?? 0, color: "warning.main" },
-                    { label: "Net income", value: net, color: net >= 0 ? "text.primary" : "error.main" },
+                    {
+                      label: "Income recorded",
+                      value: kpis?.revenue ?? 0,
+                      color: solidTextTone(muiTheme.palette.success.main, paperBg, isDark),
+                    },
+                    {
+                      label: "Expenses recorded",
+                      value: kpis?.expenses ?? 0,
+                      color: solidTextTone(muiTheme.palette.warning.main, paperBg, isDark),
+                    },
+                    {
+                      label: "Net income",
+                      value: net,
+                      color: net >= 0 ? "text.primary" : solidTextTone(muiTheme.palette.error.main, paperBg, isDark),
+                    },
                   ].map((item) => (
                     <Box key={item.label} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 1.25, borderBottom: 1, borderColor: "divider", gap: 1 }}>
                       <Typography variant="caption" color="text.secondary">{item.label}</Typography>
                       <Typography variant="body2" sx={{ color: item.color, fontWeight: 650 }}>
-                        <CountUp value={item.value} formatter={money} />
+                        {kpiQuery.isError ? "—" : <CountUp value={item.value} formatter={money} />}
                       </Typography>
                     </Box>
                   ))}
@@ -687,7 +730,7 @@ export default function Dashboard() {
                 maxHeight={320}
                 sx={{
                   "& thead th": {
-                    bgcolor: isDark ? alpha(muiTheme.palette.common.white, 0.04) : "#F5F5F7",
+                    bgcolor: solidHeaderBg(paperBg, isDark),
                     fontSize: "11px",
                     fontWeight: 650,
                     textTransform: "uppercase",
@@ -707,15 +750,36 @@ export default function Dashboard() {
                 <TableBody>
                   {(invoicesQuery.data ?? []).map((invoice: any) => {
                     const clientName = invoice.customers?.name ?? "Walk-in customer";
-                    const isPaid = invoice.payment_status === "paid";
+                    const invTotal = Number(invoice.total ?? 0);
+                    const isPaid = invTotal > 0 && invoice.payment_status === "paid";
                     return (
                       <TableRow
                         key={invoice.id}
                         onClick={() => navigate(`/invoices/${invoice.id}`)}
                         sx={{ cursor: "pointer" }}
                       >
-                        <TableCell sx={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12.5, color: "primary.main", whiteSpace: "nowrap" }}>
-                          #{invoice.invoice_number}
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>
+                          <Button
+                            variant="text"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/invoices/${invoice.id}`);
+                            }}
+                            sx={{
+                              minWidth: 0,
+                              minHeight: 36,
+                              px: 0.75,
+                              ml: -0.75,
+                              fontFamily: "monospace",
+                              fontWeight: 700,
+                              fontSize: 12.5,
+                              color: solidTextTone(muiTheme.palette.primary.main, paperBg, isDark),
+                              textTransform: "none",
+                            }}
+                          >
+                            #{invoice.invoice_number}
+                          </Button>
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -728,7 +792,7 @@ export default function Dashboard() {
                           </Box>
                         </TableCell>
                         <TableCell sx={{ fontWeight: 650, fontSize: 12.5, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                          {money(Number(invoice.total ?? 0))}
+                          {money(invTotal)}
                         </TableCell>
                         <TableCell sx={{ textAlign: "right" }}>
                           <Chip

@@ -96,3 +96,23 @@ export function pastelPillColors(
 
   return { backgroundColor, color: toRgbCss(ink) };
 }
+
+/** Opaque tinted header fill for sticky table headers (never translucent). */
+export function solidHeaderBg(surfaceBg: string, isDark: boolean): string {
+  const base = parseRgb(surfaceBg) ?? (isDark ? [18, 18, 18] : [255, 255, 255]);
+  const tint: Rgb = isDark ? [255, 255, 255] : [34, 48, 62];
+  return toRgbCss(mixRgb(base, tint, isDark ? 0.055 : 0.04));
+}
+
+/** Adjust a palette accent color until it meets >= 4.5:1 WCAG AA contrast on `surfaceBg`. */
+export function solidTextTone(baseColor: string, surfaceBg: string, isDark: boolean): string {
+  const fg = parseRgb(baseColor) ?? (isDark ? [129, 140, 248] : [79, 70, 229]);
+  const bg = parseRgb(surfaceBg) ?? (isDark ? [18, 18, 18] : [255, 255, 255]);
+  if (wcagContrast(fg, bg) >= 4.55) return toRgbCss(fg);
+  const target: Rgb = isDark ? [248, 250, 252] : [15, 23, 42];
+  for (let step = 1; step <= 20; step += 1) {
+    const candidate = mixRgb(fg, target, step / 20);
+    if (wcagContrast(candidate, bg) >= 4.6) return toRgbCss(candidate);
+  }
+  return toRgbCss(target);
+}

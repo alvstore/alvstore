@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Avatar, Box, Button, Card, Chip, Divider, IconButton, LinearProgress,
+  Alert, Avatar, Box, Button, Card, Chip, Divider, IconButton, LinearProgress,
   MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography, useTheme,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -16,8 +16,8 @@ import {
   AlertCircle, CheckCircle, Copy, Eye, FileText, Plus, Receipt, Send, TrendingUp, Users, XCircle,
 } from "lucide-react";
 import { completionPercent } from "@/lib/widget-data";
-import { filterInvoices, summarizeInvoices } from "@/lib/invoice-metrics";
-import { pastelPillColors } from "@/lib/pill-style";
+import { computePaymentUpdate, filterInvoices, summarizeInvoices } from "@/lib/invoice-metrics";
+import { pastelPillColors, solidHeaderBg, solidTextTone } from "@/lib/pill-style";
 
 interface Invoice {
   id: string;
@@ -58,6 +58,7 @@ export default function Invoices() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
@@ -67,12 +68,17 @@ export default function Invoices() {
 
   const fetchInvoices = async () => {
     setLoading(true);
+    setLoadError(null);
     const { data, error } = await supabase
       .from("invoices")
       .select("*, customers(name, email, phone, address, gst_number)")
       .order("created_at", { ascending: false });
-    if (error) toast.error(error.message);
-    else setInvoices((data as unknown as Invoice[]) || []);
+    if (error) {
+      setLoadError(error.message);
+      toast.error(error.message);
+    } else {
+      setInvoices((data as unknown as Invoice[]) || []);
+    }
     setLoading(false);
   };
 
@@ -113,20 +119,29 @@ export default function Invoices() {
 
   const recordPayment = async () => {
     if (!payInvoice || savingPayment) return;
-    const amount = parseFloat(payAmount) || 0;
-    if (amount <= 0) {
-      toast.error("Enter a valid amount");
+    const total = Number(payInvoice.total ?? 0);
+    const currentPaid = Number(payInvoice.paid_amount ?? 0);
+    const paymentValue = Number.parseFloat(payAmount);
+    const computation = computePaymentUpdate(total, currentPaid, paymentValue);
+    if (!computation.valid) {
+      toast.error(computation.error || "Enter a valid amount");
       return;
     }
     setSavingPayment(true);
     try {
-      const total = Number(payInvoice.total ?? 0);
-      const newPaid = Number(payInvoice.paid_amount ?? 0) + amount;
-      const paymentStatus = newPaid >= total ? "paid" : "partial";
-      const status = paymentStatus === "paid" ? "paid" : payInvoice.status;
+      const nextStatus =
+        computation.invoiceStatus === "paid"
+          ? "paid"
+          : payInvoice.status === "draft"
+          ? "sent"
+          : payInvoice.status;
       const { error } = await supabase
         .from("invoices")
-        .update({ paid_amount: newPaid, payment_status: paymentStatus, status })
+        .update({
+          paid_amount: computation.nextPaid,
+          payment_status: computation.paymentStatus,
+          status: nextStatus,
+        })
         .eq("id", payInvoice.id);
       if (error) {
         toast.error(error.message);
@@ -155,7 +170,7 @@ export default function Invoices() {
     if (inv.status === "cancelled") {
       return { icon: <XCircle size={14} />, pill: cancelledPill, label: "Cancelled" };
     }
-    if (inv.payment_status === "paid" || inv.status === "paid") {
+    if (Number(inv.total ?? 0) > 0 && (inv.payment_status === "paid" || inv.status === "paid")) {
       return { icon: <CheckCircle size={14} />, pill: paidPill, label: "Paid" };
     }
     if (inv.status === "sent") {
@@ -165,12 +180,12 @@ export default function Invoices() {
   };
 
   const payRemaining = payInvoice
-    ? Math.max(0, Number(payInvoice.total ?? 0) - Number(payInvoice.paid_amount ?? 0))
+    ? Math.max(0, Math.round((Number(payInvoice.total ?? 0) - Number(payInvoice.paid_amount ?? 0)) * 100) / 100)
     : 0;
 
   return (
     <AnimatedPage>
-      <Box sx={{ display: "grid", gap: 3 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 3, minWidth: 0 }}>
         <PageHeader
           title="Invoices"
           subtitle="Create and manage GST invoices, payments, and client balances"
@@ -255,6 +270,19 @@ export default function Invoices() {
         )}
 
         {/* Unified Filter Toolbar + Materialize Table */}
+        {loadError && (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={() => void fetchInvoices()}>
+                Retry
+              </Button>
+            }
+          >
+            {loadError}
+          </Alert>
+        )}
+
         <Card sx={{ borderRadius: "16px", overflow: "hidden" }}>
           <Box
             sx={{
@@ -299,7 +327,7 @@ export default function Invoices() {
             }
             sx={{
               "& thead th": {
-                bgcolor: isDark ? alpha(muiTheme.palette.common.white, 0.04) : "#F5F5F7",
+                bgcolor: solidHeaderBg(paperBg, isDark),
                 fontSize: "11px",
                 fontWeight: 650,
                 textTransform: "uppercase",
@@ -325,7 +353,9 @@ export default function Invoices() {
                 const clientName = inv.customers?.name || "—";
                 const initials = clientName.slice(0, 2).toUpperCase();
                 const avatarStyle = pastelPillColors(muiTheme.palette.primary.main, paperBg, isDark);
-                const remaining = Math.max(0, Number(inv.total ?? 0) - Number(inv.paid_amount ?? 0));
+                const invTotal = Number(inv.total ?? 0);
+                const remaining = Math.max(0, Math.round((invTotal - Number(inv.paid_amount ?? 0)) * 100) / 100);
+                const isSettledPaid = invTotal > 0 && (inv.payment_status === "paid" || remaining <= 0.005);
 
                 return (
                   <TableRow
@@ -333,18 +363,40 @@ export default function Invoices() {
                     onClick={() => navigate(`/invoices/${inv.id}`)}
                     sx={{ cursor: "pointer", transition: "background-color 160ms ease" }}
                   >
-                    <TableCell sx={{ fontWeight: 700, fontFamily: "monospace", fontSize: "0.85rem", color: "primary.main", whiteSpace: "nowrap" }}>
-                      #{inv.invoice_number}
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/invoices/${inv.id}`);
+                        }}
+                        sx={{
+                          minWidth: 0,
+                          minHeight: 36,
+                          px: 0.75,
+                          ml: -0.75,
+                          fontWeight: 700,
+                          fontFamily: "monospace",
+                          fontSize: "0.85rem",
+                          color: solidTextTone(muiTheme.palette.primary.main, paperBg, isDark),
+                          textTransform: "none",
+                        }}
+                      >
+                        #{inv.invoice_number}
+                      </Button>
                     </TableCell>
                     <TableCell>
                       <Tooltip title={badge.label}>
                         <Box
+                          component="span"
+                          role="img"
                           aria-label={badge.label}
                           sx={{
                             width: 28,
                             height: 28,
                             borderRadius: "50%",
-                            display: "grid",
+                            display: "inline-grid",
                             placeItems: "center",
                             ...badge.pill,
                           }}
@@ -369,7 +421,7 @@ export default function Invoices() {
                       </Box>
                     </TableCell>
                     <TableCell sx={{ fontWeight: 650, fontSize: "0.875rem", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                      ₹{Number(inv.total || 0).toLocaleString("en-IN")}
+                      ₹{invTotal.toLocaleString("en-IN")}
                     </TableCell>
                     <TableCell sx={{ display: { xs: "none", md: "table-cell" }, fontSize: "0.85rem", color: "text.secondary", whiteSpace: "nowrap" }}>
                       {new Date(inv.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
@@ -377,16 +429,26 @@ export default function Invoices() {
                     <TableCell>
                       {inv.status === "cancelled" ? (
                         <Chip size="small" label="Cancelled" sx={{ fontSize: 11, fontWeight: 650, borderRadius: "6px", ...cancelledPill }} />
-                      ) : inv.payment_status === "paid" || remaining <= 0 ? (
+                      ) : isSettledPaid ? (
                         <Chip size="small" label="Paid" sx={{ fontSize: 11, fontWeight: 650, borderRadius: "6px", ...paidPill }} />
+                      ) : invTotal <= 0 ? (
+                        <Chip size="small" label="Draft" sx={{ fontSize: 11, fontWeight: 650, borderRadius: "6px", ...cancelledPill }} />
                       ) : (
                         <Box sx={{ display: "grid", gap: 0.5, minWidth: 80 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 650, color: "error.main", fontVariantNumeric: "tabular-nums", fontSize: 12.5 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 650,
+                              color: solidTextTone(muiTheme.palette.error.main, paperBg, isDark),
+                              fontVariantNumeric: "tabular-nums",
+                              fontSize: 12.5,
+                            }}
+                          >
                             ₹{remaining.toLocaleString("en-IN")}
                           </Typography>
                           {Number(inv.paid_amount ?? 0) > 0 && (
                             <LinearProgress
-                              value={(Number(inv.paid_amount ?? 0) / (Number(inv.total ?? 0) || 1)) * 100}
+                              value={(Number(inv.paid_amount ?? 0) / (invTotal || 1)) * 100}
                               variant="determinate"
                               color="warning"
                               sx={{ height: 4, width: 72, borderRadius: 2 }}
@@ -397,15 +459,15 @@ export default function Invoices() {
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Box sx={{ display: "flex", gap: 0.5, alignItems: "center", justifyContent: "flex-end" }}>
-                        {inv.status !== "cancelled" && inv.payment_status !== "paid" && remaining > 0 && (
-                          <Button onClick={() => openPayment(inv)} variant="outlined" size="small" sx={{ minHeight: 32, fontSize: "0.75rem", fontWeight: 600 }}>
+                        {inv.status !== "cancelled" && !isSettledPaid && remaining > 0.005 && (
+                          <Button onClick={() => openPayment(inv)} variant="outlined" size="small" sx={{ minHeight: 36, fontSize: "0.75rem", fontWeight: 600 }}>
                             Pay
                           </Button>
                         )}
-                        <IconButton onClick={() => copyPublicLink(inv.public_token)} title="Copy link" aria-label="Copy link" size="small">
+                        <IconButton onClick={() => copyPublicLink(inv.public_token)} title="Copy link" aria-label="Copy link" size="small" sx={{ minWidth: 36, minHeight: 36 }}>
                           <Copy size={15} />
                         </IconButton>
-                        <IconButton onClick={() => navigate(`/invoices/${inv.id}`)} title="View invoice" aria-label="View" size="small">
+                        <IconButton onClick={() => navigate(`/invoices/${inv.id}`)} title="View invoice" aria-label="View" size="small" sx={{ minWidth: 36, minHeight: 36 }}>
                           <Eye size={15} />
                         </IconButton>
                       </Box>
@@ -440,10 +502,10 @@ export default function Invoices() {
                 Open Invoice
               </Button>
               <Box sx={{ display: "flex", gap: 1 }}>
-                <Button variant="outlined" disabled={savingPayment} onClick={() => setPaySheetOpen(false)}>
+                <Button variant="outlined" disabled={savingPayment} onClick={() => setPaySheetOpen(false)} sx={{ minHeight: 36 }}>
                   Cancel
                 </Button>
-                <Button variant="contained" disabled={savingPayment} onClick={() => void recordPayment()}>
+                <Button variant="contained" disabled={savingPayment} onClick={() => void recordPayment()} sx={{ minHeight: 36 }}>
                   {savingPayment ? "Recording…" : "Record Payment"}
                 </Button>
               </Box>
@@ -468,13 +530,27 @@ export default function Invoices() {
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Paid</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: "success.main", fontVariantNumeric: "tabular-nums" }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 700,
+                        color: solidTextTone(muiTheme.palette.success.main, paperBg, isDark),
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
                       ₹{Number(payInvoice.paid_amount ?? 0).toLocaleString("en-IN")}
                     </Typography>
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Due</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: "warning.main", fontVariantNumeric: "tabular-nums" }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 700,
+                        color: solidTextTone(muiTheme.palette.warning.main, paperBg, isDark),
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
                       ₹{payRemaining.toLocaleString("en-IN")}
                     </Typography>
                   </Box>
@@ -492,7 +568,7 @@ export default function Invoices() {
                     size="small"
                     label={`Full balance ₹${payRemaining.toLocaleString("en-IN")}`}
                     onClick={() => setPayAmount(payRemaining.toFixed(2))}
-                    sx={{ fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                    sx={{ fontSize: 11, fontWeight: 600, cursor: "pointer", minHeight: 32 }}
                   />
                 </Box>
                 <TextField

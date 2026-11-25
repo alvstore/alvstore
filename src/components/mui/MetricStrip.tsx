@@ -59,7 +59,7 @@ export function MetricStrip({
             gridTemplateColumns: {
               xs: "minmax(0, 1fr)",
               sm: count >= 2 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)",
-              md: `repeat(${Math.max(1, count)}, minmax(0, 1fr))`,
+              lg: `repeat(${Math.max(1, count)}, minmax(0, 1fr))`,
             },
           }}
         >
@@ -141,12 +141,12 @@ export function MetricStrip({
               borderBottom: {
                 xs: idx < count - 1 ? 1 : 0,
                 sm: idx < count - (count % 2 === 0 ? 2 : 1) ? 1 : 0,
-                md: 0,
+                lg: 0,
               },
               borderRight: {
                 xs: 0,
                 sm: idx % 2 === 0 && idx < count - 1 ? 1 : 0,
-                md: idx < count - 1 ? 1 : 0,
+                lg: idx < count - 1 ? 1 : 0,
               },
             };
 
@@ -163,6 +163,11 @@ export function MetricStrip({
                   width: "100%",
                   transition: "background-color 160ms ease",
                   "&:hover": { bgcolor: "action.hover" },
+                  "&:focus-visible": {
+                    outline: "2px solid",
+                    outlineColor: "primary.main",
+                    outlineOffset: "-2px",
+                  },
                 }}
               >
                 {body}

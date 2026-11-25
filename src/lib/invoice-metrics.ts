@@ -55,7 +55,7 @@ export function summarizeInvoices(invoices: InvoiceMetricRow[]): InvoiceSummaryS
 
     totalBilled += total;
     paidRevenue += collected;
-    if (payStatus === "paid" || balance <= 0) {
+    if (total > 0 && (payStatus === "paid" || balance <= 0.005)) {
       paidCount += 1;
     } else {
       unpaidCount += 1;
@@ -91,4 +91,60 @@ export function filterInvoices<T extends InvoiceMetricRow>(
       String(inv.customers?.phone ?? "").toLowerCase().includes(q)
     );
   });
+}
+
+export interface PaymentComputation {
+  valid: boolean;
+  error?: string;
+  nextPaid: number;
+  remaining: number;
+  paymentStatus: "paid" | "partial" | "unpaid";
+  invoiceStatus: "paid" | "partial" | "sent";
+}
+
+/** Validate and compute cent-rounded invoice payment updates without IEEE-754 drift. */
+export function computePaymentUpdate(
+  total: number,
+  currentPaid: number,
+  paymentAmount: number
+): PaymentComputation {
+  const roundCents = (value: number) => Math.round(value * 100) / 100;
+  const safeTotal = Math.max(0, roundCents(Number(total || 0)));
+  const safePaid = Math.max(0, roundCents(Number(currentPaid || 0)));
+  const remainingBefore = Math.max(0, roundCents(safeTotal - safePaid));
+
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    return {
+      valid: false,
+      error: "Enter a valid positive payment amount.",
+      nextPaid: safePaid,
+      remaining: remainingBefore,
+      paymentStatus: safeTotal > 0 && remainingBefore <= 0.005 ? "paid" : safePaid > 0 ? "partial" : "unpaid",
+      invoiceStatus: safeTotal > 0 && remainingBefore <= 0.005 ? "paid" : safePaid > 0 ? "partial" : "sent",
+    };
+  }
+
+  const safePay = roundCents(paymentAmount);
+  if (safePay - remainingBefore > 0.005) {
+    return {
+      valid: false,
+      error: "Payment cannot exceed the remaining invoice balance.",
+      nextPaid: safePaid,
+      remaining: remainingBefore,
+      paymentStatus: safePaid > 0 ? "partial" : "unpaid",
+      invoiceStatus: safePaid > 0 ? "partial" : "sent",
+    };
+  }
+
+  const nextPaid = Math.min(safeTotal, roundCents(safePaid + safePay));
+  const remaining = Math.max(0, roundCents(safeTotal - nextPaid));
+  const isSettled = safeTotal > 0 && remaining <= 0.005;
+
+  return {
+    valid: true,
+    nextPaid: isSettled ? safeTotal : nextPaid,
+    remaining: isSettled ? 0 : remaining,
+    paymentStatus: isSettled ? "paid" : nextPaid > 0 ? "partial" : "unpaid",
+    invoiceStatus: isSettled ? "paid" : nextPaid > 0 ? "partial" : "sent",
+  };
 }

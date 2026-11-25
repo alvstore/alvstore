@@ -16,7 +16,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTaskBoard } from "@/hooks/useTaskBoard";
 import { useNavigate, useSearchParams } from "@/lib/router-compat";
 import { localDateKey } from "@/lib/widget-data";
-import { pastelPillColors } from "@/lib/pill-style";
+import { pastelPillColors, solidTextTone } from "@/lib/pill-style";
+import { eventIntersectsDay, matchesCategoryFilter } from "@/lib/calendar-utils";
+import { formatTaskStatus } from "@/lib/task-lanes";
 import { ChevronLeft, ChevronRight, Plus, Trash2, ListTodo, CalendarDays } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths,
@@ -124,8 +126,8 @@ export default function CalendarPage() {
       const { data, error } = await supabase
         .from("calendar_events")
         .select("*")
-        .gte("start_date", rangeStart.toISOString())
         .lte("start_date", rangeEnd.toISOString())
+        .or(`end_date.gte.${rangeStart.toISOString()},end_date.is.null`)
         .order("start_date");
       if (error) throw new Error(error.message);
       return data ?? [];
@@ -133,7 +135,7 @@ export default function CalendarPage() {
   });
 
   const events = eventsQuery.data ?? [];
-  const filteredEvents = events.filter((event) => filters[event.category || "business"] !== false);
+  const filteredEvents = events.filter((event) => matchesCategoryFilter(event.category, filters));
   const tasks = board.tasks.filter(
     (task) => task.due_date && task.due_date >= localDateKey(rangeStart) && task.due_date <= localDateKey(rangeEnd)
   );
@@ -281,7 +283,7 @@ export default function CalendarPage() {
           allDay: true,
           kind: "task" as const,
           completed: task.status === "completed",
-          detail: task.status.replace(/_/g, " "),
+          detail: formatTaskStatus(task.status),
         }))
       : []),
   ];
@@ -294,7 +296,7 @@ export default function CalendarPage() {
 
   return (
     <AnimatedPage>
-      <Box sx={{ display: "grid", gap: 3 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 3, minWidth: 0 }}>
         <PageHeader
           title="Calendar"
           subtitle="Make room for what's next. Events and tasks, in one place."
@@ -317,8 +319,9 @@ export default function CalendarPage() {
             {/* Left Sidebar Rail */}
             <Box
               sx={{
+                order: { xs: 2, lg: 1 },
                 borderRight: { xs: 0, lg: 1 },
-                borderBottom: { xs: 1, lg: 0 },
+                borderTop: { xs: 1, lg: 0 },
                 borderColor: "divider",
                 display: "flex",
                 flexDirection: "column",
@@ -331,9 +334,9 @@ export default function CalendarPage() {
                   fullWidth
                   startIcon={<Plus size={16} />}
                   onClick={() => openNewEvent()}
-                  sx={{ py: 1.15 }}
+                  sx={{ py: 1.15, minHeight: 38 }}
                 >
-                  Add Event
+                  Schedule event
                 </Button>
               </Box>
 
@@ -430,7 +433,7 @@ export default function CalendarPage() {
             </Box>
 
             {/* Main Calendar Grid Canvas */}
-            <Box sx={{ p: { xs: 1.5, sm: 2.5 }, minWidth: 0 }}>
+            <Box sx={{ order: { xs: 1, lg: 2 }, p: { xs: 1.5, sm: 2.5 }, minWidth: 0 }}>
               <Box
                 sx={{
                   display: "flex",
@@ -446,7 +449,7 @@ export default function CalendarPage() {
                     size="small"
                     aria-label="Previous calendar period"
                     onClick={() => navigatePeriod(-1)}
-                    sx={{ border: 1, borderColor: "divider", borderRadius: "8px" }}
+                    sx={{ minWidth: 36, minHeight: 36, border: 1, borderColor: "divider", borderRadius: "8px" }}
                   >
                     <ChevronLeft size={16} />
                   </IconButton>
@@ -454,7 +457,7 @@ export default function CalendarPage() {
                     size="small"
                     aria-label="Next calendar period"
                     onClick={() => navigatePeriod(1)}
-                    sx={{ border: 1, borderColor: "divider", borderRadius: "8px" }}
+                    sx={{ minWidth: 36, minHeight: 36, border: 1, borderColor: "divider", borderRadius: "8px" }}
                   >
                     <ChevronRight size={16} />
                   </IconButton>
@@ -463,7 +466,7 @@ export default function CalendarPage() {
                   </Typography>
                 </Box>
                 <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
-                  <Button size="small" variant="outlined" onClick={() => setCurrentDate(new Date())}>
+                  <Button size="small" variant="outlined" onClick={() => setCurrentDate(new Date())} sx={{ minHeight: 36 }}>
                     Today
                   </Button>
                   <SegmentedControl
@@ -709,7 +712,7 @@ function MonthView({
   const calStart = startOfWeek(monthStart);
   const calEnd = endOfWeek(monthEnd);
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
-  const getEventsForDay = (day: Date) => filteredEvents.filter((e) => isSameDay(parseISO(e.start_date), day));
+  const getEventsForDay = (day: Date) => filteredEvents.filter((e) => eventIntersectsDay(e, day));
   const getTasksForDay = (day: Date) => tasks.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), day));
 
   return (
@@ -801,52 +804,64 @@ function MonthView({
                       width: "100%",
                       justifyContent: "flex-start",
                       textAlign: "left",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.5,
                       fontSize: "11px",
                       fontWeight: 600,
                       px: 0.75,
                       py: 0.35,
                       borderRadius: "6px",
                       overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
                       minHeight: 22,
                       ...pillForCategory(event.category),
                     }}
                   >
                     {!event.all_day && (
-                      <Box component="span" sx={{ opacity: 0.85, mr: 0.4 }}>
+                      <Box component="span" sx={{ opacity: 0.85, flexShrink: 0 }}>
                         {format(parseISO(event.start_date), "HH:mm")}
                       </Box>
                     )}
-                    {event.title}
+                    <Box
+                      component="span"
+                      sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}
+                    >
+                      {event.title}
+                    </Box>
                   </ButtonBase>
                 ))}
-                {dayTasks.slice(0, 2).map((task) => (
-                  <Box
-                    key={task.id}
-                    title={`Task: ${task.title}`}
-                    sx={{
-                      width: "100%",
-                      textAlign: "left",
-                      fontSize: "10.5px",
-                      fontWeight: 550,
-                      px: 0.75,
-                      py: 0.25,
-                      borderRadius: "6px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      border: 1,
-                      borderStyle: "dashed",
-                      borderColor: alpha(muiTheme.palette.primary.main, 0.35),
-                      color: "primary.main",
-                      bgcolor: alpha(muiTheme.palette.primary.main, 0.06),
-                    }}
-                  >
-                    <Box component={ListTodo} sx={{ height: "0.65rem", width: "0.65rem", display: "inline", mr: 0.4 }} />
-                    {task.title}
-                  </Box>
-                ))}
+                {dayTasks.slice(0, 2).map((task) => {
+                  const taskPill = pastelPillColors(
+                    muiTheme.palette.primary.main,
+                    muiTheme.palette.background.paper,
+                    muiTheme.palette.mode === "dark"
+                  );
+                  return (
+                    <Box
+                      key={task.id}
+                      title={`Task: ${task.title}`}
+                      sx={{
+                        width: "100%",
+                        textAlign: "left",
+                        fontSize: "10.5px",
+                        fontWeight: 550,
+                        px: 0.75,
+                        py: 0.25,
+                        borderRadius: "6px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        border: 1,
+                        borderStyle: "dashed",
+                        borderColor: alpha(muiTheme.palette.primary.main, 0.35),
+                        ...taskPill,
+                      }}
+                    >
+                      <Box component={ListTodo} sx={{ height: "0.65rem", width: "0.65rem", display: "inline", mr: 0.4 }} />
+                      {task.title}
+                    </Box>
+                  );
+                })}
                 {dayEvents.length + dayTasks.length > 4 && (
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, px: 0.5 }}>
                     +{dayEvents.length + dayTasks.length - 4} more
@@ -882,140 +897,43 @@ function WeekView({
   onEventClick: (e: CalendarEvent) => void;
 }) {
   const muiTheme = useTheme();
+  const taskPill = pastelPillColors(
+    muiTheme.palette.primary.main,
+    muiTheme.palette.background.paper,
+    muiTheme.palette.mode === "dark"
+  );
   const weekStart = startOfWeek(currentDate);
   const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(currentDate) });
+  const isSpanningEvent = (e: CalendarEvent) =>
+    Boolean(e.all_day) || (Boolean(e.end_date) && !isSameDay(parseISO(e.start_date), parseISO(e.end_date!)));
   const getEventsForDayHour = (day: Date, hour: number) =>
     filteredEvents.filter((e) => {
+      if (isSpanningEvent(e)) return false;
       const s = parseISO(e.start_date);
-      return isSameDay(s, day) && getHours(s) === hour && !e.all_day;
+      return isSameDay(s, day) && getHours(s) === hour;
     });
   const getAllDayEvents = (day: Date) =>
-    filteredEvents.filter((e) => Boolean(e.all_day) && isSameDay(parseISO(e.start_date), day));
+    filteredEvents.filter((e) => isSpanningEvent(e) && eventIntersectsDay(e, day));
   const getTasksForDay = (day: Date) => tasks.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), day));
 
   return (
-    <Box sx={{ overflow: "auto" }}>
-      {/* All-day row */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", borderBottom: 1, borderColor: "divider" }}>
-        <Box sx={{ p: 0.5, fontSize: 10, color: "text.secondary", borderRight: 1, borderColor: "divider" }}>All Day</Box>
-        {weekDays.map((day, i) => {
-          const allDay = getAllDayEvents(day);
-          const dayTasks = getTasksForDay(day);
-          return (
-            <Box key={i} sx={{ p: 0.5, borderRight: 1, borderColor: "divider", minHeight: 28 }}>
-              {allDay.map((e) => (
-                <ButtonBase
-                  key={e.id}
-                  onClick={() => onEventClick(e)}
-                  type="button"
-                  sx={{
-                    width: "100%",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    px: 0.5,
-                    py: 0.25,
-                    borderRadius: "4px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    mb: 0.25,
-                    ...pillForCategory(e.category),
-                  }}
-                >
-                  {e.title}
-                </ButtonBase>
-              ))}
-              {dayTasks.map((t) => (
-                <Box
-                  key={t.id}
-                  sx={{
-                    fontSize: 10,
-                    px: 0.5,
-                    borderRadius: "4px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    border: 1,
-                    borderStyle: "dashed",
-                    borderColor: alpha(muiTheme.palette.primary.main, 0.35),
-                    color: "primary.main",
-                    bgcolor: alpha(muiTheme.palette.primary.main, 0.06),
-                    mb: 0.25,
-                  }}
-                >
-                  {t.title}
-                </Box>
-              ))}
-            </Box>
-          );
-        })}
-      </Box>
-
-      {/* Header */}
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
-          borderBottom: 1,
-          borderColor: "divider",
-          position: "sticky",
-          top: 0,
-          bgcolor: "background.paper",
-          zIndex: 10,
-        }}
-      >
-        <Box sx={{ p: 1, fontSize: 12, color: "text.secondary", borderRight: 1, borderColor: "divider" }} />
-        {weekDays.map((day, i) => (
-          <Box
-            key={i}
-            sx={mergeSx(
-              { p: 1, textAlign: "center", borderRight: 1, borderColor: "divider" },
-              isToday(day) && { bgcolor: alpha(muiTheme.palette.primary.main, 0.06) }
-            )}
-          >
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, display: "block" }}>
-              {format(day, "EEE")}
-            </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 700, color: isToday(day) ? "primary.main" : "text.primary" }}>
-              {format(day, "d")}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-
-      {/* Time grid */}
-      {hours.map((hour) => (
-        <Box key={hour} sx={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", borderBottom: 1, borderColor: "divider" }}>
-          <Box sx={{ p: 0.5, fontSize: 10, color: "text.secondary", textAlign: "right", pr: 1, borderRight: 1, borderColor: "divider" }}>
-            {hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`}
-          </Box>
+    <Box sx={{ overflowX: "auto" }}>
+      <Box sx={{ minWidth: 640 }}>
+        {/* All-day row */}
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", borderBottom: 1, borderColor: "divider" }}>
+          <Box sx={{ p: 0.5, fontSize: 10, color: "text.secondary", borderRight: 1, borderColor: "divider" }}>All Day</Box>
           {weekDays.map((day, i) => {
-            const slotEvents = getEventsForDayHour(day, hour);
+            const allDay = getAllDayEvents(day);
+            const dayTasks = getTasksForDay(day);
             return (
-              <Box
-                key={i}
-                onClick={() => {
-                  const d = new Date(day);
-                  d.setHours(hour);
-                  onSlotClick(d);
-                }}
-                sx={mergeSx(
-                  { minHeight: 48, borderRight: 1, borderColor: "divider", p: 0.35, cursor: "pointer", "&:hover": { bgcolor: "action.hover" } },
-                  isToday(day) && { bgcolor: alpha(muiTheme.palette.primary.main, 0.025) }
-                )}
-              >
-                {slotEvents.map((e) => (
+              <Box key={i} sx={{ p: 0.5, borderRight: 1, borderColor: "divider", minHeight: 28 }}>
+                {allDay.map((e) => (
                   <ButtonBase
                     key={e.id}
-                    onClick={(ev) => {
-                      ev.stopPropagation();
-                      onEventClick(e);
-                    }}
+                    onClick={() => onEventClick(e)}
                     type="button"
                     sx={{
                       width: "100%",
-                      justifyContent: "flex-start",
-                      textAlign: "left",
                       fontSize: 10,
                       fontWeight: 600,
                       px: 0.5,
@@ -1028,14 +946,128 @@ function WeekView({
                       ...pillForCategory(e.category),
                     }}
                   >
-                    {format(parseISO(e.start_date), "HH:mm")} {e.title}
+                    {e.title}
                   </ButtonBase>
+                ))}
+                {dayTasks.map((t) => (
+                  <Box
+                    key={t.id}
+                    sx={{
+                      fontSize: 10,
+                      px: 0.5,
+                      borderRadius: "4px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      border: 1,
+                      borderStyle: "dashed",
+                      borderColor: alpha(muiTheme.palette.primary.main, 0.35),
+                      mb: 0.25,
+                      ...taskPill,
+                    }}
+                  >
+                    {t.title}
+                  </Box>
                 ))}
               </Box>
             );
           })}
         </Box>
-      ))}
+
+        {/* Header */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
+            borderBottom: 1,
+            borderColor: "divider",
+            position: "sticky",
+            top: 0,
+            bgcolor: "background.paper",
+            zIndex: 10,
+          }}
+        >
+          <Box sx={{ p: 1, fontSize: 12, color: "text.secondary", borderRight: 1, borderColor: "divider" }} />
+          {weekDays.map((day, i) => (
+            <Box
+              key={i}
+              sx={mergeSx(
+                { p: 1, textAlign: "center", borderRight: 1, borderColor: "divider" },
+                isToday(day) && { bgcolor: alpha(muiTheme.palette.primary.main, 0.06) }
+              )}
+            >
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, display: "block" }}>
+                {format(day, "EEE")}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 700,
+                  color: isToday(day)
+                    ? solidTextTone(muiTheme.palette.primary.main, muiTheme.palette.background.paper, muiTheme.palette.mode === "dark")
+                    : "text.primary",
+                }}
+              >
+                {format(day, "d")}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+
+        {/* Time grid */}
+        {hours.map((hour) => (
+          <Box key={hour} sx={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", borderBottom: 1, borderColor: "divider" }}>
+            <Box sx={{ p: 0.5, fontSize: 10, color: "text.secondary", textAlign: "right", pr: 1, borderRight: 1, borderColor: "divider" }}>
+              {hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`}
+            </Box>
+            {weekDays.map((day, i) => {
+              const slotEvents = getEventsForDayHour(day, hour);
+              return (
+                <Box
+                  key={i}
+                  onClick={() => {
+                    const d = new Date(day);
+                    d.setHours(hour);
+                    onSlotClick(d);
+                  }}
+                  sx={mergeSx(
+                    { minHeight: 48, borderRight: 1, borderColor: "divider", p: 0.35, cursor: "pointer", "&:hover": { bgcolor: "action.hover" } },
+                    isToday(day) && { bgcolor: alpha(muiTheme.palette.primary.main, 0.025) }
+                  )}
+                >
+                  {slotEvents.map((e) => (
+                    <ButtonBase
+                      key={e.id}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        onEventClick(e);
+                      }}
+                      type="button"
+                      sx={{
+                        width: "100%",
+                        justifyContent: "flex-start",
+                        textAlign: "left",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        px: 0.5,
+                        py: 0.25,
+                        borderRadius: "4px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        mb: 0.25,
+                        ...pillForCategory(e.category),
+                      }}
+                    >
+                      {format(parseISO(e.start_date), "HH:mm")} {e.title}
+                    </ButtonBase>
+                  ))}
+                </Box>
+              );
+            })}
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }
@@ -1061,9 +1093,16 @@ function DayView({
   onEventClick: (e: CalendarEvent) => void;
 }) {
   const muiTheme = useTheme();
-  const dayEvents = filteredEvents.filter((e) => isSameDay(parseISO(e.start_date), currentDate));
-  const allDayEvents = dayEvents.filter((e) => Boolean(e.all_day));
-  const timedEvents = dayEvents.filter((e) => !e.all_day);
+  const taskPill = pastelPillColors(
+    muiTheme.palette.primary.main,
+    muiTheme.palette.background.paper,
+    muiTheme.palette.mode === "dark"
+  );
+  const isSpanningEvent = (e: CalendarEvent) =>
+    Boolean(e.all_day) || (Boolean(e.end_date) && !isSameDay(parseISO(e.start_date), parseISO(e.end_date!)));
+  const dayEvents = filteredEvents.filter((e) => eventIntersectsDay(e, currentDate));
+  const allDayEvents = dayEvents.filter((e) => isSpanningEvent(e));
+  const timedEvents = dayEvents.filter((e) => !isSpanningEvent(e));
   const dayTasks = tasks.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), currentDate));
 
   return (
@@ -1103,11 +1142,10 @@ function DayView({
                 border: 1,
                 borderStyle: "dashed",
                 borderColor: alpha(muiTheme.palette.primary.main, 0.35),
-                color: "primary.main",
-                bgcolor: alpha(muiTheme.palette.primary.main, 0.06),
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 0.5,
+                ...taskPill,
               }}
             >
               <ListTodo size={12} />
@@ -1293,14 +1331,22 @@ function ListView({
                     border: 1,
                     borderStyle: "dashed",
                     borderColor: alpha(muiTheme.palette.primary.main, 0.3),
-                    bgcolor: alpha(muiTheme.palette.primary.main, 0.05),
+                    ...pastelPillColors(
+                      muiTheme.palette.primary.main,
+                      muiTheme.palette.background.paper,
+                      muiTheme.palette.mode === "dark"
+                    ),
                   }}
                 >
                   <ListTodo size={14} />
-                  <Typography variant="body2" noWrap sx={{ fontWeight: 550, color: "primary.main", flex: 1 }}>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 550, flex: 1 }}>
                     {t.title}
                   </Typography>
-                  <StatusChip label={t.status || "pending"} variant="outlined" sx={{ fontSize: 10, textTransform: "capitalize", flexShrink: 0 }} />
+                  <StatusChip
+                    label={formatTaskStatus(t.status)}
+                    variant="outlined"
+                    sx={{ fontSize: 10, textTransform: "capitalize", flexShrink: 0 }}
+                  />
                 </Box>
               ))}
             </Box>
