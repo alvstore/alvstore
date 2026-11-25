@@ -63,9 +63,7 @@ export function CollectionSection() {
             transition={{ duration: reduced ? 0 : 0.65, delay: reduced ? 0 : 0.15, ease: [0.16, 1, 0.3, 1] }}
           >
             <Typography sx={{ ...TYPE.lead, color: STUDIO.slate, maxWidth: "52ch", justifySelf: { md: "end" } }}>
-              True immersion is an exact geometric science. Explore our four reference speaker configurations
-              below — from classic 5.1 surround to uncompromised 7.2.4 Dolby Atmos — showing real-time transducer
-              placements, acoustic radiation patterns, and Dirac Live calibration specs.
+              Enter your room dimensions below to preview a sunlit architectural room or dim the lights into cinema mode — inspect screen size, step inside Seat POV, or review the synchronized 2D blueprint before booking a consultation.
             </Typography>
           </Box>
         </Box>

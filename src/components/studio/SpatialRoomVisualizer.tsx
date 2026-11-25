@@ -1,413 +1,415 @@
 "use client";
 
-import { useState } from "react";
-import { Box, Button, Typography, Tooltip } from "@mui/material";
+import { useEffect, useMemo, useState } from "react";
+import { Box, Button, Collapse, Slider, Tooltip, Typography } from "@mui/material";
 import {
   ArrowOutward,
-  PlayArrow,
-  Pause,
-  ViewInAr,
-  GridOn,
-  VolumeUp,
+  Close,
+  ExpandMore,
   GraphicEq,
+  GridOn,
+  Lightbulb,
+  LightbulbOutlined,
+  RestartAlt,
+  Straighten,
+  ThreeDRotation,
+  VerticalAlignTop,
+  ViewInAr,
+  Weekend,
 } from "@mui/icons-material";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import type { CameraPreset } from "./cinema-room-3d";
 import { CinemaRoomCanvas } from "./CinemaRoomCanvas";
-import { EASE, STUDIO, TYPE, FONT } from "./tokens";
+import { ParametricCinemaCadSvg } from "./ParametricCinemaCadSvg";
+import {
+  ALL_SPEAKERS,
+  calculateRoomRecommendation,
+  computeRoomLayout,
+  formatConsultationNote,
+  ROLE_COLORS,
+  ROOM_CONFIGS,
+  STUDIO_ROOM_SELECT_EVENT,
+  type RoomConfigId,
+  type SpeakerMeta,
+  type StudioRoomSelectionPayload,
+} from "./room-calculator";
+import { EASE, FONT, STUDIO, TYPE } from "./tokens";
 
-export type RoomConfigId = "5.1" | "5.1.2" | "7.2.2" | "7.2.4";
+export type { RoomConfigId };
 
-export interface Speaker {
-  id: string;
-  code: string;
-  name: string;
-  role: "screen" | "surround" | "subwoofer" | "height";
-  x: number; // 0..100 percentage
-  y: number; // 0..100 percentage
-  angle: string;
-  distance: string;
-  delay: string;
-  crossover: string;
-  frequency: string;
-  detail: string;
-}
-
-export interface RoomConfig {
-  id: RoomConfigId;
-  label: string;
-  tabLabel: string;
-  tag: string;
-  channels: string;
-  roomSize: string;
-  volume: string;
-  splPeak: string;
-  summary: string;
-  speakers: Speaker[];
-  inventory: { label: string; count: string; role: "screen" | "surround" | "subwoofer" | "height"; detail: string }[];
-  amplification: string;
-  startingFrom: string;
-}
-
-const ALL_SPEAKERS: Record<string, Speaker> = {
-  L: {
-    id: "L",
-    code: "L",
-    name: "Front Left Channel",
-    role: "screen",
-    x: 22,
-    y: 11,
-    angle: "-30° azimuth",
-    distance: "3.85 m",
-    delay: "11.2 ms",
-    crossover: "80 Hz Linkwitz-Riley 24dB/oct",
-    frequency: "28 Hz – 28 kHz",
-    detail: "Reference 3-way tower behind acoustically transparent woven micro-perforated screen",
-  },
-  C: {
-    id: "C",
-    code: "C",
-    name: "Center Dialogue Channel",
-    role: "screen",
-    x: 50,
-    y: 11,
-    angle: "0° on-axis",
-    distance: "3.60 m",
-    delay: "10.5 ms",
-    crossover: "80 Hz Linkwitz-Riley 24dB/oct",
-    frequency: "32 Hz – 28 kHz",
-    detail: "Dedicated dialogue transducer anchored at exact actor eye & mouth level",
-  },
-  R: {
-    id: "R",
-    code: "R",
-    name: "Front Right Channel",
-    role: "screen",
-    x: 78,
-    y: 11,
-    angle: "+30° azimuth",
-    distance: "3.85 m",
-    delay: "11.2 ms",
-    crossover: "80 Hz Linkwitz-Riley 24dB/oct",
-    frequency: "28 Hz – 28 kHz",
-    detail: "Reference 3-way tower voicing matched to front left for seamless panning",
-  },
-  SUB1: {
-    id: "SUB1",
-    code: "SUB 1",
-    name: "Primary Infrasonic Subwoofer",
-    role: "subwoofer",
-    x: 12,
-    y: 14,
-    angle: "Front-left corner boundary loaded",
-    distance: "4.15 m",
-    delay: "12.1 ms",
-    crossover: "80 Hz LPF (Linkwitz-Riley)",
-    frequency: "16 Hz – 120 Hz (±1.5 dB)",
-    detail: "Sealed/ported infrasonic sub-bass driver with high-excursion piston travel",
-  },
-  SUB2: {
-    id: "SUB2",
-    code: "SUB 2",
-    name: "Secondary Axial Subwoofer",
-    role: "subwoofer",
-    x: 88,
-    y: 86,
-    angle: "Rear-right opposed corner",
-    distance: "3.80 m",
-    delay: "11.0 ms",
-    crossover: "80 Hz LPF (Linkwitz-Riley)",
-    frequency: "16 Hz – 120 Hz (±1.5 dB)",
-    detail: "Opposed room placement cancelling axial standing wave resonance nodes",
-  },
-  SL: {
-    id: "SL",
-    code: "SL",
-    name: "Surround Left",
-    role: "surround",
-    x: 9,
-    y: 64,
-    angle: "-95° lateral ear-level",
-    distance: "2.80 m",
-    delay: "8.1 ms",
-    crossover: "80 Hz High-Pass",
-    frequency: "45 Hz – 24 kHz",
-    detail: "90°–110° side wall surround firing directly at the primary listening position",
-  },
-  SR: {
-    id: "SR",
-    code: "SR",
-    name: "Surround Right",
-    role: "surround",
-    x: 91,
-    y: 64,
-    angle: "+95° lateral ear-level",
-    distance: "2.80 m",
-    delay: "8.1 ms",
-    crossover: "80 Hz High-Pass",
-    frequency: "45 Hz – 24 kHz",
-    detail: "90°–110° side wall surround completing the ear-level lateral soundstage",
-  },
-  SBL: {
-    id: "SBL",
-    code: "SBL",
-    name: "Surround Back Left",
-    role: "surround",
-    x: 33,
-    y: 90,
-    angle: "-142° rear azimuth",
-    distance: "3.15 m",
-    delay: "9.2 ms",
-    crossover: "80 Hz High-Pass",
-    frequency: "45 Hz – 24 kHz",
-    detail: "135°–150° rear surround preventing acoustic voids behind audience rows",
-  },
-  SBR: {
-    id: "SBR",
-    code: "SBR",
-    name: "Surround Back Right",
-    role: "surround",
-    x: 67,
-    y: 90,
-    angle: "+142° rear azimuth",
-    distance: "3.15 m",
-    delay: "9.2 ms",
-    crossover: "80 Hz High-Pass",
-    frequency: "45 Hz – 24 kHz",
-    detail: "135°–150° rear surround providing seamless 360° rear-to-front panning",
-  },
-  TML: {
-    id: "TML",
-    code: "TML",
-    name: "Top Middle Left (Atmos)",
-    role: "height",
-    x: 35,
-    y: 54,
-    angle: "80° vertical elevation",
-    distance: "2.35 m",
-    delay: "6.8 ms",
-    crossover: "100 Hz High-Pass",
-    frequency: "65 Hz – 22 kHz",
-    detail: "Overhead 3D height channel for vertical acoustic hemisphere dimension",
-  },
-  TMR: {
-    id: "TMR",
-    code: "TMR",
-    name: "Top Middle Right (Atmos)",
-    role: "height",
-    x: 65,
-    y: 54,
-    angle: "80° vertical elevation",
-    distance: "2.35 m",
-    delay: "6.8 ms",
-    crossover: "100 Hz High-Pass",
-    frequency: "65 Hz – 22 kHz",
-    detail: "Overhead 3D height channel providing directional ceiling flyovers",
-  },
-  TFL: {
-    id: "TFL",
-    code: "TFL",
-    name: "Top Front Left (Atmos)",
-    role: "height",
-    x: 33,
-    y: 35,
-    angle: "45° forward elevation",
-    distance: "2.90 m",
-    delay: "8.4 ms",
-    crossover: "100 Hz High-Pass",
-    frequency: "65 Hz – 22 kHz",
-    detail: "45° forward elevation ceiling channel for front-to-overhead trajectories",
-  },
-  TFR: {
-    id: "TFR",
-    code: "TFR",
-    name: "Top Front Right (Atmos)",
-    role: "height",
-    x: 67,
-    y: 35,
-    angle: "45° forward elevation",
-    distance: "2.90 m",
-    delay: "8.4 ms",
-    crossover: "100 Hz High-Pass",
-    frequency: "65 Hz – 22 kHz",
-    detail: "45° forward elevation ceiling channel matching front stage trajectories",
-  },
-  TRL: {
-    id: "TRL",
-    code: "TRL",
-    name: "Top Rear Left (Atmos)",
-    role: "height",
-    x: 33,
-    y: 74,
-    angle: "125° rear elevation",
-    distance: "2.75 m",
-    delay: "8.0 ms",
-    crossover: "100 Hz High-Pass",
-    frequency: "65 Hz – 22 kHz",
-    detail: "125° rear elevation ceiling channel completing 4-speaker 3D overhead dome",
-  },
-  TRR: {
-    id: "TRR",
-    code: "TRR",
-    name: "Top Rear Right (Atmos)",
-    role: "height",
-    x: 67,
-    y: 74,
-    angle: "125° rear elevation",
-    distance: "2.75 m",
-    delay: "8.0 ms",
-    crossover: "100 Hz High-Pass",
-    frequency: "65 Hz – 22 kHz",
-    detail: "125° rear elevation ceiling channel completing 4-speaker 3D overhead dome",
-  },
-};
-
-export const ROOM_CONFIGS: RoomConfig[] = [
-  {
-    id: "5.1",
-    label: "5.1 Traditional Surround",
-    tabLabel: "5.1 Surround",
-    tag: "CLASSIC CINEMA",
-    channels: "6 Channels · 5 Ear-Level + 1 Sub",
-    roomSize: "16 × 12 ft · 190+ sq ft",
-    volume: "1,520 cu ft",
-    splPeak: "105 dB reference",
-    summary:
-      "The benchmark layout for dedicated media rooms. Three front screen channels provide razor-sharp dialogue and wide spatial imaging, two ear-level side surrounds deliver ambient envelopment, and an infrasonic subwoofer pressurizes the room.",
-    speakers: [ALL_SPEAKERS.L, ALL_SPEAKERS.C, ALL_SPEAKERS.R, ALL_SPEAKERS.SUB1, ALL_SPEAKERS.SL, ALL_SPEAKERS.SR],
-    inventory: [
-      { label: "Front LCR Array", count: "3 Speakers", role: "screen", detail: "Left, Center, Right behind screen" },
-      { label: "Lateral Surrounds", count: "2 Speakers", role: "surround", detail: "90°–110° lateral soundstage" },
-      { label: "Active Subwoofer", count: "1 Unit", role: "subwoofer", detail: "Boundary loaded deep-bass sub" },
-      { label: "Overhead Atmos", count: "None", role: "height", detail: "Ear-level traditional surround" },
-    ],
-    amplification: "Denon AVR-X2800H / Marantz Cinema 60 (7.2-ch discrete AVR)",
-    startingFrom: "₹4.5 L",
-  },
-  {
-    id: "5.1.2",
-    label: "5.1.2 Dolby Atmos Entry",
-    tabLabel: "5.1.2 Atmos",
-    tag: "3D SPATIAL AUDIO",
-    channels: "8 Channels · 5 Ear-Level + 1 Sub + 2 Atmos",
-    roomSize: "20 × 14 ft · 280+ sq ft",
-    volume: "2,240 cu ft",
-    splPeak: "108 dB reference",
-    summary:
-      "Introduces the vertical acoustic hemisphere. Two calibrated in-ceiling Dolby Atmos channels place rain, thunder, aircraft, and three-dimensional ambient sound directly overhead while front speakers lock dialogue to the screen.",
-    speakers: [ALL_SPEAKERS.L, ALL_SPEAKERS.C, ALL_SPEAKERS.R, ALL_SPEAKERS.SUB1, ALL_SPEAKERS.SL, ALL_SPEAKERS.SR, ALL_SPEAKERS.TML, ALL_SPEAKERS.TMR],
-    inventory: [
-      { label: "Front LCR Array", count: "3 Speakers", role: "screen", detail: "Left, Center, Right behind screen" },
-      { label: "Lateral Surrounds", count: "2 Speakers", role: "surround", detail: "Lateral ear-level surrounds" },
-      { label: "Overhead Atmos", count: "2 Speakers", role: "height", detail: "Top Middle in-ceiling height array" },
-      { label: "Active Subwoofer", count: "1 Unit", role: "subwoofer", detail: "Acoustically tuned deep-bass driver" },
-    ],
-    amplification: "Denon AVC-X3800H / Marantz Cinema 50 (9.4-ch with Dirac Live)",
-    startingFrom: "₹7.2 L",
-  },
-  {
-    id: "7.2.2",
-    label: "7.2.2 Master Cinema",
-    tabLabel: "7.2.2 Immersion",
-    tag: "EXPANDED THEATER",
-    channels: "11 Channels · 7 Ear-Level + 2 Subs + 2 Atmos",
-    roomSize: "24 × 16 ft · 380+ sq ft",
-    volume: "3,040 cu ft",
-    splPeak: "112 dB reference",
-    summary:
-      "Engineered for deep rooms with multiple seating tiers. Rear back surrounds seal the soundfield behind the listener, while dual opposed subwoofers cancel axial room resonance for smooth, linear seat-to-seat bass response.",
-    speakers: [ALL_SPEAKERS.L, ALL_SPEAKERS.C, ALL_SPEAKERS.R, ALL_SPEAKERS.SUB1, ALL_SPEAKERS.SUB2, ALL_SPEAKERS.SL, ALL_SPEAKERS.SR, ALL_SPEAKERS.SBL, ALL_SPEAKERS.SBR, ALL_SPEAKERS.TML, ALL_SPEAKERS.TMR],
-    inventory: [
-      { label: "Front LCR Array", count: "3 Speakers", role: "screen", detail: "Bowers & Wilkins / KEF Architectural" },
-      { label: "Surrounds (Side + Rear)", count: "4 Speakers", role: "surround", detail: "Seamless 360° ear-level envelope" },
-      { label: "Overhead Atmos", count: "2 Speakers", role: "height", detail: "Top Middle spatial height array" },
-      { label: "Dual Subwoofers", count: "2 Units", role: "subwoofer", detail: "Front/Rear opposed bass mode cancel" },
-    ],
-    amplification: "Marantz Cinema 40 / Denon AVC-X4800H (11.4-ch processing)",
-    startingFrom: "₹11.5 L",
-  },
-  {
-    id: "7.2.4",
-    label: "7.2.4 Reference Spatial",
-    tabLabel: "7.2.4 Reference",
-    tag: "FLAGSHIP MASTER ROOM",
-    channels: "13 Channels · 7 Ear-Level + 2 Subs + 4 Atmos",
-    roomSize: "28 × 18 ft · 500+ sq ft",
-    volume: "4,500+ cu ft",
-    splPeak: "118 dB reference",
-    summary:
-      "The definitive reference private cinema. Four discrete in-ceiling Atmos height channels deliver full front-to-back overhead object panning across a 360° hemisphere of sound. Dual reference subwoofers pressurize the room without localized distortion.",
-    speakers: [ALL_SPEAKERS.L, ALL_SPEAKERS.C, ALL_SPEAKERS.R, ALL_SPEAKERS.SUB1, ALL_SPEAKERS.SUB2, ALL_SPEAKERS.SL, ALL_SPEAKERS.SR, ALL_SPEAKERS.SBL, ALL_SPEAKERS.SBR, ALL_SPEAKERS.TFL, ALL_SPEAKERS.TFR, ALL_SPEAKERS.TRL, ALL_SPEAKERS.TRR],
-    inventory: [
-      { label: "Front LCR Array", count: "3 Speakers", role: "screen", detail: "Custom high-SPL reference towers" },
-      { label: "Surrounds (Side + Rear)", count: "4 Speakers", role: "surround", detail: "Wide dispersion architectural in-walls" },
-      { label: "Overhead 3D Atmos", count: "4 Speakers", role: "height", detail: "Top Front & Top Rear 4-point dome" },
-      { label: "Dual Reference Subs", count: "2 Units", role: "subwoofer", detail: "Dual infrasonic sealed subwoofers" },
-    ],
-    amplification: "Marantz AV10 Reference Processor + AMP10 16-Channel Power Amplifier",
-    startingFrom: "₹16.8 L",
-  },
-];
-
-const ROLE_COLORS = {
-  screen: { fill: "#9C7B49", stroke: "#B28A4F", glow: "rgba(156,123,73,0.45)", text: "Screen LCR" },
-  surround: { fill: "#445058", stroke: "#6A7882", glow: "rgba(106,120,130,0.45)", text: "Surrounds" },
-  subwoofer: { fill: "#212428", stroke: "#E2BA7A", glow: "rgba(226,186,122,0.55)", text: "Subwoofers" },
-  height: { fill: "#B88E52", stroke: "#F3D59B", glow: "rgba(243,213,155,0.55)", text: "Dolby Atmos" },
-};
-
+/**
+ * Interactive Private Cinema Room Planner & Dual 3D/2D Explorer.
+ * Pairs live room dimension/seating sizing with a bright architectural 3D studio
+ * (plus animated Dim Lights Cinema Mode), smooth camera POV presets, and a synchronized
+ * parametric 2D CAD blueprint.
+ */
 export function SpatialRoomVisualizer() {
+  const [lengthFt, setLengthFt] = useState<number>(24);
+  const [widthFt, setWidthFt] = useState<number>(16);
+  const [seatingRows, setSeatingRows] = useState<1 | 2>(2);
+
   const [activeTab, setActiveTab] = useState<RoomConfigId>("7.2.4");
+  const [manualTabLocked, setManualTabLocked] = useState<boolean>(false);
+
   const [viewMode, setViewMode] = useState<"isometric" | "plan">("isometric");
-  const [isSimulating, setIsSimulating] = useState<boolean>(true);
-  const [hoveredSpeaker, setHoveredSpeaker] = useState<Speaker | null>(null);
+  const [lightsOn, setLightsOn] = useState<boolean>(true);
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset>("studio");
+  const [soundCones, setSoundCones] = useState<boolean>(true);
+  const [showDimensions, setShowDimensions] = useState<boolean>(true);
+  const [resetSignal, setResetSignal] = useState<number>(0);
+
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState<string | null>(null);
+  const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null);
   const [highlightRole, setHighlightRole] = useState<string | null>(null);
   const [sweetSpotHovered, setSweetSpotHovered] = useState<boolean>(false);
+  const [techSpecsOpen, setTechSpecsOpen] = useState<boolean>(false);
+
   const reduced = useReducedMotion();
 
-  const config = ROOM_CONFIGS.find(c => c.id === activeTab) ?? ROOM_CONFIGS[3];
+  const recommendation = useMemo(
+    () => calculateRoomRecommendation({ lengthFt, widthFt, seatingRows }),
+    [lengthFt, widthFt, seatingRows],
+  );
 
-  const handleConsultClick = () => {
-    const el = document.getElementById("visit");
-    if (!el) return;
-    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  const layout = useMemo(
+    () => computeRoomLayout({ lengthFt, widthFt, seatingRows }),
+    [lengthFt, widthFt, seatingRows],
+  );
+
+  // Sync recommended package tier automatically as room sliders move unless user manually chose a tier
+  useEffect(() => {
+    if (!manualTabLocked) {
+      setActiveTab(recommendation.recommendedConfigId);
+    }
+  }, [manualTabLocked, recommendation.recommendedConfigId]);
+
+  const config = ROOM_CONFIGS.find(c => c.id === activeTab) ?? ROOM_CONFIGS[3];
+  const focusedSpeakerId = hoveredSpeakerId ?? selectedSpeakerId;
+  const focusedSpeaker: SpeakerMeta | null = focusedSpeakerId
+    ? config.speakers.find(s => s.id === focusedSpeakerId) ?? null
+    : null;
+  const focusedNode = focusedSpeaker ? layout.speakers[focusedSpeaker.id] : null;
+
+  const isRecommendedMatch = activeTab === recommendation.recommendedConfigId;
+
+  const handleSelectTab = (tabId: RoomConfigId) => {
+    setActiveTab(tabId);
+    setManualTabLocked(true);
+    setSelectedSpeakerId(null);
+    setHoveredSpeakerId(null);
   };
 
+  const handleApplyRecommended = () => {
+    setActiveTab(recommendation.recommendedConfigId);
+    setManualTabLocked(false);
+    setSelectedSpeakerId(null);
+  };
+
+  const handleCameraSwitch = (preset: CameraPreset) => {
+    setCameraPreset(preset);
+    if (viewMode === "plan") {
+      setViewMode("isometric");
+    }
+  };
+
+  const handleResetView = () => {
+    setCameraPreset("studio");
+    setSelectedSpeakerId(null);
+    setHoveredSpeakerId(null);
+    setHighlightRole(null);
+    setResetSignal(n => n + 1);
+  };
+
+  const handleConsultClick = () => {
+    const payload: StudioRoomSelectionPayload = {
+      lengthFt: recommendation.lengthFt,
+      widthFt: recommendation.widthFt,
+      rows: recommendation.effectiveRows,
+      totalSeats: recommendation.totalSeats,
+      screenIn: recommendation.recommendedScreenIn,
+      throwDistFt: recommendation.throwDistFt,
+      configId: config.id,
+      configLabel: config.label,
+      amplification: config.amplification,
+    };
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(STUDIO_ROOM_SELECT_EVENT, {
+          detail: {
+            ...payload,
+            formattedNote: formatConsultationNote(payload),
+          },
+        }),
+      );
+    }
+
+    const visitEl = document.getElementById("visit");
+    visitEl?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  };
+
+  const dockButtonSx = (active: boolean) => ({
+    ...TYPE.label,
+    fontSize: { xs: "0.62rem", sm: "0.66rem" },
+    px: { xs: 1.15, sm: 1.35 },
+    py: 0.65,
+    minHeight: 36,
+    minWidth: "auto",
+    whiteSpace: "nowrap",
+    borderRadius: "3px",
+    border: active ? "1px solid rgba(226,186,122,0.55)" : "1px solid rgba(255,255,255,0.12)",
+    bgcolor: active ? STUDIO.brass : "rgba(255,255,255,0.06)",
+    color: active ? "#121315" : "rgba(255,255,255,0.78)",
+    transition: `all 180ms ${EASE}`,
+    "&:hover": {
+      bgcolor: active ? "#B28A4F" : "rgba(255,255,255,0.12)",
+      color: active ? "#121315" : "#FFFFFF",
+    },
+  });
+
   return (
-    <Box sx={{ width: "100%", my: { xs: 4, md: 6 } }}>
-      {/* Top Header Bar: Section Label + Configuration Tab Switcher */}
+    <Box sx={{ width: "100%", my: { xs: 3, md: 5 } }}>
+      {/* Step 1: Customer Room Dimension & Seating Planner Bar */}
+      <Box
+        sx={{
+          p: { xs: 2, sm: 2.5, md: 3 },
+          mb: 3,
+          bgcolor: "rgba(246,244,238,0.85)",
+          border: `1px solid ${STUDIO.hairStrong}`,
+          borderRadius: "6px",
+        }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1.5,
+            mb: 2.25,
+          }}
+        >
+          <Box>
+            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.9, mb: 0.4 }}>
+              <Box
+                component="span"
+                sx={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  bgcolor: STUDIO.brass,
+                }}
+              />
+              <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.64rem", letterSpacing: "0.09em", textTransform: "uppercase" }}>
+                Step 1 · Enter Your Room Dimensions
+              </Typography>
+            </Box>
+            <Typography sx={{ fontFamily: FONT.display, fontSize: { xs: "1.05rem", md: "1.2rem" }, fontWeight: 600, color: STUDIO.graphite }}>
+              Dial in your space to preview screen size, seating &amp; acoustic fit
+            </Typography>
+          </Box>
+
+          {/* Smart Live Fit Summary + Auto-Sync Chip */}
+          <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1 }}>
+            <Box
+              sx={{
+                px: 1.5,
+                py: 0.75,
+                borderRadius: "4px",
+                bgcolor: "rgba(22,24,26,0.045)",
+                border: `1px solid ${STUDIO.hair}`,
+              }}
+            >
+              <Typography sx={{ ...TYPE.label, color: STUDIO.graphite, fontSize: "0.68rem", fontWeight: 600 }}>
+                Suggests {recommendation.recommendedScreenIn}″ 4K · {recommendation.totalSeats} Seats ·{" "}
+                <Box component="span" sx={{ color: STUDIO.brass }}>
+                  {recommendation.recommendedConfigId} Best Fit
+                </Box>
+              </Typography>
+            </Box>
+
+            <AnimatePresence>
+              {!isRecommendedMatch && (
+                <Box
+                  component={motion.div}
+                  initial={reduced ? false : { opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={reduced ? undefined : { opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Button
+                    size="small"
+                    onClick={handleApplyRecommended}
+                    sx={{
+                      ...TYPE.label,
+                      fontSize: "0.64rem",
+                      px: 1.4,
+                      minHeight: 34,
+                      bgcolor: STUDIO.brass,
+                      color: "#121315",
+                      borderRadius: "3px",
+                      "&:hover": { bgcolor: "#B28A4F" },
+                    }}
+                  >
+                    Apply Best Fit ({recommendation.recommendedConfigId})
+                  </Button>
+                </Box>
+              )}
+            </AnimatePresence>
+          </Box>
+        </Box>
+
+        {/* Three Tactile Inputs: Room Length, Room Width, Seating Rows */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "1fr 1fr auto" },
+            gap: { xs: 2, md: 3.5 },
+            alignItems: "center",
+          }}
+        >
+          {/* Room Length Slider */}
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", mb: 0.5 }}>
+              <Typography sx={{ ...TYPE.label, color: STUDIO.slate, fontSize: "0.68rem" }}>
+                Room Length (Screen to Back Wall)
+              </Typography>
+              <Typography sx={{ fontFamily: FONT.display, fontWeight: 700, fontSize: "0.95rem", color: STUDIO.graphite }}>
+                {lengthFt} ft
+              </Typography>
+            </Box>
+            <Slider
+              aria-label="Room length in feet"
+              min={12}
+              max={32}
+              step={1}
+              value={lengthFt}
+              onChange={(_, val) => setLengthFt(Array.isArray(val) ? val[0] : val)}
+              sx={{
+                color: STUDIO.brass,
+                py: 1,
+                "& .MuiSlider-thumb": {
+                  width: 18,
+                  height: 18,
+                  bgcolor: STUDIO.graphite,
+                  border: `2px solid ${STUDIO.brass}`,
+                  "&:hover, &.Mui-focusVisible": { boxShadow: "0 0 0 6px rgba(156,123,73,0.18)" },
+                },
+                "& .MuiSlider-rail": { bgcolor: STUDIO.hairStrong, opacity: 1 },
+              }}
+            />
+          </Box>
+
+          {/* Room Width Slider */}
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", mb: 0.5 }}>
+              <Typography sx={{ ...TYPE.label, color: STUDIO.slate, fontSize: "0.68rem" }}>
+                Room Width (Wall to Wall)
+              </Typography>
+              <Typography sx={{ fontFamily: FONT.display, fontWeight: 700, fontSize: "0.95rem", color: STUDIO.graphite }}>
+                {widthFt} ft
+              </Typography>
+            </Box>
+            <Slider
+              aria-label="Room width in feet"
+              min={10}
+              max={24}
+              step={1}
+              value={widthFt}
+              onChange={(_, val) => setWidthFt(Array.isArray(val) ? val[0] : val)}
+              sx={{
+                color: STUDIO.brass,
+                py: 1,
+                "& .MuiSlider-thumb": {
+                  width: 18,
+                  height: 18,
+                  bgcolor: STUDIO.graphite,
+                  border: `2px solid ${STUDIO.brass}`,
+                  "&:hover, &.Mui-focusVisible": { boxShadow: "0 0 0 6px rgba(156,123,73,0.18)" },
+                },
+                "& .MuiSlider-rail": { bgcolor: STUDIO.hairStrong, opacity: 1 },
+              }}
+            />
+          </Box>
+
+          {/* Seating Rows Selector */}
+          <Box sx={{ gridColumn: { xs: "1 / -1", md: "auto" } }}>
+            <Typography sx={{ ...TYPE.label, color: STUDIO.slate, fontSize: "0.68rem", mb: 0.8 }}>
+              Seating Layout ({recommendation.totalSeats} seats)
+            </Typography>
+            <Box
+              sx={{
+                display: "inline-flex",
+                p: 0.4,
+                bgcolor: "rgba(22,24,26,0.05)",
+                border: `1px solid ${STUDIO.hair}`,
+                borderRadius: "4px",
+                gap: 0.5,
+              }}
+            >
+              {[1, 2].map(rowCount => {
+                const count = rowCount as 1 | 2;
+                const disabled = count === 2 && lengthFt < 16;
+                const active = recommendation.effectiveRows === count;
+                return (
+                  <Button
+                    key={count}
+                    size="small"
+                    disabled={disabled}
+                    onClick={() => setSeatingRows(count)}
+                    sx={{
+                      ...TYPE.label,
+                      fontSize: "0.66rem",
+                      px: 1.5,
+                      minHeight: 36,
+                      borderRadius: "3px",
+                      bgcolor: active ? STUDIO.graphite : "transparent",
+                      color: active ? STUDIO.chalk : STUDIO.slate,
+                      "&:hover": { bgcolor: active ? STUDIO.ink : "rgba(22,24,26,0.06)" },
+                      "&.Mui-disabled": { color: STUDIO.mist, opacity: 0.55 },
+                    }}
+                  >
+                    {count === 1 ? "1 Row" : "2 Rows (Tiered)"}
+                  </Button>
+                );
+              })}
+            </Box>
+          </Box>
+        </Box>
+
+        {recommendation.rowCapNotice && (
+          <Typography sx={{ ...TYPE.placard, fontSize: "0.78rem", color: STUDIO.brass, mt: 1.25 }}>
+            {recommendation.rowCapNotice}
+          </Typography>
+        )}
+      </Box>
+
+      {/* Step 2 Header Bar + Audio Package Tabs */}
       <Box
         sx={{
           display: "flex",
-          flexDirection: { xs: "column", lg: "row" },
-          alignItems: { xs: "flex-start", lg: "center" },
+          flexDirection: { xs: "column", md: "row" },
+          alignItems: { xs: "flex-start", md: "center" },
           justifyContent: "space-between",
-          gap: 2.5,
-          pb: 3,
+          gap: 2,
+          mb: 3,
+          pb: 2,
           borderBottom: `1px solid ${STUDIO.hairStrong}`,
         }}
       >
         <Box>
-          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1, mb: 0.75 }}>
-            <Box
-              component="span"
-              sx={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                bgcolor: STUDIO.brass,
-                boxShadow: "0 0 0 3px rgba(156,123,73,0.22)",
-              }}
-            />
-            <Typography sx={{ ...TYPE.label, color: STUDIO.brass, letterSpacing: "0.1em", textTransform: "uppercase", fontSize: "0.68rem" }}>
-              Acoustic Engineering &amp; Speaker Architectures
+          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.9, mb: 0.4 }}>
+            <Box component="span" sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: STUDIO.brass }} />
+            <Typography sx={{ ...TYPE.label, color: STUDIO.brass, letterSpacing: "0.1em", textTransform: "uppercase", fontSize: "0.64rem" }}>
+              Step 2 · Compare Audio Systems in Your Room
             </Typography>
           </Box>
-          <Typography component="h3" sx={{ ...TYPE.section, fontSize: "clamp(1.4rem, 2.2vw, 1.95rem)", color: STUDIO.graphite, m: 0 }}>
-            Spatial cinema configurations.
+          <Typography component="h3" sx={{ ...TYPE.exhibit, fontSize: { xs: "1.45rem", md: "1.85rem" }, color: STUDIO.graphite }}>
+            Interactive 3D Studio &amp; CAD Blueprint.
           </Typography>
         </Box>
 
-        {/* Tab Controls with Sliding Pill */}
+        {/* Configuration Tab Switcher with Spring Pill + Best Fit Indicator */}
         <Box
           role="tablist"
           aria-label="Room audio configurations"
@@ -425,30 +427,29 @@ export function SpatialRoomVisualizer() {
         >
           {ROOM_CONFIGS.map(tab => {
             const isActive = tab.id === activeTab;
+            const isBestFit = tab.id === recommendation.recommendedConfigId;
             return (
               <Box
                 key={tab.id}
                 component="button"
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setHoveredSpeaker(null);
-                }}
+                onClick={() => handleSelectTab(tab.id)}
                 sx={{
                   all: "unset",
                   boxSizing: "border-box",
                   cursor: "pointer",
                   position: "relative",
                   zIndex: 2,
-                  px: { xs: 1.25, sm: 1.85, md: 2.2 },
+                  px: { xs: 1.25, sm: 1.75, md: 2.1 },
                   py: 0.9,
+                  minHeight: 38,
                   borderRadius: "3px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  gap: 0.65,
                   whiteSpace: "nowrap",
-                  flexGrow: { xs: 0, sm: "initial" },
                   transition: `color 220ms ${EASE}`,
                   color: isActive ? STUDIO.chalk : STUDIO.graphite,
                   "&:focus-visible": { outline: `2px solid ${STUDIO.brass}`, outlineOffset: -1 },
@@ -458,18 +459,30 @@ export function SpatialRoomVisualizer() {
                   <Box
                     component={motion.div}
                     layoutId="activeRoomTabPill"
-                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                    transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 32 }}
                     sx={{
                       position: "absolute",
                       inset: 0,
                       bgcolor: STUDIO.graphite,
                       borderRadius: "3px",
                       zIndex: -1,
-                      boxShadow: "0 2px 8px rgba(22,24,26,0.18)",
+                      boxShadow: "0 2px 8px rgba(22,24,26,0.16)",
                     }}
                   />
                 )}
-                <Typography sx={{ ...TYPE.label, fontSize: { xs: "0.68rem", md: "0.74rem" }, fontWeight: isActive ? 600 : 500, color: "inherit", letterSpacing: "0.04em" }}>
+                {isBestFit && (
+                  <Box
+                    component="span"
+                    sx={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      bgcolor: isActive ? "#E6BE79" : STUDIO.brass,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <Typography sx={{ ...TYPE.label, fontSize: { xs: "0.66rem", md: "0.74rem" }, fontWeight: isActive ? 600 : 500, color: "inherit", letterSpacing: "0.04em" }}>
                   {tab.tabLabel}
                 </Typography>
               </Box>
@@ -478,47 +491,32 @@ export function SpatialRoomVisualizer() {
         </Box>
       </Box>
 
-      {/* Main Visualizer Split: ThreeUI-Grade 3D Blueprint Canvas + Engineering Placard */}
+      {/* Main Split Stage: Dual 3D/2D Visualizer + Outcome Details */}
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", lg: "1.3fr 1fr" },
-          gap: { xs: 4, md: 5 },
+          gridTemplateColumns: { xs: "1fr", lg: "1.35fr 1fr" },
+          gap: { xs: 3, md: 4.5 },
           alignItems: "stretch",
-          mt: 3.5,
         }}
       >
-        {/* Left Column: 3D Isometric / 2D CAD Interactive Canvas */}
+        {/* Left Stage: Dual Architectural 3D & Parametric 2D Blueprint Container */}
         <Box
           sx={{
-            bgcolor: "#111315",
-            borderRadius: "6px",
-            border: `1px solid rgba(156,123,73,0.35)`,
-            p: { xs: 2, sm: 2.5, md: 3 },
             position: "relative",
-            overflow: "hidden",
-            boxShadow: "inset 0 0 80px rgba(0,0,0,0.85), 0 20px 48px rgba(0,0,0,0.22)",
+            minWidth: 0,
+            bgcolor: "#141619",
+            borderRadius: "6px",
+            p: { xs: 1.5, sm: 2.25, md: 2.5 },
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 18px 46px rgba(17,19,21,0.14)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            minHeight: { xs: 520, sm: 580, md: 620 },
+            overflow: "hidden",
           }}
         >
-          {/* Subtle Precision CAD Grid Background */}
-          <Box
-            aria-hidden="true"
-            sx={{
-              position: "absolute",
-              inset: 0,
-              opacity: 0.12,
-              backgroundImage:
-                "linear-gradient(rgba(246,244,238,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(246,244,238,0.12) 1px, transparent 1px)",
-              backgroundSize: "28px 28px",
-              pointerEvents: "none",
-            }}
-          />
-
-          {/* Interactive HUD Toolbar: View Toggle (3D Iso / 2D Plan) + Audio Simulation Switch + Telemetry */}
+          {/* Top HUD: Dual Engine Switch (3D Room vs Parametric 2D CAD) + Live Summary */}
           <Box
             sx={{
               position: "relative",
@@ -527,594 +525,280 @@ export function SpatialRoomVisualizer() {
               flexWrap: "wrap",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: 1.5,
-              pb: 1.5,
+              gap: 1.25,
+              pb: 1.25,
               borderBottom: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            {/* Viewport Mode Switch: 3D Isometric vs 2D CAD Plan */}
-            <Box sx={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: { xs: 0.75, sm: 1 } }}>
-              <Box
-                sx={{
-                  display: "inline-flex",
-                  p: 0.35,
-                  bgcolor: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: "3px",
-                }}
-              >
-                <Button
-                  size="small"
-                  onClick={() => setViewMode("isometric")}
-                  startIcon={<ViewInAr sx={{ fontSize: "0.85rem !important" }} />}
-                  sx={{
-                    ...TYPE.label,
-                    fontSize: { xs: "0.58rem", sm: "0.62rem" },
-                    px: { xs: 1, sm: 1.2 },
-                    py: 0.45,
-                    minWidth: "auto",
-                    whiteSpace: "nowrap",
-                    color: viewMode === "isometric" ? "#111315" : "rgba(255,255,255,0.6)",
-                    bgcolor: viewMode === "isometric" ? STUDIO.brass : "transparent",
-                    borderRadius: "2px",
-                    "&:hover": {
-                      bgcolor: viewMode === "isometric" ? "#B28A4F" : "rgba(255,255,255,0.08)",
-                      color: viewMode === "isometric" ? "#111315" : "#FFFFFF",
-                    },
-                  }}
-                >
-                  3D Realistic Room
-                </Button>
-                <Button
-                  size="small"
-                  onClick={() => setViewMode("plan")}
-                  startIcon={<GridOn sx={{ fontSize: "0.85rem !important" }} />}
-                  sx={{
-                    ...TYPE.label,
-                    fontSize: { xs: "0.58rem", sm: "0.62rem" },
-                    px: { xs: 1, sm: 1.2 },
-                    py: 0.45,
-                    minWidth: "auto",
-                    whiteSpace: "nowrap",
-                    color: viewMode === "plan" ? "#111315" : "rgba(255,255,255,0.6)",
-                    bgcolor: viewMode === "plan" ? STUDIO.brass : "transparent",
-                    borderRadius: "2px",
-                    "&:hover": {
-                      bgcolor: viewMode === "plan" ? "#B28A4F" : "rgba(255,255,255,0.08)",
-                      color: viewMode === "plan" ? "#111315" : "#FFFFFF",
-                    },
-                  }}
-                >
-                  2D CAD Blueprint
-                </Button>
-              </Box>
-
-              {/* Simulation Mode Toggle Button */}
+            <Box
+              sx={{
+                display: "inline-flex",
+                p: 0.35,
+                bgcolor: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "3px",
+              }}
+            >
               <Button
                 size="small"
-                onClick={() => setIsSimulating(!isSimulating)}
-                startIcon={isSimulating ? <Pause sx={{ fontSize: "0.8rem !important" }} /> : <PlayArrow sx={{ fontSize: "0.8rem !important" }} />}
+                onClick={() => setViewMode("isometric")}
+                startIcon={<ViewInAr sx={{ fontSize: "0.85rem !important" }} />}
                 sx={{
                   ...TYPE.label,
-                  fontSize: { xs: "0.58rem", sm: "0.62rem" },
-                  px: { xs: 1, sm: 1.2 },
-                  py: 0.45,
-                  minWidth: "auto",
+                  fontSize: { xs: "0.6rem", sm: "0.64rem" },
+                  px: { xs: 1.1, sm: 1.4 },
+                  minHeight: 34,
                   whiteSpace: "nowrap",
-                  border: "1px solid rgba(226,186,122,0.3)",
-                  bgcolor: isSimulating ? "rgba(156,123,73,0.18)" : "transparent",
-                  color: isSimulating ? "#E2BA7A" : "rgba(255,255,255,0.5)",
-                  borderRadius: "3px",
-                  transition: `all 200ms ${EASE}`,
-                  "&:hover": {
-                    bgcolor: "rgba(156,123,73,0.3)",
-                    color: "#FFFFFF",
-                  },
+                  color: viewMode === "isometric" ? "#121315" : "rgba(255,255,255,0.7)",
+                  bgcolor: viewMode === "isometric" ? STUDIO.brass : "transparent",
+                  borderRadius: "2px",
+                  "&:hover": { bgcolor: viewMode === "isometric" ? "#B28A4F" : "rgba(255,255,255,0.1)" },
                 }}
               >
-                {isSimulating ? "Acoustic Simulation" : "Simulation Paused"}
+                3D Studio Room
+              </Button>
+              <Button
+                size="small"
+                onClick={() => setViewMode("plan")}
+                startIcon={<GridOn sx={{ fontSize: "0.85rem !important" }} />}
+                sx={{
+                  ...TYPE.label,
+                  fontSize: { xs: "0.6rem", sm: "0.64rem" },
+                  px: { xs: 1.1, sm: 1.4 },
+                  minHeight: 34,
+                  whiteSpace: "nowrap",
+                  color: viewMode === "plan" ? "#121315" : "rgba(255,255,255,0.7)",
+                  bgcolor: viewMode === "plan" ? STUDIO.brass : "transparent",
+                  borderRadius: "2px",
+                  "&:hover": { bgcolor: viewMode === "plan" ? "#B28A4F" : "rgba(255,255,255,0.1)" },
+                }}
+              >
+                2D CAD Blueprint
               </Button>
             </Box>
 
-            {/* Live Audio Telemetry: SPL dB VU Meter + Transducer Count */}
-            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1.5 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                <GraphicEq sx={{ fontSize: "0.9rem", color: isSimulating ? "#E2BA7A" : "rgba(255,255,255,0.35)" }} />
-                <Typography sx={{ ...TYPE.label, fontSize: "0.62rem", color: isSimulating ? "#E2BA7A" : "rgba(255,255,255,0.45)", letterSpacing: "0.06em" }}>
-                  {isSimulating ? "85 dB SPL REF" : "MUTED"}
-                </Typography>
-                {/* 5-segment VU LED level bars */}
-                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.3 }}>
-                  {[1, 2, 3, 4, 5].map(barIdx => (
-                    <Box
-                      key={barIdx}
-                      sx={{
-                        width: 2.5,
-                        height: 7 + barIdx * 1.5,
-                        borderRadius: "1px",
-                        bgcolor:
-                          !isSimulating
-                            ? "rgba(255,255,255,0.12)"
-                            : barIdx <= 3
-                            ? "#4CAF50"
-                            : barIdx === 4
-                            ? "#FFB300"
-                            : "#E53935",
-                        opacity: isSimulating ? 0.9 : 0.3,
-                        transition: "opacity 150ms ease",
-                      }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-
-              <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.45)", fontSize: "0.6rem" }}>
-                {config.speakers.length} NODES
+            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1.25 }}>
+              <Typography sx={{ ...TYPE.label, color: "#E6BE79", fontSize: "0.64rem", letterSpacing: "0.05em" }}>
+                {recommendation.lengthFt}×{recommendation.widthFt} FT · {recommendation.recommendedScreenIn}″ 4K · {config.id}
               </Typography>
             </Box>
           </Box>
 
-          {/* Main Stage Viewport: Realistic 3D Cinema Room vs. 2D Architectural CAD Blueprint */}
+          {/* Viewport Stage */}
           <Box
             sx={{
               position: "relative",
-              my: "auto",
               width: "100%",
-              height: { xs: 370, sm: 420, md: 460 },
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              overflow: "hidden",
+              height: { xs: 330, sm: 390, md: 430 },
+              my: 1.25,
               borderRadius: "4px",
+              overflow: "hidden",
             }}
           >
             {viewMode === "isometric" ? (
               <Box sx={{ position: "relative", width: "100%", height: "100%" }}>
                 <CinemaRoomCanvas
                   configId={activeTab}
-                  isSimulating={isSimulating}
-                  hoveredSpeakerId={hoveredSpeaker?.id ?? null}
+                  layout={layout}
+                  lightsOn={lightsOn}
+                  cameraPreset={cameraPreset}
+                  soundCones={soundCones}
+                  showDimensions={showDimensions}
+                  hoveredSpeakerId={focusedSpeakerId}
+                  highlightRole={highlightRole}
                   isSweetSpotFocused={sweetSpotHovered}
+                  onSpeakerSelect={id => setSelectedSpeakerId(id)}
+                  resetSignal={resetSignal}
                 />
+
+                {/* Non-blocking Corner Dimension Pill & Lighting Indicator in 3D */}
+                {showDimensions && (
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      top: 10,
+                      left: 10,
+                      pointerEvents: "none",
+                      px: 1.2,
+                      py: 0.5,
+                      borderRadius: "3px",
+                      bgcolor: "rgba(18,19,21,0.78)",
+                      backdropFilter: "blur(6px)",
+                      border: "1px solid rgba(226,186,122,0.28)",
+                    }}
+                  >
+                    <Typography sx={{ ...TYPE.label, color: "#F3D59B", fontSize: "0.58rem" }}>
+                      {recommendation.lengthFt} × {recommendation.widthFt} ft · Screen {recommendation.recommendedScreenIn}″ · Throw {recommendation.throwDistFt} ft
+                    </Typography>
+                  </Box>
+                )}
+
                 <Box
                   sx={{
                     position: "absolute",
                     bottom: 8,
                     right: 10,
                     pointerEvents: "none",
-                    bgcolor: "rgba(17,19,21,0.78)",
-                    backdropFilter: "blur(6px)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: "3px",
                     px: 1,
                     py: 0.35,
+                    borderRadius: "3px",
+                    bgcolor: "rgba(18,19,21,0.72)",
+                    border: "1px solid rgba(255,255,255,0.08)",
                   }}
                 >
-                  <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.5)", fontSize: "0.56rem", letterSpacing: "0.04em" }}>
-                    3D WebGL Cinema · Drag to orbit · Parallax active
+                  <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.58)", fontSize: "0.56rem" }}>
+                    Drag to orbit · Click any speaker to inspect
                   </Typography>
                 </Box>
               </Box>
             ) : (
-              <Box
-                sx={{
-                  width: "100%",
-                  height: "100%",
-                  maxHeight: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <svg
-                  viewBox="0 0 100 100"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    overflow: "visible",
-                  }}
-                >
-                <defs>
-                  {/* Front AT 4K Screen Gradient */}
-                  <linearGradient id="screenGrad" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#9C7B49" stopOpacity="0.85" />
-                    <stop offset="50%" stopColor="#F3D59B" stopOpacity="1" />
-                    <stop offset="100%" stopColor="#9C7B49" stopOpacity="0.85" />
-                  </linearGradient>
+              <ParametricCinemaCadSvg
+                layout={layout}
+                recommendation={recommendation}
+                speakers={config.speakers}
+                hoveredSpeakerId={focusedSpeakerId}
+                highlightRole={highlightRole}
+                sweetSpotHovered={sweetSpotHovered}
+                soundCones={soundCones}
+                showDimensions={showDimensions}
+                reducedMotion={!!reduced}
+                onSelectSpeaker={id => setSelectedSpeakerId(id)}
+                onHoverSweetSpot={setSweetSpotHovered}
+              />
+            )}
+          </Box>
 
-                  {/* 4K Laser Optical Projector Cone */}
-                  <linearGradient id="projectorBeam" x1="0" y1="1" x2="0" y2="0">
-                    <stop offset="0%" stopColor="rgba(243,213,155,0.2)" />
-                    <stop offset="50%" stopColor="rgba(243,213,155,0.06)" />
-                    <stop offset="100%" stopColor="rgba(243,213,155,0.01)" />
-                  </linearGradient>
-
-                  {/* Dual Subwoofer Low-Frequency Infrasonic Wavefront */}
-                  <radialGradient id="subwooferWave" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="rgba(226,186,122,0.4)" />
-                    <stop offset="45%" stopColor="rgba(226,186,122,0.15)" />
-                    <stop offset="100%" stopColor="rgba(226,186,122,0)" />
-                  </radialGradient>
-
-                  {/* Overhead Dolby Atmos Downward Sound Shower */}
-                  <radialGradient id="atmosShower" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="rgba(243,213,155,0.5)" />
-                    <stop offset="60%" stopColor="rgba(184,142,82,0.18)" />
-                    <stop offset="100%" stopColor="rgba(184,142,82,0)" />
-                  </radialGradient>
-
-                  {/* Floor Reflection Gradient */}
-                  <radialGradient id="floorGlow" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="rgba(156,123,73,0.14)" />
-                    <stop offset="100%" stopColor="rgba(0,0,0,0)" />
-                  </radialGradient>
-                </defs>
-
-                {/* Simulated Hardwood / Acoustic Carpet Floor Slab with 3D Depth */}
-                <rect
-                  x="2"
-                  y="2"
-                  width="96"
-                  height="96"
-                  rx="3"
-                  fill="#15181A"
-                  stroke="rgba(255,255,255,0.1)"
-                  strokeWidth="0.6"
-                />
-
-                {/* Ambient Floor Acoustic Center Glow */}
-                <ellipse cx="50" cy="55" rx="42" ry="38" fill="url(#floorGlow)" />
-
-                {/* Acoustic Perimeter Baffle Walls with Slat Diffusers */}
-                <rect
-                  x="5"
-                  y="5"
-                  width="90"
-                  height="90"
-                  rx="2"
-                  fill="none"
-                  stroke="rgba(156,123,73,0.3)"
-                  strokeWidth="0.8"
-                  strokeDasharray="2 2"
-                />
-
-                {/* Slat Diffuser Panels along the lateral boundary walls */}
-                {[-1, 1].map(side => (
-                  <g key={`diffusers-${side}`}>
-                    {[22, 34, 46, 58, 70, 82].map(yPos => (
-                      <rect
-                        key={`slat-${side}-${yPos}`}
-                        x={side === -1 ? 3.5 : 94.5}
-                        y={yPos}
-                        width="2"
-                        height="8"
-                        rx="0.5"
-                        fill="#2A2F34"
-                        stroke="rgba(255,255,255,0.15)"
-                        strokeWidth="0.3"
-                      />
-                    ))}
-                  </g>
-                ))}
-
-                {/* 4K Laser Projector Beam Throw (from rear wall projector to front screen) */}
-                <polygon
-                  points="50,93 24,7 76,7"
-                  fill="url(#projectorBeam)"
-                  opacity={isSimulating ? 0.95 : 0.4}
-                />
-
-                {/* Rear Wall Native 4K Projector Lens */}
-                <g transform="translate(50, 93.5)">
-                  <rect x="-3" y="-1.5" width="6" height="3" rx="0.6" fill="#2A2E32" stroke="#E2BA7A" strokeWidth="0.5" />
-                  <circle cx="0" cy="-0.2" r="1.1" fill="#E2BA7A" opacity="0.9" />
-                  {isSimulating && !reduced && (
-                    <circle cx="0" cy="-0.2" r="1.8" fill="none" stroke="#E2BA7A" strokeWidth="0.4">
-                      <animate attributeName="r" values="1.2;2.8;1.2" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
-                    </circle>
-                  )}
-                </g>
-
-                {/* Front Wall: Acoustically Transparent 4K Woven Screen Structure */}
-                <g transform="translate(0, 0)">
-                  {/* Screen Frame Shadow */}
-                  <rect x="23.5" y="6.8" width="53" height="3.2" rx="0.8" fill="rgba(0,0,0,0.7)" />
-                  {/* Front Screen */}
-                  <rect
-                    x="24"
-                    y="6"
-                    width="52"
-                    height="2.6"
-                    rx="0.5"
-                    fill="url(#screenGrad)"
-                    stroke="rgba(255,255,255,0.4)"
-                    strokeWidth="0.4"
-                  />
-                  <text
-                    x="50"
-                    y="4.5"
-                    textAnchor="middle"
-                    fill="#F3D59B"
-                    fontSize="2.3"
-                    fontFamily="sans-serif"
-                    letterSpacing="0.25"
-                    fontWeight="700"
-                  >
-                    160″ 4K WOVEN REFERENCE SCREEN
-                  </text>
-                </g>
-
-                {/* Acoustic Sweet Spot (VIP Cinema Recliner + Calibration Target) */}
-                <g
-                  transform="translate(50, 65)"
-                  style={{ cursor: "pointer" }}
-                  onMouseEnter={() => setSweetSpotHovered(true)}
-                  onMouseLeave={() => setSweetSpotHovered(false)}
-                >
-                  {/* Target Calibration Rings */}
-                  <circle r="11" fill="none" stroke="rgba(156,123,73,0.2)" strokeWidth="0.5" strokeDasharray="1.5 1.5" />
-                  <circle r="6.5" fill="none" stroke={sweetSpotHovered ? "#E2BA7A" : "rgba(156,123,73,0.4)"} strokeWidth="0.6" />
-                  
-                  {/* VIP Cinema Recliner Geometry with 3D Depth */}
-                  {/* Chair Shadow */}
-                  <rect x="-4.5" y="-3.5" width="9" height="8.5" rx="1.5" fill="rgba(0,0,0,0.6)" />
-                  {/* Chair Base */}
-                  <rect x="-4" y="-3.8" width="8" height="7.6" rx="1.2" fill="#23272B" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
-                  {/* Armrests */}
-                  <rect x="-4.4" y="-2" width="1.2" height="5" rx="0.4" fill="#32383E" />
-                  <rect x="3.2" y="-2" width="1.2" height="5" rx="0.4" fill="#32383E" />
-                  {/* Cushion */}
-                  <rect x="-2.8" y="-2.2" width="5.6" height="4.8" rx="0.8" fill="#181B1D" />
-                  {/* Headrest */}
-                  <rect x="-2.2" y="-4.6" width="4.4" height="1.6" rx="0.6" fill="#9C7B49" />
-                  
-                  <text x="0" y="8" textAnchor="middle" fill="#FFFFFF" fontSize="2.2" fontWeight="600" fontFamily="sans-serif">
-                    SWEET SPOT
-                  </text>
-                  <text x="0" y="10.2" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="1.6" fontFamily="sans-serif">
-                    Dirac Live Calibrated
-                  </text>
-                </g>
-
-                {/* Acoustic Soundwave Ripples & Driver Excursion Physics */}
-                {isSimulating && (
-                  <g opacity={reduced ? 0.4 : 0.85}>
-                    {config.speakers.map((sp, idx) => {
-                      const isSub = sp.role === "subwoofer";
-                      const isHeight = sp.role === "height";
-
-                      return (
-                        <g key={`wave-${sp.id}`}>
-                          {/* Radiating soundwave ring 1 */}
-                          <circle
-                            cx={sp.x}
-                            cy={sp.y}
-                            r={isSub ? "6" : isHeight ? "4" : "4.5"}
-                            fill={isSub ? "url(#subwooferWave)" : isHeight ? "url(#atmosShower)" : "none"}
-                            stroke={isSub ? "rgba(226,186,122,0.55)" : isHeight ? "rgba(243,213,155,0.6)" : "rgba(156,123,73,0.4)"}
-                            strokeWidth={isSub ? "0.6" : "0.4"}
-                          >
-                            {!reduced && (
-                              <animate
-                                attributeName="r"
-                                values={isSub ? "3;16;24" : isHeight ? "2;9;15" : "2;8;14"}
-                                dur={isSub ? "2.6s" : "2.0s"}
-                                begin={`${idx * 0.18}s`}
-                                repeatCount="indefinite"
-                              />
-                            )}
-                            {!reduced && (
-                              <animate
-                                attributeName="opacity"
-                                values="0.85;0.35;0"
-                                dur={isSub ? "2.6s" : "2.0s"}
-                                begin={`${idx * 0.18}s`}
-                                repeatCount="indefinite"
-                              />
-                            )}
-                          </circle>
-
-                          {/* Radiating soundwave ring 2 (Phase offset for smooth continuous ripple) */}
-                          {!reduced && (
-                            <circle
-                              cx={sp.x}
-                              cy={sp.y}
-                              r={isSub ? "4" : "3"}
-                              fill="none"
-                              stroke={isSub ? "rgba(226,186,122,0.35)" : isHeight ? "rgba(243,213,155,0.4)" : "rgba(156,123,73,0.25)"}
-                              strokeWidth="0.35"
-                            >
-                              <animate
-                                attributeName="r"
-                                values={isSub ? "2;12;20" : "1.5;6;11"}
-                                dur={isSub ? "2.6s" : "2.0s"}
-                                begin={`${idx * 0.18 + 0.9}s`}
-                                repeatCount="indefinite"
-                              />
-                              <animate
-                                attributeName="opacity"
-                                values="0.7;0.25;0"
-                                dur={isSub ? "2.6s" : "2.0s"}
-                                begin={`${idx * 0.18 + 0.9}s`}
-                                repeatCount="indefinite"
-                              />
-                            </circle>
-                          )}
-                        </g>
-                      );
-                    })}
-                  </g>
-                )}
-
-                {/* Laser Acoustic Ray Tracing to Sweet Spot (Active on hover or sweet-spot focus) */}
-                {config.speakers.map(sp => {
-                  const isHovered = hoveredSpeaker?.id === sp.id;
-                  const isRoleMatch = highlightRole === sp.role;
-                  const showRay = isHovered || isRoleMatch || sweetSpotHovered;
-                  if (!showRay) return null;
-
-                  return (
-                    <g key={`ray-${sp.id}`}>
-                      {/* Laser beam connecting speaker to listener */}
-                      <line
-                        x1={sp.x}
-                        y1={sp.y}
-                        x2={50}
-                        y2={65}
-                        stroke="#F3D59B"
-                        strokeWidth="0.8"
-                        strokeDasharray="2 1.5"
-                        opacity={isHovered ? 1 : 0.65}
-                      />
-                      {/* Animated traveling photon pulse */}
-                      {!reduced && (
-                        <circle r="1.1" fill="#FFFFFF">
-                          <animateMotion
-                            path={`M ${sp.x} ${sp.y} L 50 65`}
-                            dur="1.4s"
-                            repeatCount="indefinite"
-                          />
-                        </circle>
-                      )}
-                    </g>
-                  );
-                })}
-
-                {/* Speaker Transducers (3D Extruded Enclosures & Driver Cones) */}
-                {config.speakers.map(sp => {
-                  const isHovered = hoveredSpeaker?.id === sp.id;
-                  const isRoleMatch = highlightRole === sp.role;
-                  const colors = ROLE_COLORS[sp.role];
-                  const isSub = sp.role === "subwoofer";
-                  const isHeight = sp.role === "height";
-
-                  return (
-                    <g
-                      key={sp.id}
-                      onClick={() => setHoveredSpeaker(sp)}
-                      onMouseEnter={() => setHoveredSpeaker(sp)}
-                      onMouseLeave={() => setHoveredSpeaker(null)}
-                      style={{ cursor: "pointer" }}
+          {/* Bottom Tactile Studio Dock: Lights On/Dim + Camera Presets + Sound/Dimensions */}
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 1,
+              py: 1.25,
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            {viewMode === "isometric" ? (
+              <>
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75 }}>
+                  <Tooltip title={lightsOn ? "Dim overhead studio lighting for cinema viewing" : "Turn on architectural studio lighting"}>
+                    <Button
+                      size="small"
+                      onClick={() => setLightsOn(v => !v)}
+                      startIcon={
+                        lightsOn ? (
+                          <Lightbulb sx={{ fontSize: "0.95rem !important", color: "#121315" }} />
+                        ) : (
+                          <LightbulbOutlined sx={{ fontSize: "0.95rem !important" }} />
+                        )
+                      }
+                      sx={dockButtonSx(lightsOn)}
                     >
-                      {/* Interactive Focus Halo */}
-                      {(isHovered || isRoleMatch) && (
-                        <circle
-                          cx={sp.x}
-                          cy={sp.y}
-                          r={isSub ? "6.8" : isHeight ? "5.5" : "5.8"}
-                          fill={colors.glow}
-                          stroke="#F3D59B"
-                          strokeWidth="0.7"
-                        />
-                      )}
+                      {lightsOn ? "Lights On" : "Cinema Dark"}
+                    </Button>
+                  </Tooltip>
 
-                      {/* Transducer Enclosure Geometry based on Channel Role */}
-                      {isSub ? (
-                        // Heavy Infrasonic Subwoofer Cabinet
-                        <g>
-                          {/* 3D Drop Shadow */}
-                          <rect x={sp.x - 3.2} y={sp.y - 3} width="6.4" height="6.6" rx="0.8" fill="rgba(0,0,0,0.6)" />
-                          {/* Sub Box */}
-                          <rect
-                            x={sp.x - 3.2}
-                            y={sp.y - 3.4}
-                            width="6.4"
-                            height="6.4"
-                            rx="0.8"
-                            fill={colors.fill}
-                            stroke={isHovered ? "#F3D59B" : colors.stroke}
-                            strokeWidth={isHovered ? "0.9" : "0.6"}
-                          />
-                          {/* Subwoofer Driver Cone (Pumping with low-frequency excursion) */}
-                          <circle
-                            cx={sp.x}
-                            cy={sp.y - 0.2}
-                            r="2.2"
-                            fill="#151719"
-                            stroke="#9C7B49"
-                            strokeWidth="0.5"
-                          >
-                            {isSimulating && !reduced && (
-                              <animate
-                                attributeName="r"
-                                values="2.0;2.6;2.0"
-                                dur="0.9s"
-                                repeatCount="indefinite"
-                              />
-                            )}
-                          </circle>
-                          <circle cx={sp.x} cy={sp.y - 0.2} r="0.8" fill="#E2BA7A" />
-                        </g>
-                      ) : isHeight ? (
-                        // In-Ceiling Dolby Atmos Height Driver
-                        <g>
-                          {/* Height Transducer Ring */}
-                          <circle
-                            cx={sp.x}
-                            cy={sp.y}
-                            r="3.0"
-                            fill={colors.fill}
-                            stroke={isHovered ? "#FFFFFF" : colors.stroke}
-                            strokeWidth={isHovered ? "0.9" : "0.6"}
-                          />
-                          {/* Waveguide Aperture */}
-                          <circle cx={sp.x} cy={sp.y} r="1.8" fill="#1C1F22" stroke="rgba(255,255,255,0.4)" strokeWidth="0.4" />
-                          <circle cx={sp.x} cy={sp.y} r="0.7" fill="#F3D59B" />
-                        </g>
-                      ) : (
-                        // Ear-Level Screen LCR or Lateral Surround Tower
-                        <g>
-                          {/* 3D Drop Shadow */}
-                          <rect x={sp.x - 2.2} y={sp.y - 2.5} width="4.4" height="6.0" rx="0.6" fill="rgba(0,0,0,0.6)" />
-                          {/* Speaker Tower Cabinet */}
-                          <rect
-                            x={sp.x - 2.2}
-                            y={sp.y - 3.0}
-                            width="4.4"
-                            height="5.8"
-                            rx="0.6"
-                            fill={colors.fill}
-                            stroke={isHovered ? "#F3D59B" : colors.stroke}
-                            strokeWidth={isHovered ? "0.9" : "0.6"}
-                          />
-                          {/* Tweeter & Midrange Cones */}
-                          <circle cx={sp.x} cy={sp.y - 1.6} r="0.7" fill="#E2BA7A" />
-                          <circle cx={sp.x} cy={sp.y + 0.8} r="1.1" fill="#181B1E" stroke="#9C7B49" strokeWidth="0.3" />
-                        </g>
-                      )}
+                  <Box sx={{ display: "inline-flex", gap: 0.5 }}>
+                    <Button
+                      size="small"
+                      onClick={() => handleCameraSwitch("studio")}
+                      startIcon={<ThreeDRotation sx={{ fontSize: "0.85rem !important" }} />}
+                      sx={dockButtonSx(cameraPreset === "studio")}
+                    >
+                      3D Room
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => handleCameraSwitch("seat")}
+                      startIcon={<Weekend sx={{ fontSize: "0.85rem !important" }} />}
+                      sx={dockButtonSx(cameraPreset === "seat")}
+                    >
+                      Seat POV
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => handleCameraSwitch("top")}
+                      startIcon={<VerticalAlignTop sx={{ fontSize: "0.85rem !important" }} />}
+                      sx={dockButtonSx(cameraPreset === "top")}
+                    >
+                      Top View
+                    </Button>
+                  </Box>
+                </Box>
 
-                      {/* Transducer Code Badge */}
-                      <text
-                        x={sp.x}
-                        y={sp.y + 0.8}
-                        textAnchor="middle"
-                        fill="#FFFFFF"
-                        fontSize="1.8"
-                        fontWeight="700"
-                        fontFamily="sans-serif"
-                        pointerEvents="none"
-                      >
-                        {sp.code}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </Box>
-          )}
-        </Box>
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75 }}>
+                  <Button
+                    size="small"
+                    onClick={() => setSoundCones(v => !v)}
+                    startIcon={<GraphicEq sx={{ fontSize: "0.85rem !important" }} />}
+                    sx={dockButtonSx(soundCones)}
+                  >
+                    Sound Cones
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => setShowDimensions(v => !v)}
+                    startIcon={<Straighten sx={{ fontSize: "0.85rem !important" }} />}
+                    sx={dockButtonSx(showDimensions)}
+                  >
+                    Dimensions
+                  </Button>
+                  <Tooltip title="Reset 3D camera & selection">
+                    <Button
+                      size="small"
+                      aria-label="Reset 3D camera"
+                      onClick={handleResetView}
+                      sx={{ ...dockButtonSx(false), px: 1 }}
+                    >
+                      <RestartAlt sx={{ fontSize: "0.95rem" }} />
+                    </Button>
+                  </Tooltip>
+                </Box>
+              </>
+            ) : (
+              <>
+                <Button
+                  size="small"
+                  onClick={() => setViewMode("isometric")}
+                  startIcon={<ViewInAr sx={{ fontSize: "0.85rem !important" }} />}
+                  sx={dockButtonSx(true)}
+                >
+                  Back to 3D Room
+                </Button>
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75 }}>
+                  <Button
+                    size="small"
+                    onClick={() => setSoundCones(v => !v)}
+                    startIcon={<GraphicEq sx={{ fontSize: "0.85rem !important" }} />}
+                    sx={dockButtonSx(soundCones)}
+                  >
+                    Sound Cones
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => setShowDimensions(v => !v)}
+                    startIcon={<Straighten sx={{ fontSize: "0.85rem !important" }} />}
+                    sx={dockButtonSx(showDimensions)}
+                  >
+                    Dimensions
+                  </Button>
+                </Box>
+              </>
+            )}
+          </Box>
 
-          {/* Blueprint Footer: Live Transducer Telemetry Card / Role Legend */}
-          <Box sx={{ position: "relative", zIndex: 10, pt: 1.5, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          {/* Blueprint Footer: Live Selected Transducer Card OR Role Filter Legend */}
+          <Box sx={{ pt: 1.25, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
             <AnimatePresence mode="wait">
-              {hoveredSpeaker ? (
+              {focusedSpeaker ? (
                 <Box
-                  key={hoveredSpeaker.id}
+                  key={focusedSpeaker.id}
                   component={motion.div}
-                  initial={{ opacity: 0, y: 4 }}
+                  initial={reduced ? false : { opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
+                  exit={reduced ? undefined : { opacity: 0, y: -4 }}
                   transition={{ duration: 0.18 }}
                   sx={{
                     display: "flex",
@@ -1124,68 +808,80 @@ export function SpatialRoomVisualizer() {
                     gap: 1.5,
                   }}
                 >
-                  <Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                       <Typography sx={{ ...TYPE.label, color: "#F3D59B", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
-                        {hoveredSpeaker.code} · {hoveredSpeaker.name}
+                        {focusedSpeaker.code} · {focusedSpeaker.name}
                       </Typography>
-                      <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.45)", fontSize: "0.62rem" }}>
-                        [{hoveredSpeaker.angle}]
+                      <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.48)", fontSize: "0.62rem" }}>
+                        [{focusedSpeaker.angle}]
                       </Typography>
                     </Box>
-                    <Typography sx={{ ...TYPE.placard, color: "rgba(255,255,255,0.8)", fontSize: "0.76rem", mt: 0.25 }}>
-                      {hoveredSpeaker.detail}
+                    <Typography sx={{ ...TYPE.placard, color: "rgba(255,255,255,0.82)", fontSize: "0.78rem", mt: 0.25 }}>
+                      {focusedSpeaker.detail}
                     </Typography>
                   </Box>
 
-                  {/* Telemetry Metrics: Distance, Delay, Crossover */}
                   <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                    <Box>
-                      <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.4)", fontSize: "0.56rem", textTransform: "uppercase" }}>
-                        Distance &amp; Delay
-                      </Typography>
-                      <Typography sx={{ fontFamily: FONT.display, color: "#FFFFFF", fontSize: "0.78rem", fontWeight: 600 }}>
-                        {hoveredSpeaker.distance} · {hoveredSpeaker.delay}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.4)", fontSize: "0.56rem", textTransform: "uppercase" }}>
-                        DSP Crossover
-                      </Typography>
-                      <Typography sx={{ fontFamily: FONT.display, color: "#F3D59B", fontSize: "0.78rem", fontWeight: 600 }}>
-                        {hoveredSpeaker.crossover.split(" ")[0]} {hoveredSpeaker.crossover.split(" ")[1]}
-                      </Typography>
-                    </Box>
+                    {focusedNode && (
+                      <Box>
+                        <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.45)", fontSize: "0.56rem", textTransform: "uppercase" }}>
+                          From Sweet Spot
+                        </Typography>
+                        <Typography sx={{ fontFamily: FONT.display, color: "#FFFFFF", fontSize: "0.78rem", fontWeight: 600 }}>
+                          {focusedNode.distanceM} m · {focusedNode.delayMs} ms
+                        </Typography>
+                      </Box>
+                    )}
+                    <Button
+                      size="small"
+                      aria-label="Clear speaker selection"
+                      onClick={() => {
+                        setSelectedSpeakerId(null);
+                        setHoveredSpeakerId(null);
+                      }}
+                      sx={{ minWidth: 32, minHeight: 32, p: 0.5, color: "rgba(255,255,255,0.6)" }}
+                    >
+                      <Close sx={{ fontSize: "0.95rem" }} />
+                    </Button>
                   </Box>
                 </Box>
               ) : (
-                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1.5 }}>
-                  {/* Channel Role Legend */}
-                  <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
-                    {Object.entries(ROLE_COLORS).map(([key, val]) => (
-                      <Box
-                        key={key}
-                        onMouseEnter={() => setHighlightRole(key)}
-                        onMouseLeave={() => setHighlightRole(null)}
-                        sx={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 0.75,
-                          cursor: "pointer",
-                          opacity: highlightRole && highlightRole !== key ? 0.45 : 1,
-                          transition: "opacity 180ms ease",
-                        }}
-                      >
-                        <Box sx={{ width: 8, height: 8, borderRadius: key === "height" ? "50%" : "2px", bgcolor: val.fill, border: `1px solid ${val.stroke}` }} />
-                        <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.65)", fontSize: "0.62rem" }}>
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1.25 }}>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1.5 }}>
+                    {Object.entries(ROLE_COLORS).map(([key, val]) => {
+                      const active = highlightRole === key;
+                      return (
+                        <Button
+                          key={key}
+                          size="small"
+                          onClick={() => setHighlightRole(active ? null : key)}
+                          onMouseEnter={() => setHighlightRole(key)}
+                          onMouseLeave={() => setHighlightRole(prev => (prev === key ? null : prev))}
+                          sx={{
+                            ...TYPE.label,
+                            minWidth: "auto",
+                            minHeight: 30,
+                            px: 0.85,
+                            py: 0.25,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.65,
+                            borderRadius: "3px",
+                            bgcolor: active ? "rgba(255,255,255,0.1)" : "transparent",
+                            color: active ? "#FFFFFF" : "rgba(255,255,255,0.7)",
+                            fontSize: "0.62rem",
+                          }}
+                        >
+                          <Box sx={{ width: 8, height: 8, borderRadius: key === "height" ? "50%" : "2px", bgcolor: val.fill, border: `1px solid ${val.stroke}` }} />
                           {val.text}
-                        </Typography>
-                      </Box>
-                    ))}
+                        </Button>
+                      );
+                    })}
                   </Box>
 
-                  <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.4)", fontSize: "0.58rem" }}>
-                    Hover any transducer or the Sweet Spot for laser acoustic ray tracing
+                  <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.45)", fontSize: "0.58rem" }}>
+                    Tap a transducer or group to trace sightlines to seats
                   </Typography>
                 </Box>
               )}
@@ -1193,153 +889,135 @@ export function SpatialRoomVisualizer() {
           </Box>
         </Box>
 
-        {/* Right Column: Engineering Placard, Inventory Breakdown & FFT Spectrum */}
+        {/* Right Column: Buyer-Friendly Outcomes + Interactive Array + Progressive Tech Specs */}
         <Box
           sx={{
+            minWidth: 0,
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            p: { xs: 3, sm: 3.5, md: 4 },
-            bgcolor: "rgba(246,244,238,0.75)",
-            border: `1px solid ${STUDIO.hair}`,
+            p: { xs: 2.5, sm: 3.25, md: 3.75 },
+            bgcolor: "rgba(246,244,238,0.82)",
+            border: `1px solid ${STUDIO.hairStrong}`,
             borderRadius: "6px",
-            position: "relative",
           }}
         >
           <Box>
-            {/* Tag + Channel Count Header */}
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1.5 }}>
-              <Typography
-                sx={{
-                  ...TYPE.label,
-                  fontSize: "0.6rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: STUDIO.brass,
-                  px: 0.9,
-                  py: 0.35,
-                  borderRadius: "2px",
-                  bgcolor: "rgba(156,123,73,0.08)",
-                  border: "1px solid rgba(156,123,73,0.22)",
-                }}
-              >
-                {config.tag}
-              </Typography>
+            {/* Package Badge & Channel Description */}
+            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1.5 }}>
+              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+                <Typography
+                  sx={{
+                    ...TYPE.label,
+                    fontSize: "0.6rem",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: STUDIO.brass,
+                    px: 0.9,
+                    py: 0.35,
+                    borderRadius: "2px",
+                    bgcolor: "rgba(156,123,73,0.09)",
+                    border: "1px solid rgba(156,123,73,0.22)",
+                  }}
+                >
+                  {isRecommendedMatch ? "Recommended For Your Room" : config.tag}
+                </Typography>
+              </Box>
               <Typography sx={{ ...TYPE.label, color: STUDIO.slate, fontSize: "0.66rem" }}>
                 {config.channels}
               </Typography>
             </Box>
 
-            {/* Config Title */}
-            <Typography component="h4" sx={{ ...TYPE.exhibit, fontSize: { xs: "1.45rem", md: "1.75rem" }, color: STUDIO.graphite, mb: 1 }}>
+            <Typography component="h4" sx={{ ...TYPE.exhibit, fontSize: { xs: "1.45rem", md: "1.75rem" }, color: STUDIO.graphite, mb: 1.5 }}>
               {config.label}
             </Typography>
 
-            {/* Room Size & Volumetric Cubic Specification */}
-            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2, mb: 2 }}>
-              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.64rem", textTransform: "uppercase" }}>
-                  Ideal Footprint:
+            {/* 3 Clear Customer Outcomes: Screen, Seating, Projector Throw */}
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 1.15,
+                mb: 2.25,
+              }}
+            >
+              <Box sx={{ p: 1.25, bgcolor: "rgba(255,255,255,0.65)", border: `1px solid ${STUDIO.hair}`, borderRadius: "4px" }}>
+                <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.58rem", textTransform: "uppercase" }}>
+                  Ideal Screen
                 </Typography>
-                <Typography sx={{ fontFamily: FONT.display, fontSize: "0.85rem", fontWeight: 600, color: STUDIO.graphite }}>
-                  {config.roomSize}
+                <Typography sx={{ fontFamily: FONT.display, fontWeight: 700, fontSize: "1.05rem", color: STUDIO.graphite, mt: 0.25 }}>
+                  {recommendation.recommendedScreenIn}″ 4K
+                </Typography>
+                <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.7rem" }}>
+                  {recommendation.viewingAngleDeg}° FoV
                 </Typography>
               </Box>
-              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.64rem", textTransform: "uppercase" }}>
-                  Acoustic Volume:
+
+              <Box sx={{ p: 1.25, bgcolor: "rgba(255,255,255,0.65)", border: `1px solid ${STUDIO.hair}`, borderRadius: "4px" }}>
+                <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.58rem", textTransform: "uppercase" }}>
+                  Seating
                 </Typography>
-                <Typography sx={{ fontFamily: FONT.display, fontSize: "0.85rem", fontWeight: 600, color: STUDIO.brass }}>
-                  {config.volume}
+                <Typography sx={{ fontFamily: FONT.display, fontWeight: 700, fontSize: "1.05rem", color: STUDIO.graphite, mt: 0.25 }}>
+                  {recommendation.totalSeats} Seats
+                </Typography>
+                <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.7rem" }}>
+                  {recommendation.effectiveRows === 2 ? "2 Tiered Rows" : "1 Prime Row"}
+                </Typography>
+              </Box>
+
+              <Box sx={{ p: 1.25, bgcolor: "rgba(255,255,255,0.65)", border: `1px solid ${STUDIO.hair}`, borderRadius: "4px" }}>
+                <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.58rem", textTransform: "uppercase" }}>
+                  4K Throw
+                </Typography>
+                <Typography sx={{ fontFamily: FONT.display, fontWeight: 700, fontSize: "1.05rem", color: STUDIO.brass, mt: 0.25 }}>
+                  {recommendation.throwDistFt} ft
+                </Typography>
+                <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.7rem" }}>
+                  {recommendation.areaSqFt} sq ft
                 </Typography>
               </Box>
             </Box>
 
-            {/* Narrative Summary */}
-            <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.9rem", lineHeight: 1.6, mb: 2.5 }}>
+            {/* Buyer-First Room Explanation */}
+            <Typography sx={{ ...TYPE.placard, color: STUDIO.graphite, fontSize: "0.92rem", lineHeight: 1.55, mb: 0.85 }}>
               {config.summary}
             </Typography>
+            <Typography sx={{ ...TYPE.placard, color: STUDIO.brass, fontSize: "0.84rem", lineHeight: 1.5, mb: 2.25 }}>
+              {recommendation.fitNote}
+            </Typography>
 
-            {/* Real-Time FFT Acoustic Frequency Spectrum (Harmon In-Room Target Curve) */}
-            <Box sx={{ borderTop: `1px solid ${STUDIO.hairStrong}`, pt: 2, mb: 2.5 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  Acoustic Frequency Response (20 Hz – 20 kHz)
-                </Typography>
-                <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.62rem" }}>
-                  Dirac Live FIR Corrected
-                </Typography>
-              </Box>
-              {/* Equalizer Spectrum Bars */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "flex-end",
-                  gap: 0.6,
-                  height: 38,
-                  p: 0.75,
-                  bgcolor: "rgba(22,24,26,0.03)",
-                  border: `1px solid ${STUDIO.hair}`,
-                  borderRadius: "3px",
-                }}
-              >
-                {[
-                  { band: "20Hz", height: "85%" },
-                  { band: "40Hz", height: "92%" },
-                  { band: "80Hz", height: "78%" },
-                  { band: "250Hz", height: "70%" },
-                  { band: "1kHz", height: "66%" },
-                  { band: "4kHz", height: "64%" },
-                  { band: "10kHz", height: "60%" },
-                  { band: "20kHz", height: "55%" },
-                ].map((eq, i) => (
-                  <Box
-                    key={eq.band}
-                    sx={{
-                      flex: 1,
-                      height: eq.height,
-                      bgcolor: i < 3 ? STUDIO.brass : STUDIO.graphite,
-                      opacity: 0.85,
-                      borderRadius: "1px",
-                      position: "relative",
-                      transition: "height 300ms ease",
-                    }}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-            {/* Acoustic Inventory Checklist (Hovering highlights corresponding speaker role) */}
-            <Box sx={{ borderTop: `1px solid ${STUDIO.hair}`, pt: 2, mb: 3 }}>
-              <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1.5 }}>
-                Transducer Inventory &amp; Layout
+            {/* Interactive Speaker Placement Cards (Tap or Hover to Highlight Rays) */}
+            <Box sx={{ borderTop: `1px solid ${STUDIO.hair}`, pt: 2, mb: 2 }}>
+              <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1.25 }}>
+                Where Speakers Go (Tap or Hover Group)
               </Typography>
-              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25 }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.1 }}>
                 {config.inventory.map(item => {
                   const isRoleHovered = highlightRole === item.role;
                   return (
                     <Box
                       key={item.label}
+                      onClick={() => setHighlightRole(isRoleHovered ? null : item.role)}
                       onMouseEnter={() => setHighlightRole(item.role)}
-                      onMouseLeave={() => setHighlightRole(null)}
+                      onMouseLeave={() => setHighlightRole(prev => (prev === item.role ? null : prev))}
                       sx={{
-                        p: 1.25,
-                        bgcolor: isRoleHovered ? "rgba(156,123,73,0.1)" : "rgba(255,255,255,0.6)",
+                        p: 1.2,
+                        bgcolor: isRoleHovered ? "rgba(156,123,73,0.12)" : "rgba(255,255,255,0.6)",
                         border: `1px solid ${isRoleHovered ? STUDIO.brass : STUDIO.hair}`,
-                        borderRadius: "3px",
+                        borderRadius: "4px",
                         cursor: "pointer",
                         transition: `all 180ms ${EASE}`,
                       }}
                     >
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
                         <Typography sx={{ ...TYPE.label, color: STUDIO.graphite, fontSize: "0.72rem", fontWeight: 600 }}>
                           {item.label}
                         </Typography>
-                        <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.64rem" }}>
+                        <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.62rem", flexShrink: 0 }}>
                           {item.count}
                         </Typography>
                       </Box>
-                      <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.74rem", mt: 0.25, lineHeight: 1.3 }}>
+                      <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.74rem", mt: 0.3, lineHeight: 1.35 }}>
                         {item.detail}
                       </Typography>
                     </Box>
@@ -1348,22 +1026,96 @@ export function SpatialRoomVisualizer() {
               </Box>
             </Box>
 
-            {/* Amplification Architecture */}
-            <Box sx={{ borderTop: `1px solid ${STUDIO.hair}`, pt: 2 }}>
-              <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
-                Reference Amplification
-              </Typography>
-              <Typography sx={{ fontFamily: FONT.text, fontSize: "0.95rem", color: STUDIO.graphite, fontWeight: 500, lineHeight: 1.4 }}>
-                {config.amplification}
-              </Typography>
+            {/* Progressive Disclosure: Optional Technical & Acoustic Engineering Drawer */}
+            <Box sx={{ borderTop: `1px solid ${STUDIO.hair}`, pt: 1.25 }}>
+              <Button
+                fullWidth
+                size="small"
+                onClick={() => setTechSpecsOpen(o => !o)}
+                endIcon={
+                  <ExpandMore
+                    sx={{
+                      transform: techSpecsOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: `transform 220ms ${EASE}`,
+                    }}
+                  />
+                }
+                sx={{
+                  ...TYPE.label,
+                  justifyContent: "space-between",
+                  color: STUDIO.slate,
+                  fontSize: "0.66rem",
+                  py: 0.75,
+                  minHeight: 36,
+                  px: 0.5,
+                  "&:hover": { bgcolor: "rgba(22,24,26,0.03)", color: STUDIO.graphite },
+                }}
+              >
+                View technical &amp; acoustic engineering specs
+              </Button>
+
+              <Collapse in={techSpecsOpen} timeout={reduced ? 0 : 240}>
+                <Box sx={{ pt: 1.25, pb: 0.5 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.75 }}>
+                    <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.58rem", textTransform: "uppercase" }}>
+                      Harman Room Curve (20 Hz – 20 kHz)
+                    </Typography>
+                    <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.58rem" }}>
+                      Dirac Live FIR · {recommendation.volumeCuFt.toLocaleString()} cu ft
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "flex-end",
+                      gap: 0.5,
+                      height: 32,
+                      p: 0.6,
+                      bgcolor: "rgba(22,24,26,0.03)",
+                      border: `1px solid ${STUDIO.hair}`,
+                      borderRadius: "3px",
+                      mb: 1.5,
+                    }}
+                  >
+                    {[
+                      { band: "20Hz", height: "85%" },
+                      { band: "40Hz", height: "92%" },
+                      { band: "80Hz", height: "78%" },
+                      { band: "250Hz", height: "70%" },
+                      { band: "1kHz", height: "66%" },
+                      { band: "4kHz", height: "64%" },
+                      { band: "10kHz", height: "60%" },
+                      { band: "20kHz", height: "55%" },
+                    ].map((eq, i) => (
+                      <Box
+                        key={eq.band}
+                        sx={{
+                          flex: 1,
+                          height: eq.height,
+                          bgcolor: i < 3 ? STUDIO.brass : STUDIO.graphite,
+                          opacity: 0.85,
+                          borderRadius: "1px",
+                        }}
+                      />
+                    ))}
+                  </Box>
+
+                  <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.58rem", textTransform: "uppercase", mb: 0.3 }}>
+                    Reference Electronics ({ALL_SPEAKERS.C.crossover})
+                  </Typography>
+                  <Typography sx={{ fontFamily: FONT.text, fontSize: "0.88rem", color: STUDIO.graphite, fontWeight: 500, lineHeight: 1.4 }}>
+                    {config.amplification}
+                  </Typography>
+                </Box>
+              </Collapse>
             </Box>
           </Box>
 
-          {/* Pricing Entry & Consultation CTA */}
+          {/* Bottom Pricing Guidance + Handoff CTA to #visit */}
           <Box
             sx={{
-              mt: 4,
-              pt: 2.5,
+              mt: 3,
+              pt: 2.25,
               borderTop: `1px solid ${STUDIO.hairStrong}`,
               display: "flex",
               flexWrap: "wrap",
@@ -1373,10 +1125,10 @@ export function SpatialRoomVisualizer() {
             }}
           >
             <Box>
-              <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.62rem", textTransform: "uppercase" }}>
-                Commissioning From
+              <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.6rem", textTransform: "uppercase" }}>
+                Turnkey Room Guide From
               </Typography>
-              <Typography sx={{ fontFamily: FONT.display, fontSize: "1.35rem", fontWeight: 700, color: STUDIO.graphite }}>
+              <Typography sx={{ fontFamily: FONT.display, fontSize: "1.3rem", fontWeight: 700, color: STUDIO.graphite }}>
                 {config.startingFrom}
               </Typography>
             </Box>
@@ -1390,16 +1142,17 @@ export function SpatialRoomVisualizer() {
                 ...TYPE.label,
                 bgcolor: STUDIO.graphite,
                 color: STUDIO.chalk,
-                px: 2.8,
-                py: 1.2,
+                px: 2.5,
+                py: 1.25,
+                minHeight: 44,
                 borderRadius: "2px",
-                letterSpacing: "0.05em",
+                letterSpacing: "0.04em",
                 transition: `transform 200ms ${EASE}, background-color 200ms ${EASE}`,
                 "&:hover": { bgcolor: STUDIO.ink, transform: "translateY(-1px)" },
                 "&:active": { transform: "scale(0.98)" },
               }}
             >
-              Consult for {config.id}
+              Plan this {config.id} room
             </Button>
           </Box>
         </Box>

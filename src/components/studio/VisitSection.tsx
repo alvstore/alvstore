@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Box, Button, MenuItem, TextField, Typography } from "@mui/material";
 import { ArrowOutward, ContentCopy, Check } from "@mui/icons-material";
 import { motion, useReducedMotion } from "framer-motion";
 import { STUDIO_INFO } from "./content";
+import {
+  formatConsultationNote,
+  mergeConsultationNote,
+  STUDIO_ROOM_SELECT_EVENT,
+  type StudioRoomSelectionPayload,
+} from "./room-calculator";
 import { EASE, STUDIO, TYPE, FONT } from "./tokens";
 
 /** Theme overrides used by the studio's form fields (standard variant, hairline). */
@@ -34,8 +40,24 @@ export function VisitSection() {
   const [city, setCity] = useState("");
   const [room, setRoom] = useState(ROOM_TYPES[0]);
   const [note, setNote] = useState("");
+  const [loadedRoomHint, setLoadedRoomHint] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const onRoomSelect = (event: Event) => {
+      const detail = (event as CustomEvent<StudioRoomSelectionPayload & { formattedNote?: string }>).detail;
+      if (!detail) return;
+      const formatted = detail.formattedNote ?? formatConsultationNote(detail);
+      setRoom(ROOM_TYPES[0]);
+      setNote(prev => mergeConsultationNote(prev, formatted));
+      setLoadedRoomHint(
+        `Loaded your ${detail.lengthFt} × ${detail.widthFt} ft · ${detail.configId} (${detail.screenIn}″) configuration into the message below.`,
+      );
+    };
+    window.addEventListener(STUDIO_ROOM_SELECT_EVENT, onRoomSelect);
+    return () => window.removeEventListener(STUDIO_ROOM_SELECT_EVENT, onRoomSelect);
+  }, []);
 
   const message = useMemo(() => {
     const lines = [
@@ -216,7 +238,7 @@ export function VisitSection() {
               aria-labelledby="visit-form-title"
               sx={{ borderTop: `1px solid ${STUDIO.graphite}`, pt: 3 }}
             >
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 2, mb: 3 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 2, mb: loadedRoomHint ? 1.5 : 3 }}>
               <Typography id="visit-form-title" component="h3" sx={{ ...TYPE.exhibit, fontSize: "1.16rem", color: STUDIO.graphite, fontStretch: "100%" }}>
                 Write to us
               </Typography>
@@ -224,6 +246,23 @@ export function VisitSection() {
                 Opens your mail app
               </Typography>
             </Box>
+
+            {loadedRoomHint && (
+              <Alert
+                severity="success"
+                icon={false}
+                sx={{
+                  mb: 2.5,
+                  bgcolor: "rgba(156,123,73,0.09)",
+                  border: "1px solid rgba(156,123,73,0.3)",
+                  borderRadius: "2px",
+                  py: 0.4,
+                  "& .MuiAlert-message": { ...TYPE.placard, fontSize: "0.82rem", color: STUDIO.graphite },
+                }}
+              >
+                {loadedRoomHint}
+              </Alert>
+            )}
 
             <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
               <TextField
