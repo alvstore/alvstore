@@ -1036,9 +1036,10 @@ function HikvisionTab() {
                 setStep(2);
             }
             else {
+                const errMsg = typeof data?.error === "string" ? data.error : data?.error?.message || "Invalid credentials";
                 setCredentialStatus("invalid");
-                setCredentialError(data?.error || "Invalid credentials");
-                toast.error(data?.error || "Invalid credentials");
+                setCredentialError(errMsg);
+                toast.error(errMsg);
             }
         }
         catch (e: any) {
@@ -1443,7 +1444,7 @@ function HikvisionTab() {
                               {btn.label}
                             </Button>
                             {result && (<Box component="span" sx={mergeSx({ fontSize: "10px", marginTop: "0.25rem" }, result.success ? { color: "hsl(var(--success))" } : { color: "hsl(var(--destructive))" })}>
-                                {result.success ? `✓ ${result.records_synced || 0} records` : `✗ ${result.error?.substring(0, 40)}`}
+                                {result.success ? `✓ ${result.records_synced || 0} records` : `✗ ${(typeof result.error === "string" ? result.error : result.error?.message || "Sync failed").substring(0, 40)}`}
                               </Box>)}
                           </Box>);
                 })}
@@ -1471,7 +1472,7 @@ function HikvisionTab() {
                         </Button>
                       </Box>
                       {syncResults[`${d.id}-backfill-attendance`] && (<Box component="span" sx={mergeSx({ fontSize: "10px" }, syncResults[`${d.id}-backfill-attendance`].success ? { color: "hsl(var(--success))" } : { color: "hsl(var(--destructive))" })}>
-                          {syncResults[`${d.id}-backfill-attendance`].success ? `✓ ${syncResults[`${d.id}-backfill-attendance`].records_synced || 0} records` : `✗ ${syncResults[`${d.id}-backfill-attendance`].error?.substring(0, 40)}`}
+                          {syncResults[`${d.id}-backfill-attendance`].success ? `✓ ${syncResults[`${d.id}-backfill-attendance`].records_synced || 0} records` : `✗ ${(typeof syncResults[`${d.id}-backfill-attendance`].error === "string" ? syncResults[`${d.id}-backfill-attendance`].error : syncResults[`${d.id}-backfill-attendance`].error?.message || "Backfill failed").substring(0, 40)}`}
                         </Box>)}
                     </Box>
 

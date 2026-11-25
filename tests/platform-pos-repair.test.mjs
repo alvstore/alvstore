@@ -178,3 +178,14 @@ test("POS metrics helpers and redesigned terminal UI meet functional and motion 
   assert.match(posSrc, /Held Bills/);
   assert.match(posSrc, /Add Custom Item/);
 });
+
+test("Auth origin normalization rewrites internal 0.0.0.0 bind addresses to public host", async () => {
+  const { resolvePublicOrigin, rewritePublicUrl } = await importTranspiled("src/lib/auth-origin.ts");
+  const hdrs = new Headers({ host: "alvstore.com", "x-forwarded-proto": "https" });
+  assert.equal(resolvePublicOrigin("https://0.0.0.0:3000/api/auth/csrf", hdrs), "https://alvstore.com");
+  assert.equal(resolvePublicOrigin("http://localhost:3000/api/auth/csrf", hdrs), null);
+  assert.equal(
+    rewritePublicUrl("https://0.0.0.0:3000/login?error=CredentialsSignin", "https://alvstore.com"),
+    "https://alvstore.com/login?error=CredentialsSignin"
+  );
+});
