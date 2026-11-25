@@ -91,3 +91,19 @@ test("summarizeInvoices and filterInvoices handle partial payments, cancelled ex
   assert.match(invoicesSrc, /SideDrawer/);
   assert.doesNotMatch(invoicesSrc, /FormDialog/);
 });
+
+test("Tasks screen and useTaskBoard support Kanban lanes, Table toggle, MetricStrip, SideDrawer, saveTask, and deleteTask", () => {
+  const hookSrc = fs.readFileSync(path.join(root, "src/hooks/useTaskBoard.ts"), "utf8");
+  const tasksSrc = fs.readFileSync(path.join(root, "src/screens/Tasks.tsx"), "utf8");
+
+  assert.match(hookSrc, /saveTask/);
+  assert.match(hookSrc, /deleteTask/);
+  assert.match(tasksSrc, /MetricStrip/);
+  assert.match(tasksSrc, /SideDrawer/);
+  assert.match(tasksSrc, /SegmentedControl/);
+  assert.match(tasksSrc, /value:\s*["']board["']/);
+  assert.match(tasksSrc, /value:\s*["']table["']/);
+  assert.match(tasksSrc, /label:\s*["']Edit["']/);
+  assert.match(tasksSrc, /label:\s*["']Activity["']/);
+  assert.doesNotMatch(tasksSrc, /FormDialog/);
+});
