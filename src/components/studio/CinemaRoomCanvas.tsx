@@ -3,35 +3,60 @@
 import { useEffect, useRef } from "react";
 import { Box } from "@mui/material";
 import { useReducedMotion } from "framer-motion";
-import { createCinemaRoomScene, type CinemaRoomHandle } from "./cinema-room-3d";
-import type { RoomConfigId } from "./SpatialRoomVisualizer";
+import {
+  createCinemaRoomScene,
+  type CameraPreset,
+  type CinemaRoomHandle,
+} from "./cinema-room-3d";
+import type { RoomConfigId, RoomLayout } from "./room-calculator";
 
-interface CinemaRoomCanvasProps {
+export interface CinemaRoomCanvasProps {
   configId: RoomConfigId;
-  isSimulating: boolean;
+  layout: RoomLayout;
+  lightsOn: boolean;
+  cameraPreset: CameraPreset;
+  soundCones: boolean;
+  showDimensions: boolean;
   hoveredSpeakerId: string | null;
+  highlightRole: string | null;
   isSweetSpotFocused: boolean;
+  onSpeakerSelect?: (speakerId: string | null) => void;
+  resetSignal?: number;
 }
 
+/** React wrapper managing lifecycle and state synchronization for the WebGL cinema room scene. */
 export function CinemaRoomCanvas({
   configId,
-  isSimulating,
+  layout,
+  lightsOn,
+  cameraPreset,
+  soundCones,
+  showDimensions,
   hoveredSpeakerId,
+  highlightRole,
   isSweetSpotFocused,
+  onSpeakerSelect,
+  resetSignal = 0,
 }: CinemaRoomCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<CinemaRoomHandle | null>(null);
+  const selectCallbackRef = useRef(onSpeakerSelect);
+  selectCallbackRef.current = onSpeakerSelect;
   const reduced = useReducedMotion();
 
-  // Initialize WebGL Scene
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const handle = createCinemaRoomScene(canvas, {
       configId,
-      isSimulating,
+      layout,
+      lightsOn,
+      cameraPreset,
+      soundCones,
+      showDimensions,
       reducedMotion: !!reduced,
+      onSpeakerSelect: id => selectCallbackRef.current?.(id),
     });
     handleRef.current = handle;
 
@@ -45,32 +70,55 @@ export function CinemaRoomCanvas({
       handleRef.current?.destroy();
       handleRef.current = null;
     };
-  }, []); // Run on mount
+    // Initialize WebGL context once on mount; subsequent updates stream through handle setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Sync Configuration Updates
   useEffect(() => {
     handleRef.current?.setConfig(configId);
   }, [configId]);
 
-  // Sync Simulation State
   useEffect(() => {
-    handleRef.current?.setSimulating(isSimulating);
-  }, [isSimulating]);
+    handleRef.current?.setLayout(layout);
+  }, [layout]);
 
-  // Sync Hovered Speaker
+  useEffect(() => {
+    handleRef.current?.setLightsOn(lightsOn);
+  }, [lightsOn]);
+
+  useEffect(() => {
+    handleRef.current?.setCameraPreset(cameraPreset);
+  }, [cameraPreset]);
+
+  useEffect(() => {
+    handleRef.current?.setSoundCones(soundCones);
+  }, [soundCones]);
+
+  useEffect(() => {
+    handleRef.current?.setShowDimensions(showDimensions);
+  }, [showDimensions]);
+
   useEffect(() => {
     handleRef.current?.setHoveredSpeaker(hoveredSpeakerId);
   }, [hoveredSpeakerId]);
 
-  // Sync Sweet Spot Focus
+  useEffect(() => {
+    handleRef.current?.setHighlightRole(highlightRole);
+  }, [highlightRole]);
+
   useEffect(() => {
     handleRef.current?.setSweetSpotFocus(isSweetSpotFocused);
   }, [isSweetSpotFocused]);
 
-  // Sync Reduced Motion
   useEffect(() => {
     handleRef.current?.setReducedMotion(!!reduced);
   }, [reduced]);
+
+  useEffect(() => {
+    if (resetSignal > 0) {
+      handleRef.current?.resetCamera();
+    }
+  }, [resetSignal]);
 
   return (
     <Box
@@ -85,6 +133,7 @@ export function CinemaRoomCanvas({
       <Box
         component="canvas"
         ref={canvasRef}
+        aria-label="Interactive 3D private cinema room studio"
         sx={{
           display: "block",
           width: "100%",

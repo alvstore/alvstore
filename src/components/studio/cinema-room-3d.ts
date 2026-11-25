@@ -1,26 +1,37 @@
 /**
- * Realistic 3D Private Cinema Room Scene using Three.js.
+ * Interactive Bright-to-Cinema 3D Architectural Home Theater Engine using Three.js.
  *
- * Implements a photorealistic architectural screening room with PBR materials,
- * volumetric 4K laser projector beam, physical loudspeaker cabinets with
- * animated driver excursion physics, Dolby Atmos downward acoustic cones,
- * interactive 3D ray tracing, and mouse/touch orbital parallax.
+ * Renders an open-cutaway warm walnut & limestone private cinema calibrated dynamically
+ * to room dimensions and seating layouts, with animated Lights On <-> Cinema Dark dimming,
+ * smooth camera presets (3D Studio, Viewer Seat POV, Top Plan), non-obstructing front
+ * stage geometry, directional dispersion cones, and click/hover speaker raycasting.
  */
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import type { RoomConfigId } from "./SpatialRoomVisualizer";
+import type { RoomConfigId, RoomLayout } from "./room-calculator";
+
+export type CameraPreset = "studio" | "seat" | "top";
 
 export interface CinemaRoomOptions {
   configId: RoomConfigId;
-  isSimulating: boolean;
+  layout: RoomLayout;
+  lightsOn: boolean;
+  cameraPreset: CameraPreset;
+  soundCones: boolean;
+  showDimensions: boolean;
   reducedMotion: boolean;
   onSpeakerSelect?: (speakerId: string | null) => void;
 }
 
 export interface CinemaRoomHandle {
   setConfig: (configId: RoomConfigId) => void;
-  setSimulating: (simulating: boolean) => void;
+  setLayout: (layout: RoomLayout) => void;
+  setLightsOn: (lightsOn: boolean) => void;
+  setCameraPreset: (preset: CameraPreset) => void;
+  setSoundCones: (show: boolean) => void;
+  setShowDimensions: (show: boolean) => void;
   setHoveredSpeaker: (speakerId: string | null) => void;
+  setHighlightRole: (role: string | null) => void;
   setSweetSpotFocus: (focus: boolean) => void;
   setReducedMotion: (reduced: boolean) => void;
   resetCamera: () => void;
@@ -28,144 +39,100 @@ export interface CinemaRoomHandle {
   destroy: () => void;
 }
 
-interface Speaker3DDef {
-  id: string;
-  code: string;
-  name: string;
-  role: "screen" | "surround" | "subwoofer" | "height";
-  pos: [number, number, number]; // x, y, z in meters
-  rot: [number, number, number]; // pitch, yaw, roll in radians
-}
-
-const ALL_SPEAKERS_3D: Record<string, Speaker3DDef> = {
-  L: {
-    id: "L",
-    code: "L",
-    name: "Front Left Channel",
-    role: "screen",
-    pos: [-2.15, 0, -3.55],
-    rot: [0, Math.PI / 12, 0],
-  },
-  C: {
-    id: "C",
-    code: "C",
-    name: "Center Channel",
-    role: "screen",
-    pos: [0, 0.45, -3.65],
-    rot: [0, 0, 0],
-  },
-  R: {
-    id: "R",
-    code: "R",
-    name: "Front Right Channel",
-    role: "screen",
-    pos: [2.15, 0, -3.55],
-    rot: [0, -Math.PI / 12, 0],
-  },
-  SUB1: {
-    id: "SUB1",
-    code: "SUB 1",
-    name: "Primary Infrasonic Subwoofer",
-    role: "subwoofer",
-    pos: [-2.9, 0, -3.1],
-    rot: [0, Math.PI / 6, 0],
-  },
-  SUB2: {
-    id: "SUB2",
-    code: "SUB 2",
-    name: "Secondary Axial Subwoofer",
-    role: "subwoofer",
-    pos: [2.9, 0, 2.8],
-    rot: [0, -Math.PI * 0.85, 0],
-  },
-  SL: {
-    id: "SL",
-    code: "SL",
-    name: "Surround Left",
-    role: "surround",
-    pos: [-3.45, 1.25, 0.85],
-    rot: [0, Math.PI / 2, 0],
-  },
-  SR: {
-    id: "SR",
-    code: "SR",
-    name: "Surround Right",
-    role: "surround",
-    pos: [3.45, 1.25, 0.85],
-    rot: [0, -Math.PI / 2, 0],
-  },
-  SBL: {
-    id: "SBL",
-    code: "SBL",
-    name: "Surround Back Left",
-    role: "surround",
-    pos: [-1.45, 1.35, 3.85],
-    rot: [0, Math.PI * 0.9, 0],
-  },
-  SBR: {
-    id: "SBR",
-    code: "SBR",
-    name: "Surround Back Right",
-    role: "surround",
-    pos: [1.45, 1.35, 3.85],
-    rot: [0, -Math.PI * 0.9, 0],
-  },
-  TML: {
-    id: "TML",
-    code: "TML",
-    name: "Top Middle Left (Atmos)",
-    role: "height",
-    pos: [-1.2, 2.75, 0.75],
-    rot: [Math.PI / 2, 0, 0],
-  },
-  TMR: {
-    id: "TMR",
-    code: "TMR",
-    name: "Top Middle Right (Atmos)",
-    role: "height",
-    pos: [1.2, 2.75, 0.75],
-    rot: [Math.PI / 2, 0, 0],
-  },
-  TFL: {
-    id: "TFL",
-    code: "TFL",
-    name: "Top Front Left (Atmos)",
-    role: "height",
-    pos: [-1.2, 2.75, -1.2],
-    rot: [Math.PI / 2, 0, 0],
-  },
-  TFR: {
-    id: "TFR",
-    code: "TFR",
-    name: "Top Front Right (Atmos)",
-    role: "height",
-    pos: [1.2, 2.75, -1.2],
-    rot: [Math.PI / 2, 0, 0],
-  },
-  TRL: {
-    id: "TRL",
-    code: "TRL",
-    name: "Top Rear Left (Atmos)",
-    role: "height",
-    pos: [-1.2, 2.75, 2.4],
-    rot: [Math.PI / 2, 0, 0],
-  },
-  TRR: {
-    id: "TRR",
-    code: "TRR",
-    name: "Top Rear Right (Atmos)",
-    role: "height",
-    pos: [1.2, 2.75, 2.4],
-    rot: [Math.PI / 2, 0, 0],
-  },
-};
-
-const CONFIG_SPEAKERS_3D: Record<RoomConfigId, string[]> = {
+const ACTIVE_SPEAKER_IDS: Record<RoomConfigId, string[]> = {
   "5.1": ["L", "C", "R", "SUB1", "SL", "SR"],
   "5.1.2": ["L", "C", "R", "SUB1", "SL", "SR", "TML", "TMR"],
   "7.2.2": ["L", "C", "R", "SUB1", "SUB2", "SL", "SR", "SBL", "SBR", "TML", "TMR"],
   "7.2.4": ["L", "C", "R", "SUB1", "SUB2", "SL", "SR", "SBL", "SBR", "TFL", "TFR", "TRL", "TRR"],
 };
+
+const UP_VEC = new THREE.Vector3(0, 1, 0);
+
+/** Generates a crisp atmospheric 16:9 cinema still on an offscreen canvas texture. */
+function createCinemaScreenTexture(): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const off = document.createElement("canvas");
+  off.width = 640;
+  off.height = 360;
+  const ctx = off.getContext("2d");
+  if (!ctx) return null;
+
+  // Deep golden-hour alpine / desert vista aesthetic
+  const sky = ctx.createLinearGradient(0, 0, 0, off.height * 0.68);
+  sky.addColorStop(0, "#121923");
+  sky.addColorStop(0.42, "#2f4358");
+  sky.addColorStop(0.75, "#9c6d42");
+  sky.addColorStop(1, "#f4c987");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, off.width, off.height);
+
+  // Luminous sun bloom
+  const sun = ctx.createRadialGradient(off.width * 0.56, off.height * 0.48, 8, off.width * 0.56, off.height * 0.48, 180);
+  sun.addColorStop(0, "rgba(255, 244, 214, 0.92)");
+  sun.addColorStop(0.28, "rgba(244, 193, 118, 0.42)");
+  sun.addColorStop(1, "rgba(244, 193, 118, 0)");
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, off.width, off.height);
+
+  // Layered distant mountain silhouettes
+  ctx.fillStyle = "#3a3536";
+  ctx.beginPath();
+  ctx.moveTo(0, 232);
+  ctx.lineTo(110, 186);
+  ctx.lineTo(225, 212);
+  ctx.lineTo(355, 168);
+  ctx.lineTo(485, 206);
+  ctx.lineTo(640, 178);
+  ctx.lineTo(640, 360);
+  ctx.lineTo(0, 360);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#1c1c20";
+  ctx.beginPath();
+  ctx.moveTo(0, 266);
+  ctx.lineTo(165, 224);
+  ctx.lineTo(310, 248);
+  ctx.lineTo(490, 220);
+  ctx.lineTo(640, 250);
+  ctx.lineTo(640, 360);
+  ctx.lineTo(0, 360);
+  ctx.closePath();
+  ctx.fill();
+
+  // Letterbox subtle matte frame
+  ctx.fillStyle = "rgba(8, 9, 11, 0.72)";
+  ctx.fillRect(0, 0, off.width, 22);
+  ctx.fillRect(0, off.height - 22, off.width, 22);
+
+  // Crisp subtle projection framing hairlines
+  ctx.strokeStyle = "rgba(255, 235, 200, 0.16)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(24, 28, off.width - 48, off.height - 56);
+
+  const tex = new THREE.CanvasTexture(off);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Disposes geometries and non-shared materials inside a group before clearing it. */
+function disposeGroupChildren(group: THREE.Group, sharedMats: Set<THREE.Material>) {
+  group.traverse(node => {
+    if (node instanceof THREE.Mesh || node instanceof THREE.Line) {
+      node.geometry.dispose();
+      const mat = node.material;
+      if (Array.isArray(mat)) {
+        mat.forEach(m => {
+          if (!sharedMats.has(m)) m.dispose();
+        });
+      } else if (mat && !sharedMats.has(mat)) {
+        mat.dispose();
+      }
+    }
+  });
+  group.clear();
+}
 
 export function createCinemaRoomScene(
   canvas: HTMLCanvasElement,
@@ -175,529 +142,638 @@ export function createCinemaRoomScene(
   if (!gl) return null;
 
   let currentConfig = options.configId;
-  let isSimulating = options.isSimulating;
+  let currentLayout = options.layout;
+  let targetLightsOn = options.lightsOn;
+  let litProgress = options.lightsOn ? 1 : 0;
+  let currentPreset: CameraPreset = options.cameraPreset;
+  let soundConesEnabled = options.soundCones;
+  let showDimensionsEnabled = options.showDimensions;
   let isReducedMotion = options.reducedMotion;
   let hoveredSpeakerId: string | null = null;
+  let highlightedRole: string | null = null;
   let isSweetSpotFocused = false;
+  let selectCallback = options.onSpeakerSelect;
 
-  // Scene & Camera
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0e1012);
+  const bgLit = new THREE.Color(0x28241f);
+  const bgDark = new THREE.Color(0x0b0c0e);
+  scene.background = bgLit.clone().lerp(bgDark, 1 - litProgress);
 
-  const camera = new THREE.PerspectiveCamera(46, canvas.clientWidth / canvas.clientHeight, 0.1, 40);
-  const DEFAULT_CAM_POS = new THREE.Vector3(3.8, 3.2, 5.8);
-  const DEFAULT_TARGET = new THREE.Vector3(0, 0.95, -0.4);
-  camera.position.copy(DEFAULT_CAM_POS);
-  camera.lookAt(DEFAULT_TARGET);
+  const camera = new THREE.PerspectiveCamera(44, (canvas.clientWidth || 640) / (canvas.clientHeight || 420), 0.1, 60);
 
-  // Renderer
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
     powerPreference: "high-performance",
   });
-  renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+  renderer.setSize(canvas.clientWidth || 640, canvas.clientHeight || 420, false);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+  renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  // Shared PBR Materials
+  const screenTexture = createCinemaScreenTexture();
+
+  // Shared PBR Architectural Materials
   const mats = {
-    floor: new THREE.MeshStandardMaterial({
-      color: 0x141618,
-      roughness: 0.38,
-      metalness: 0.12,
-    }),
-    carpet: new THREE.MeshStandardMaterial({
-      color: 0x191c1f,
-      roughness: 0.92,
-      metalness: 0.02,
-    }),
-    acousticWall: new THREE.MeshStandardMaterial({
-      color: 0x181a1c,
-      roughness: 0.85,
-      metalness: 0.04,
-    }),
-    slatWood: new THREE.MeshStandardMaterial({
-      color: 0x30241b,
-      roughness: 0.42,
-      metalness: 0.08,
-    }),
-    proscenium: new THREE.MeshStandardMaterial({
-      color: 0x0c0d0f,
-      roughness: 0.95,
+    travertine: new THREE.MeshStandardMaterial({ color: 0xbcb3a4, roughness: 0.78, metalness: 0.04 }),
+    carpet: new THREE.MeshStandardMaterial({ color: 0x736b61, roughness: 0.92, metalness: 0.02 }),
+    riserDeck: new THREE.MeshStandardMaterial({ color: 0x5c4738, roughness: 0.62, metalness: 0.06 }),
+    plasterWall: new THREE.MeshStandardMaterial({ color: 0xe3dcd0, roughness: 0.85, metalness: 0.02 }),
+    frontBaffle: new THREE.MeshStandardMaterial({ color: 0x262524, roughness: 0.88, metalness: 0.03 }),
+    slatWood: new THREE.MeshStandardMaterial({ color: 0x7a5236, roughness: 0.46, metalness: 0.06 }),
+    screenFrame: new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.6, metalness: 0.25 }),
+    screenSurface: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: screenTexture ?? undefined,
+      emissiveMap: screenTexture ?? undefined,
+      emissive: new THREE.Color(0xfff1dc),
+      emissiveIntensity: 0.35,
+      roughness: 0.5,
       metalness: 0.0,
     }),
-    screenFrame: new THREE.MeshStandardMaterial({
-      color: 0x111214,
-      roughness: 0.8,
-      metalness: 0.1,
+    coveLed: new THREE.MeshStandardMaterial({
+      color: 0xffe4b8,
+      emissive: 0xffcf82,
+      emissiveIntensity: 1.35,
+      roughness: 0.2,
     }),
-    screenFabric: new THREE.MeshStandardMaterial({
-      color: 0xf5f0e1,
-      emissive: 0xfff0d4,
-      emissiveIntensity: 0.52,
-      roughness: 0.65,
-      metalness: 0.0,
-    }),
-    speakerCabinet: new THREE.MeshStandardMaterial({
-      color: 0x1d2023,
-      roughness: 0.45,
-      metalness: 0.28,
-    }),
-    brassTrim: new THREE.MeshStandardMaterial({
-      color: 0xc49a57,
+    stepLed: new THREE.MeshStandardMaterial({
+      color: 0xffdca4,
+      emissive: 0xe8b566,
+      emissiveIntensity: 0.95,
       roughness: 0.3,
-      metalness: 0.95,
     }),
-    driverCone: new THREE.MeshStandardMaterial({
-      color: 0x121416,
-      roughness: 0.55,
-      metalness: 0.4,
-    }),
-    reclinerLeather: new THREE.MeshStandardMaterial({
-      color: 0x1f2226,
-      roughness: 0.62,
-      metalness: 0.14,
-    }),
-    laserRay: new THREE.MeshBasicMaterial({
-      color: 0xf3d59b,
+    speakerCabinet: new THREE.MeshStandardMaterial({ color: 0x272a2e, roughness: 0.42, metalness: 0.24 }),
+    speakerWoodTrim: new THREE.MeshStandardMaterial({ color: 0x7a5236, roughness: 0.4, metalness: 0.08 }),
+    brassTrim: new THREE.MeshStandardMaterial({ color: 0xc8a05e, roughness: 0.28, metalness: 0.92 }),
+    driverCone: new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.5, metalness: 0.36 }),
+    seatLeather: new THREE.MeshStandardMaterial({ color: 0x4b4038, roughness: 0.58, metalness: 0.1 }),
+    seatHeadrest: new THREE.MeshStandardMaterial({ color: 0xc69f64, roughness: 0.48, metalness: 0.18 }),
+    projectorBody: new THREE.MeshStandardMaterial({ color: 0x2e3136, roughness: 0.38, metalness: 0.35 }),
+    sweetSpotRing: new THREE.MeshBasicMaterial({
+      color: 0xd4ad6d,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.58,
+      side: THREE.DoubleSide,
     }),
-    waveRing: new THREE.MeshBasicMaterial({
-      color: 0xe2ba7a,
+    projectorBeam: new THREE.MeshBasicMaterial({
+      color: 0xffecd0,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.025,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       depthWrite: false,
     }),
   };
 
-  // Lighting Rig
-  const ambientLight = new THREE.AmbientLight(0xffeedd, 0.7);
-  scene.add(ambientLight);
+  const sharedMatsSet = new Set<THREE.Material>(Object.values(mats));
 
-  // Soft directional down-light from proscenium
-  const keyLight = new THREE.DirectionalLight(0xfff5ea, 1.4);
-  keyLight.position.set(2.5, 5, 2);
+  // Studio & Theater Lighting Rig
+  const hemiLight = new THREE.HemisphereLight(0xfff6e8, 0x877867, 1.35);
+  scene.add(hemiLight);
+
+  const keyLight = new THREE.DirectionalLight(0xfff5e6, 1.55);
+  keyLight.position.set(4.5, 8.5, 5.5);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.width = 1024;
-  keyLight.shadow.mapSize.height = 1024;
+  keyLight.shadow.mapSize.set(1024, 1024);
   keyLight.shadow.camera.near = 0.5;
-  keyLight.shadow.camera.far = 15;
+  keyLight.shadow.camera.far = 26;
+  keyLight.shadow.camera.left = -8;
+  keyLight.shadow.camera.right = 8;
+  keyLight.shadow.camera.top = 8;
+  keyLight.shadow.camera.bottom = -8;
   keyLight.shadow.bias = -0.0005;
   scene.add(keyLight);
 
-  // Warm screen bounce glow (simulating 4K projection bounce on room)
-  const screenGlowLight = new THREE.PointLight(0xffe8c2, 2.2, 7.5, 1.6);
-  screenGlowLight.position.set(0, 1.4, -3.2);
-  scene.add(screenGlowLight);
+  const fillLight = new THREE.DirectionalLight(0xeef4ff, 0.55);
+  fillLight.position.set(-5.0, 6.0, -4.0);
+  scene.add(fillLight);
 
-  // Warm rear ceiling accent
-  const rearAccent = new THREE.PointLight(0xb28a4f, 0.8, 6.0);
-  rearAccent.position.set(0, 2.8, 3.8);
-  scene.add(rearAccent);
+  const screenBounce = new THREE.PointLight(0xffdfb4, 1.2, 9.5, 1.5);
+  scene.add(screenBounce);
 
-  // Room Shell (Floor, Acoustic Walls, Proscenium)
-  const roomGroup = new THREE.Group();
-  scene.add(roomGroup);
+  // Scene Groups
+  const roomShellGroup = new THREE.Group();
+  const speakersGroup = new THREE.Group();
+  const conesGroup = new THREE.Group();
+  const raysGroup = new THREE.Group();
+  const dimensionsGroup = new THREE.Group();
+  scene.add(roomShellGroup, speakersGroup, conesGroup, raysGroup, dimensionsGroup);
 
-  // 1. Floor
-  const floorGeo = new THREE.PlaneGeometry(8, 10);
-  const floorMesh = new THREE.Mesh(floorGeo, mats.floor);
-  floorMesh.rotation.x = -Math.PI / 2;
-  floorMesh.receiveShadow = true;
-  roomGroup.add(floorMesh);
+  type SpeakerRuntime = {
+    id: string;
+    role: string;
+    group: THREE.Group;
+    cone?: THREE.Mesh;
+    coneMat?: THREE.MeshBasicMaterial;
+    woofer?: THREE.Mesh;
+    hoverRing?: THREE.Mesh;
+    centerPos: THREE.Vector3;
+  };
+  const speakerRuntime = new Map<string, SpeakerRuntime>();
 
-  // Center Carpet
-  const carpetGeo = new THREE.PlaneGeometry(4.4, 6.6);
-  const carpetMesh = new THREE.Mesh(carpetGeo, mats.carpet);
-  carpetMesh.rotation.x = -Math.PI / 2;
-  carpetMesh.position.set(0, 0.005, 0.6);
-  carpetMesh.receiveShadow = true;
-  roomGroup.add(carpetMesh);
+  // Helper to tag raycastable speaker sub-meshes
+  function tagSpeakerHierarchy(root: THREE.Object3D, speakerId: string) {
+    root.userData.speakerId = speakerId;
+    root.traverse(obj => {
+      obj.userData.speakerId = speakerId;
+    });
+  }
 
-  // 2. Front Proscenium Baffle Wall
-  const prosceniumMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(8, 3.4, 0.4),
-    mats.proscenium,
-  );
-  prosceniumMesh.position.set(0, 1.7, -4.0);
-  prosceniumMesh.receiveShadow = true;
-  roomGroup.add(prosceniumMesh);
+  function buildFloorstandingSpeaker(group: THREE.Group) {
+    const body = new THREE.Mesh(new RoundedBoxGeometry(0.38, 1.2, 0.42, 3, 0.025), mats.speakerCabinet);
+    body.position.y = 0.62;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
 
-  // 3. Side Acoustic Walls with Timber Diffusers
-  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.4, 10), mats.acousticWall);
-  leftWall.position.set(-3.95, 1.7, 0);
-  roomGroup.add(leftWall);
+    // Warm walnut side accent cheek
+    const cheek = new THREE.Mesh(new RoundedBoxGeometry(0.4, 1.06, 0.28, 2, 0.015), mats.speakerWoodTrim);
+    cheek.position.set(0, 0.62, -0.04);
+    group.add(cheek);
 
-  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.4, 10), mats.acousticWall);
-  rightWall.position.set(3.95, 1.7, 0);
-  roomGroup.add(rightWall);
-
-  // 4. Acoustic Diffuser Slats (Vertical 3D wooden ribs on walls)
-  [-3.75, 3.75].forEach(xPos => {
-    for (let z = -2.5; z <= 2.5; z += 0.45) {
-      const slat = new THREE.Mesh(new RoundedBoxGeometry(0.08, 2.2, 0.06, 2, 0.01), mats.slatWood);
-      slat.position.set(xPos, 1.45, z);
-      slat.castShadow = true;
-      slat.receiveShadow = true;
-      roomGroup.add(slat);
-    }
-  });
-
-  // 5. 160″ 4K Curved Reference Screen
-  const screenGroup = new THREE.Group();
-  screenGroup.position.set(0, 1.45, -3.72);
-  roomGroup.add(screenGroup);
-
-  const screenFrame = new THREE.Mesh(
-    new RoundedBoxGeometry(4.8, 2.15, 0.08, 3, 0.02),
-    mats.screenFrame,
-  );
-  screenFrame.castShadow = true;
-  screenGroup.add(screenFrame);
-
-  const screenSurface = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.6, 1.95),
-    mats.screenFabric,
-  );
-  screenSurface.position.z = 0.045;
-  screenGroup.add(screenSurface);
-
-  // 6. Volumetric 4K Projector Light Beam
-  const projectorBeamGeo = new THREE.CylinderGeometry(0.08, 2.3, 7.8, 32, 1, true);
-  const projectorBeamMat = new THREE.MeshBasicMaterial({
-    color: 0xffedd2,
-    transparent: true,
-    opacity: 0.075,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
-  const projectorBeam = new THREE.Mesh(projectorBeamGeo, projectorBeamMat);
-  projectorBeam.position.set(0, 1.9, 0.1);
-  projectorBeam.rotation.x = Math.PI / 2 - 0.16;
-  roomGroup.add(projectorBeam);
-
-  // Ceiling Projector Housing
-  const projectorBox = new THREE.Mesh(
-    new RoundedBoxGeometry(0.5, 0.25, 0.45, 2, 0.02),
-    mats.speakerCabinet,
-  );
-  projectorBox.position.set(0, 2.65, 3.8);
-  roomGroup.add(projectorBox);
-
-  // 7. VIP Cinema Recliner (The Sweet Spot)
-  const reclinerGroup = new THREE.Group();
-  reclinerGroup.position.set(0, 0, 1.2);
-  roomGroup.add(reclinerGroup);
-
-  // Chair base
-  const seatBase = new THREE.Mesh(
-    new RoundedBoxGeometry(0.85, 0.38, 0.95, 3, 0.04),
-    mats.reclinerLeather,
-  );
-  seatBase.position.y = 0.22;
-  seatBase.castShadow = true;
-  seatBase.receiveShadow = true;
-  reclinerGroup.add(seatBase);
-
-  // Backrest & Headrest
-  const backrest = new THREE.Mesh(
-    new RoundedBoxGeometry(0.72, 0.85, 0.24, 3, 0.03),
-    mats.reclinerLeather,
-  );
-  backrest.position.set(0, 0.72, 0.36);
-  backrest.rotation.x = -0.12;
-  backrest.castShadow = true;
-  reclinerGroup.add(backrest);
-
-  const headrest = new THREE.Mesh(
-    new RoundedBoxGeometry(0.46, 0.22, 0.16, 2, 0.02),
-    mats.brassTrim,
-  );
-  headrest.position.set(0, 1.18, 0.44);
-  reclinerGroup.add(headrest);
-
-  // Armrests
-  [-0.48, 0.48].forEach(x => {
-    const arm = new THREE.Mesh(
-      new RoundedBoxGeometry(0.18, 0.52, 0.9, 2, 0.03),
-      mats.reclinerLeather,
-    );
-    arm.position.set(x, 0.38, 0.05);
-    arm.castShadow = true;
-    reclinerGroup.add(arm);
-  });
-
-  // Sweet Spot Target Halo on Floor
-  const sweetSpotRingGeo = new THREE.RingGeometry(0.9, 0.98, 48);
-  const sweetSpotRingMat = new THREE.MeshBasicMaterial({
-    color: 0xb28a4f,
-    transparent: true,
-    opacity: 0.6,
-    side: THREE.DoubleSide,
-  });
-  const sweetSpotRing = new THREE.Mesh(sweetSpotRingGeo, sweetSpotRingMat);
-  sweetSpotRing.rotation.x = -Math.PI / 2;
-  sweetSpotRing.position.set(0, 0.01, 1.2);
-  roomGroup.add(sweetSpotRing);
-
-  // 8. Physical 3D Loudspeaker Nodes Registry
-  const speakerMeshes: Map<
-    string,
-    {
-      group: THREE.Group;
-      def: Speaker3DDef;
-      wooferCone?: THREE.Mesh;
-      pulseRing?: THREE.Mesh;
-    }
-  > = new Map();
-
-  const rayLinesGroup = new THREE.Group();
-  scene.add(rayLinesGroup);
-
-  // Build each physical speaker model
-  Object.values(ALL_SPEAKERS_3D).forEach(sp => {
-    const group = new THREE.Group();
-    group.position.set(...sp.pos);
-    group.rotation.set(...sp.rot);
-    group.userData = { speakerId: sp.id };
-
-    let wooferCone: THREE.Mesh | undefined;
-
-    if (sp.role === "screen") {
-      // Reference 3-Way Floor-standing Tower
-      const cabinet = new THREE.Mesh(
-        new RoundedBoxGeometry(0.42, 1.28, 0.46, 3, 0.025),
-        mats.speakerCabinet,
-      );
-      cabinet.position.y = 0.64;
-      cabinet.castShadow = true;
-      cabinet.receiveShadow = true;
-      group.add(cabinet);
-
-      // Brass isolation feet
-      [-0.18, 0.18].forEach(x => {
-        [-0.2, 0.2].forEach(z => {
-          const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.01, 0.05, 12), mats.brassTrim);
-          foot.position.set(x, 0.02, z);
-          group.add(foot);
-        });
+    // Brass isolation feet
+    [-0.15, 0.15].forEach(x => {
+      [-0.17, 0.17].forEach(z => {
+        const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.012, 0.05, 10), mats.brassTrim);
+        foot.position.set(x, 0.025, z);
+        group.add(foot);
       });
-
-      // Tweeter pod (top)
-      const tweeter = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 24), mats.brassTrim);
-      tweeter.rotation.x = Math.PI / 2;
-      tweeter.position.set(0, 1.12, 0.23);
-      group.add(tweeter);
-
-      // Midrange driver
-      const mid = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.02, 24), mats.driverCone);
-      mid.rotation.x = Math.PI / 2;
-      mid.position.set(0, 0.88, 0.23);
-      group.add(mid);
-
-      // Dual bass drivers
-      [0.54, 0.26].forEach(y => {
-        const bass = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.025, 24), mats.driverCone);
-        bass.rotation.x = Math.PI / 2;
-        bass.position.set(0, y, 0.23);
-        group.add(bass);
-      });
-    } else if (sp.role === "subwoofer") {
-      // Infrasonic Subwoofer Cabinet
-      const subBox = new THREE.Mesh(
-        new RoundedBoxGeometry(0.68, 0.68, 0.68, 3, 0.03),
-        mats.speakerCabinet,
-      );
-      subBox.position.y = 0.34;
-      subBox.castShadow = true;
-      subBox.receiveShadow = true;
-      group.add(subBox);
-
-      // Heavy Subwoofer Driver with excursion capability
-      const driverBezel = new THREE.Mesh(
-        new THREE.TorusGeometry(0.24, 0.025, 16, 32),
-        mats.brassTrim,
-      );
-      driverBezel.position.set(0, 0.34, 0.34);
-      group.add(driverBezel);
-
-      wooferCone = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.21, 0.06, 0.06, 32),
-        mats.driverCone,
-      );
-      wooferCone.rotation.x = Math.PI / 2;
-      wooferCone.position.set(0, 0.34, 0.33);
-      group.add(wooferCone);
-    } else if (sp.role === "surround") {
-      // In-wall / On-wall Architectural Surround
-      const box = new THREE.Mesh(
-        new RoundedBoxGeometry(0.28, 0.48, 0.18, 2, 0.015),
-        mats.speakerCabinet,
-      );
-      box.castShadow = true;
-      group.add(box);
-
-      const driver = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.08, 0.02, 24),
-        mats.brassTrim,
-      );
-      driver.rotation.x = Math.PI / 2;
-      driver.position.z = 0.095;
-      group.add(driver);
-    } else if (sp.role === "height") {
-      // In-Ceiling Dolby Atmos Height Transducer
-      const trimRing = new THREE.Mesh(
-        new THREE.TorusGeometry(0.18, 0.02, 16, 32),
-        mats.brassTrim,
-      );
-      group.add(trimRing);
-
-      const grille = new THREE.Mesh(
-        new THREE.CircleGeometry(0.16, 24),
-        mats.speakerCabinet,
-      );
-      grille.position.z = 0.01;
-      group.add(grille);
-
-      // Downward conical sound shower guide
-      const showerCone = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.85, 2.2, 16, 1, true),
-        new THREE.MeshBasicMaterial({
-          color: 0xf3d59b,
-          transparent: true,
-          opacity: 0.08,
-          blending: THREE.AdditiveBlending,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        }),
-      );
-      showerCone.position.z = -1.1;
-      showerCone.rotation.x = Math.PI;
-      group.add(showerCone);
-    }
-
-    // Radiating Acoustic Pulse Ring
-    const pulseRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.1, 0.22, 32),
-      mats.waveRing.clone(),
-    );
-    pulseRing.position.z = 0.36;
-    pulseRing.visible = false;
-    group.add(pulseRing);
-
-    scene.add(group);
-    speakerMeshes.set(sp.id, { group, def: sp, wooferCone, pulseRing });
-  });
-
-  // Function to update visible speakers according to room config
-  function updateConfig(configId: RoomConfigId) {
-    currentConfig = configId;
-    const activeIds = new Set(CONFIG_SPEAKERS_3D[configId] || []);
-
-    speakerMeshes.forEach((item, id) => {
-      const active = activeIds.has(id);
-      item.group.visible = active;
-      if (!active && hoveredSpeakerId === id) {
-        hoveredSpeakerId = null;
-      }
     });
 
+    const tweeter = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 20), mats.brassTrim);
+    tweeter.rotation.x = Math.PI / 2;
+    tweeter.position.set(0, 1.06, 0.21);
+    group.add(tweeter);
+
+    const mid = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.02, 20), mats.driverCone);
+    mid.rotation.x = Math.PI / 2;
+    mid.position.set(0, 0.84, 0.21);
+    group.add(mid);
+
+    [0.54, 0.3].forEach(y => {
+      const bass = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.025, 22), mats.driverCone);
+      bass.rotation.x = Math.PI / 2;
+      bass.position.set(0, y, 0.21);
+      group.add(bass);
+    });
+  }
+
+  function buildHorizontalCenterSpeaker(group: THREE.Group) {
+    // Low travertine plinth
+    const stand = new THREE.Mesh(new RoundedBoxGeometry(0.84, 0.12, 0.36, 2, 0.015), mats.travertine);
+    stand.position.y = -0.18;
+    stand.receiveShadow = true;
+    group.add(stand);
+
+    const enclosure = new THREE.Mesh(new RoundedBoxGeometry(0.76, 0.22, 0.32, 3, 0.025), mats.speakerCabinet);
+    enclosure.castShadow = true;
+    enclosure.rotation.x = -0.08;
+    group.add(enclosure);
+
+    [-0.22, 0.22].forEach(x => {
+      const mid = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.02, 20), mats.driverCone);
+      mid.rotation.x = Math.PI / 2 - 0.08;
+      mid.position.set(x, 0.01, 0.16);
+      group.add(mid);
+    });
+
+    const tweeter = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.02, 18), mats.brassTrim);
+    tweeter.rotation.x = Math.PI / 2 - 0.08;
+    tweeter.position.set(0, 0.01, 0.16);
+    group.add(tweeter);
+  }
+
+  function buildSubwoofer(group: THREE.Group): THREE.Mesh {
+    const box = new THREE.Mesh(new RoundedBoxGeometry(0.62, 0.62, 0.62, 3, 0.03), mats.speakerCabinet);
+    box.position.y = 0.31;
+    box.castShadow = true;
+    box.receiveShadow = true;
+    group.add(box);
+
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.022, 14, 28), mats.brassTrim);
+    ring.position.set(0, 0.31, 0.31);
+    group.add(ring);
+
+    const woofer = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.06, 0.055, 28), mats.driverCone);
+    woofer.rotation.x = Math.PI / 2;
+    woofer.position.set(0, 0.31, 0.3);
+    group.add(woofer);
+    return woofer;
+  }
+
+  function buildSurroundSpeaker(group: THREE.Group) {
+    const box = new THREE.Mesh(new RoundedBoxGeometry(0.28, 0.44, 0.16, 2, 0.015), mats.speakerCabinet);
+    box.castShadow = true;
+    group.add(box);
+    const driver = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.02, 20), mats.brassTrim);
+    driver.rotation.x = Math.PI / 2;
+    driver.position.z = 0.085;
+    group.add(driver);
+  }
+
+  function buildCeilingAtmos(group: THREE.Group) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 14, 28), mats.brassTrim);
+    group.add(ring);
+    const grille = new THREE.Mesh(new THREE.CircleGeometry(0.15, 24), mats.speakerCabinet);
+    grille.position.z = 0.01;
+    group.add(grille);
+  }
+
+  function buildSeatMesh(x: number, y: number, z: number) {
+    const seat = new THREE.Group();
+    seat.position.set(x, y, z);
+
+    const base = new THREE.Mesh(new RoundedBoxGeometry(0.68, 0.36, 0.78, 3, 0.04), mats.seatLeather);
+    base.position.y = 0.18;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    seat.add(base);
+
+    const back = new THREE.Mesh(new RoundedBoxGeometry(0.6, 0.74, 0.2, 3, 0.03), mats.seatLeather);
+    back.position.set(0, 0.62, 0.28);
+    back.rotation.x = -0.14;
+    back.castShadow = true;
+    seat.add(back);
+
+    const head = new THREE.Mesh(new RoundedBoxGeometry(0.42, 0.19, 0.14, 2, 0.02), mats.seatHeadrest);
+    head.position.set(0, 1.0, 0.34);
+    seat.add(head);
+
+    [-0.36, 0.36].forEach(ax => {
+      const arm = new THREE.Mesh(new RoundedBoxGeometry(0.12, 0.46, 0.74, 2, 0.025), mats.seatLeather);
+      arm.position.set(ax, 0.3, 0.02);
+      arm.castShadow = true;
+      seat.add(arm);
+    });
+
+    roomShellGroup.add(seat);
+  }
+
+  function rebuildRoomFromLayout(layout: RoomLayout) {
+    currentLayout = layout;
+    disposeGroupChildren(roomShellGroup, sharedMatsSet);
+    disposeGroupChildren(speakersGroup, sharedMatsSet);
+    disposeGroupChildren(conesGroup, sharedMatsSet);
+    disposeGroupChildren(dimensionsGroup, sharedMatsSet);
+    speakerRuntime.clear();
+
+    const { widthM: w, lengthM: l, screenWidthM, screenHeightM, screenCenterY, frontZ, primarySeatZ, projectorZ, riserZStartM, riserHeightM } = layout;
+    // Open architectural cutaway wall height so 3D studio never obscures seats/equipment
+    const cutawayWallH = Math.min(layout.ceilingM * 0.84, 2.48);
+
+    // 1. Travertine Outer Base & Warm Carpet Inlay
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, 0.12, l + 0.5), mats.travertine);
+    floor.position.set(0, -0.06, 0);
+    floor.receiveShadow = true;
+    roomShellGroup.add(floor);
+
+    const carpet = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(1.2, w - 0.75), Math.max(2, l - 1.1)), mats.carpet);
+    carpet.rotation.x = -Math.PI / 2;
+    carpet.position.set(0, 0.005, 0.18);
+    carpet.receiveShadow = true;
+    roomShellGroup.add(carpet);
+
+    // 2. Front Baffle Acoustic Wall (dark slate textile frame for rich screen contrast)
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(w + 0.24, layout.ceilingM, 0.24), mats.frontBaffle);
+    frontWall.position.set(0, layout.ceilingM / 2, -l / 2 - 0.06);
+    frontWall.receiveShadow = true;
+    roomShellGroup.add(frontWall);
+
+    // 3. Left & Right Plaster Cutaway Sidewalls + Rear Wainscot Wall + Walnut Slat Diffusers
+    const wallThickness = 0.18;
+    [-w / 2 - wallThickness / 2, w / 2 + wallThickness / 2].forEach(wx => {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, cutawayWallH, l + 0.2), mats.plasterWall);
+      sideWall.position.set(wx, cutawayWallH / 2, 0);
+      sideWall.castShadow = true;
+      sideWall.receiveShadow = true;
+      roomShellGroup.add(sideWall);
+
+      // Warm ceiling soffit cove strip & floating beam
+      const soffit = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, l), mats.slatWood);
+      soffit.position.set(wx > 0 ? w / 2 - 0.12 : -w / 2 + 0.12, cutawayWallH - 0.08, 0);
+      roomShellGroup.add(soffit);
+
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, l - 0.5), mats.coveLed);
+      led.position.set(wx > 0 ? w / 2 - 0.2 : -w / 2 + 0.2, cutawayWallH - 0.12, 0);
+      roomShellGroup.add(led);
+    });
+
+    // Cutaway Rear Low Wall
+    const rearLowH = 1.65;
+    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(w + 0.24, rearLowH, wallThickness), mats.plasterWall);
+    rearWall.position.set(0, rearLowH / 2, l / 2 + wallThickness / 2);
+    rearWall.receiveShadow = true;
+    roomShellGroup.add(rearWall);
+
+    // Sculpted Walnut Acoustic Slats evenly distributed along side walls
+    const slatCount = Math.max(5, Math.floor((l - 1.2) / 0.52));
+    for (let i = 0; i < slatCount; i++) {
+      const z = -l / 2 + 0.8 + ((l - 1.6) * i) / Math.max(1, slatCount - 1);
+      [-w / 2 + 0.035, w / 2 - 0.035].forEach(sx => {
+        const slat = new THREE.Mesh(new RoundedBoxGeometry(0.055, cutawayWallH - 0.48, 0.075, 2, 0.01), mats.slatWood);
+        slat.position.set(sx, (cutawayWallH - 0.48) / 2 + 0.18, z);
+        slat.castShadow = true;
+        roomShellGroup.add(slat);
+      });
+    }
+
+    // 4. Tiered Rear Seating Riser Platform (when 2 rows active)
+    if (layout.cadRiserY !== null) {
+      const riserLen = Math.max(1.2, l / 2 - riserZStartM - 0.08);
+      const riserCenterZ = riserZStartM + riserLen / 2;
+      const riser = new THREE.Mesh(
+        new RoundedBoxGeometry(Math.max(1.4, w - 0.9), riserHeightM, riserLen, 2, 0.02),
+        mats.riserDeck,
+      );
+      riser.position.set(0, riserHeightM / 2, riserCenterZ);
+      riser.receiveShadow = true;
+      riser.castShadow = true;
+      roomShellGroup.add(riser);
+
+      const stepTrim = new THREE.Mesh(new THREE.BoxGeometry(Math.max(1.4, w - 0.92), 0.02, 0.03), mats.stepLed);
+      stepTrim.position.set(0, riserHeightM - 0.015, riserZStartM + 0.01);
+      roomShellGroup.add(stepTrim);
+    }
+
+    // 5. Dynamic Theater Seating Rows
+    layout.seats.forEach(s => buildSeatMesh(s.xMeters, s.riserHeightM, s.zMeters));
+
+    // Primary Sweet Spot Target Ring
+    const sweetSpotRing = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.62, 42), mats.sweetSpotRing);
+    sweetSpotRing.rotation.x = -Math.PI / 2;
+    sweetSpotRing.position.set(0, 0.012, primarySeatZ);
+    roomShellGroup.add(sweetSpotRing);
+
+    // 6. 16:9 Projection Screen + Volumetric Beam + Rear Projector
+    const screenGroup = new THREE.Group();
+    screenGroup.position.set(0, screenCenterY, frontZ);
+    roomShellGroup.add(screenGroup);
+
+    const frame = new THREE.Mesh(
+      new RoundedBoxGeometry(screenWidthM + 0.16, screenHeightM + 0.16, 0.07, 2, 0.02),
+      mats.screenFrame,
+    );
+    frame.castShadow = true;
+    screenGroup.add(frame);
+
+    const surface = new THREE.Mesh(new THREE.PlaneGeometry(screenWidthM, screenHeightM), mats.screenSurface);
+    surface.position.z = 0.04;
+    screenGroup.add(surface);
+
+    screenBounce.position.set(0, screenCenterY, frontZ + 0.55);
+
+    // Rear ceiling/shelf projector housing + volumetric throw beam
+    const projY = Math.min(layout.ceilingM - 0.25, screenCenterY + 0.92);
+    const projectorBox = new THREE.Mesh(new RoundedBoxGeometry(0.46, 0.22, 0.42, 2, 0.02), mats.projectorBody);
+    projectorBox.position.set(0, projY, projectorZ);
+    projectorBox.castShadow = true;
+    roomShellGroup.add(projectorBox);
+
+    const projOrigin = new THREE.Vector3(0, projY - 0.04, projectorZ - 0.18);
+    const projTarget = new THREE.Vector3(0, screenCenterY, frontZ + 0.05);
+    const beamDist = projOrigin.distanceTo(projTarget);
+    const beamGeo = new THREE.CylinderGeometry(0.06, Math.min(screenWidthM, screenHeightM) * 0.46, beamDist, 28, 1, true);
+    const beamMesh = new THREE.Mesh(beamGeo, mats.projectorBeam);
+    beamMesh.position.copy(projOrigin).lerp(projTarget, 0.5);
+    beamMesh.quaternion.setFromUnitVectors(UP_VEC, new THREE.Vector3().subVectors(projOrigin, projTarget).normalize());
+    roomShellGroup.add(beamMesh);
+
+    // 7. Build Speaker Nodes + Directional Acoustic Dispersion Cones
+    const listenerTarget = new THREE.Vector3(...layout.listenerHead3d);
+    Object.values(layout.speakers).forEach(node => {
+      const group = new THREE.Group();
+      group.position.set(...node.pos3d);
+      group.rotation.set(...node.rot3d);
+
+      let woofer: THREE.Mesh | undefined;
+      if (node.id === "C") {
+        buildHorizontalCenterSpeaker(group);
+      } else if (node.role === "screen") {
+        buildFloorstandingSpeaker(group);
+      } else if (node.role === "subwoofer") {
+        woofer = buildSubwoofer(group);
+      } else if (node.role === "surround") {
+        buildSurroundSpeaker(group);
+      } else if (node.role === "height") {
+        buildCeilingAtmos(group);
+      }
+
+      // Highlight halo ring at speaker base/center
+      const hoverRingMat = new THREE.MeshBasicMaterial({
+        color: 0xe6be79,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+      });
+      const hoverRing = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.36, 28), hoverRingMat);
+      hoverRing.rotation.x = -Math.PI / 2;
+      hoverRing.position.y = node.role === "height" ? -0.1 : node.id === "C" ? -0.22 : 0.025;
+      group.add(hoverRing);
+
+      tagSpeakerHierarchy(group, node.id);
+      speakersGroup.add(group);
+
+      // Directional dispersion cone pointing cleanly from transducer center toward Listener Sweet Spot
+      const acousticCenter = new THREE.Vector3(
+        node.pos3d[0],
+        node.pos3d[1] + (node.role === "screen" && node.id !== "C" ? 0.85 : node.role === "subwoofer" ? 0.31 : 0),
+        node.pos3d[2],
+      );
+      const dir = new THREE.Vector3().subVectors(listenerTarget, acousticCenter);
+      const coneLen = Math.max(0.9, Math.min(2.6, dir.length() * 0.62));
+      dir.normalize();
+
+      const coneMat = new THREE.MeshBasicMaterial({
+        color: node.role === "height" ? 0xf3d59b : 0xdcb472,
+        transparent: true,
+        opacity: 0.06,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const coneGeo = new THREE.ConeGeometry(node.role === "subwoofer" ? 0.62 : 0.44, coneLen, 20, 1, true);
+      const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+      coneMesh.position.copy(acousticCenter).addScaledVector(dir, coneLen * 0.5);
+      // Cone tip points at +Y -> align -Y (open base) toward listener by inverting vector
+      coneMesh.quaternion.setFromUnitVectors(UP_VEC, dir.clone().negate());
+      conesGroup.add(coneMesh);
+
+      speakerRuntime.set(node.id, {
+        id: node.id,
+        role: node.role,
+        group,
+        cone: coneMesh,
+        coneMat,
+        woofer,
+        hoverRing,
+        centerPos: acousticCenter,
+      });
+    });
+
+    // 8. Architectural Floor Dimension Guides (Perimeter width, depth & projector throw)
+    const lineMat = new THREE.LineDashedMaterial({ color: 0xd9b272, dashSize: 0.16, gapSize: 0.1, transparent: true, opacity: 0.85 });
+    const yDim = 0.03;
+    const widthPts = [new THREE.Vector3(-w / 2 + 0.1, yDim, -l / 2 + 0.18), new THREE.Vector3(w / 2 - 0.1, yDim, -l / 2 + 0.18)];
+    const depthPts = [new THREE.Vector3(w / 2 - 0.18, yDim, -l / 2 + 0.1), new THREE.Vector3(w / 2 - 0.18, yDim, l / 2 - 0.1)];
+    const throwPts = [new THREE.Vector3(0, yDim, frontZ), new THREE.Vector3(0, yDim, projectorZ)];
+
+    [widthPts, depthPts, throwPts].forEach(pts => {
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const line = new THREE.Line(geo, lineMat);
+      line.computeLineDistances();
+      dimensionsGroup.add(line);
+    });
+    dimensionsGroup.visible = showDimensionsEnabled;
+
+    applyActiveConfigVisibility();
+  }
+
+  function applyActiveConfigVisibility() {
+    const activeIds = new Set(ACTIVE_SPEAKER_IDS[currentConfig] || []);
+    speakerRuntime.forEach((item, id) => {
+      const visible = activeIds.has(id);
+      item.group.visible = visible;
+      if (item.cone) item.cone.visible = visible && soundConesEnabled;
+    });
     rebuildRayLines();
   }
 
-  // Laser Ray Tracing in 3D: Connects speaker nodes to listener head (0, 1.15, 1.2)
-  const LISTENER_HEAD = new THREE.Vector3(0, 1.15, 1.2);
-
   function rebuildRayLines() {
-    // Clear existing ray geometries
-    while (rayLinesGroup.children.length > 0) {
-      const child = rayLinesGroup.children[0];
-      rayLinesGroup.remove(child);
-      if (child instanceof THREE.Line) {
-        child.geometry.dispose();
-      }
-    }
+    disposeGroupChildren(raysGroup, sharedMatsSet);
+    const activeIds = new Set(ACTIVE_SPEAKER_IDS[currentConfig] || []);
+    const targetHead = new THREE.Vector3(...currentLayout.listenerHead3d);
 
-    const activeIds = new Set(CONFIG_SPEAKERS_3D[currentConfig] || []);
-
-    speakerMeshes.forEach((item, id) => {
+    speakerRuntime.forEach((item, id) => {
       if (!activeIds.has(id)) return;
+      const isDirect = hoveredSpeakerId === id || highlightedRole === item.role || isSweetSpotFocused;
+      if (!isDirect) return;
 
-      const isHovered = hoveredSpeakerId === id;
-      const shouldShow = isHovered || isSweetSpotFocused;
-      if (!shouldShow) return;
-
-      const spPos = new THREE.Vector3(...item.def.pos);
-      if (item.def.role === "screen") spPos.y += 0.85;
-      if (item.def.role === "subwoofer") spPos.y += 0.35;
-
-      const points = [spPos, LISTENER_HEAD.clone()];
-      const geom = new THREE.BufferGeometry().setFromPoints(points);
-
+      const geo = new THREE.BufferGeometry().setFromPoints([item.centerPos.clone(), targetHead.clone()]);
       const line = new THREE.Line(
-        geom,
+        geo,
         new THREE.LineDashedMaterial({
-          color: isHovered ? 0xf3d59b : 0xe2ba7a,
-          dashSize: 0.15,
+          color: hoveredSpeakerId === id ? 0xf6dca8 : 0xdcb472,
+          dashSize: 0.14,
           gapSize: 0.08,
           transparent: true,
-          opacity: isHovered ? 1.0 : 0.65,
+          opacity: hoveredSpeakerId === id ? 1.0 : 0.72,
         }),
       );
       line.computeLineDistances();
-      rayLinesGroup.add(line);
+      raysGroup.add(line);
     });
   }
 
-  // Interactive Orbit & Parallax Physics
+  // Camera Orbit & Preset Interpolation State
+  let dragOrbitYaw = 0;
+  let dragOrbitPitch = 0;
+  let pointerYaw = 0;
+  let pointerPitch = 0;
+
+  function computePresetPose(preset: CameraPreset): { pos: THREE.Vector3; target: THREE.Vector3; fov: number } {
+    const w = currentLayout.widthM;
+    const l = currentLayout.lengthM;
+    if (preset === "seat") {
+      const seatEye = new THREE.Vector3(0, 1.18, currentLayout.primarySeatZ);
+      const screenLook = new THREE.Vector3(0, currentLayout.screenCenterY, currentLayout.frontZ);
+      return { pos: seatEye, target: screenLook, fov: 52 };
+    }
+    if (preset === "top") {
+      return {
+        pos: new THREE.Vector3(0, Math.max(8.0, Math.max(w, l) * 1.18), 0.35),
+        target: new THREE.Vector3(0, 0, 0),
+        fov: 38,
+      };
+    }
+    return {
+      pos: new THREE.Vector3(w * 0.62 + 1.85, 3.65, l * 0.56 + 2.1),
+      target: new THREE.Vector3(0, 0.88, -0.25),
+      fov: 44,
+    };
+  }
+
+  const initialPose = computePresetPose(currentPreset);
+  const curCamPos = initialPose.pos.clone();
+  const curCamTarget = initialPose.target.clone();
+  let curCamFov = initialPose.fov;
+  camera.position.copy(curCamPos);
+  camera.fov = curCamFov;
+  camera.lookAt(curCamTarget);
+  camera.updateProjectionMatrix();
+
+  // Pointer Drag + Click Raycaster
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
   let isDragging = false;
-  let prevMouseX = 0;
-  let prevMouseY = 0;
-  let targetOrbitAngleX = 0;
-  let targetOrbitAngleY = 0;
-  let currentOrbitAngleX = 0;
-  let currentOrbitAngleY = 0;
+  let downX = 0;
+  let downY = 0;
+  let prevX = 0;
+  let prevY = 0;
+
+  function pickSpeakerId(clientX: number, clientY: number): string | null {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(ndc, camera);
+    const activeRoots = Array.from(speakerRuntime.values())
+      .filter(r => r.group.visible)
+      .map(r => r.group);
+    const hits = raycaster.intersectObjects(activeRoots, true);
+    return (hits[0]?.object.userData.speakerId as string | undefined) ?? null;
+  }
 
   const onPointerDown = (e: MouseEvent | TouchEvent) => {
     isDragging = true;
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-    prevMouseX = clientX;
-    prevMouseY = clientY;
+    const cx = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const cy = "touches" in e ? e.touches[0].clientY : e.clientY;
+    downX = cx;
+    downY = cy;
+    prevX = cx;
+    prevY = cy;
   };
 
   const onPointerMove = (e: MouseEvent | TouchEvent) => {
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const cx = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const cy = "touches" in e ? e.touches[0].clientY : e.clientY;
 
     if (isDragging) {
-      const dx = clientX - prevMouseX;
-      const dy = clientY - prevMouseY;
-      prevMouseX = clientX;
-      prevMouseY = clientY;
-
-      targetOrbitAngleY -= dx * 0.005;
-      targetOrbitAngleX = Math.max(-0.4, Math.min(0.4, targetOrbitAngleX - dy * 0.004));
+      const dx = cx - prevX;
+      const dy = cy - prevY;
+      prevX = cx;
+      prevY = cy;
+      dragOrbitYaw -= dx * 0.0055;
+      dragOrbitPitch = Math.max(-0.42, Math.min(0.42, dragOrbitPitch - dy * 0.0045));
     } else if ("clientX" in e) {
-      // Subtle mouse-move parallax
       const rect = canvas.getBoundingClientRect();
-      const nx = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-      const ny = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
-      targetOrbitAngleY = -nx * 0.12;
-      targetOrbitAngleX = -ny * 0.08;
+      if (rect.width > 0 && rect.height > 0) {
+        const nx = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+        const ny = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+        pointerYaw = -nx * 0.09;
+        pointerPitch = -ny * 0.05;
+      }
+      const hit = pickSpeakerId(e.clientX, e.clientY);
+      canvas.style.cursor = hit ? "pointer" : "grab";
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return;
     isDragging = false;
+    const cx = "changedTouches" in e ? e.changedTouches[0]?.clientX ?? downX : e.clientX;
+    const cy = "changedTouches" in e ? e.changedTouches[0]?.clientY ?? downY : e.clientY;
+    const distMoved = Math.hypot(cx - downX, cy - downY);
+    if (distMoved < 6) {
+      const hit = pickSpeakerId(cx, cy);
+      if (hit) {
+        selectCallback?.(hoveredSpeakerId === hit ? null : hit);
+      } else if (hoveredSpeakerId) {
+        selectCallback?.(null);
+      }
+    }
   };
 
   canvas.addEventListener("mousedown", onPointerDown);
@@ -707,68 +783,90 @@ export function createCinemaRoomScene(
   canvas.addEventListener("touchmove", onPointerMove, { passive: true });
   window.addEventListener("touchend", onPointerUp);
 
-  // Initialize with initial configuration
-  updateConfig(currentConfig);
+  rebuildRoomFromLayout(currentLayout);
 
-  // Animation Loop
+  // Main Animation Loop
   let animId = 0;
-  let clock = new THREE.Clock();
+  const clock = new THREE.Clock();
 
   function animate() {
     animId = requestAnimationFrame(animate);
+    const elapsed = clock.getElapsedTime();
 
-    const delta = clock.getDelta();
-    const elapsedTime = clock.getElapsedTime();
+    // 1. Animate Lights On <-> Cinema Dark Mode transition
+    const desiredLit = targetLightsOn ? 1 : 0;
+    const litStep = isReducedMotion ? 1 : 0.075;
+    litProgress += (desiredLit - litProgress) * litStep;
 
-    // Smooth camera orbit damping
-    currentOrbitAngleX += (targetOrbitAngleX - currentOrbitAngleX) * 0.08;
-    currentOrbitAngleY += (targetOrbitAngleY - currentOrbitAngleY) * 0.08;
+    scene.background = bgLit.clone().lerp(bgDark, 1 - litProgress);
+    hemiLight.intensity = 0.28 + litProgress * 1.1;
+    keyLight.intensity = 0.34 + litProgress * 1.25;
+    fillLight.intensity = 0.14 + litProgress * 0.42;
+    mats.coveLed.emissiveIntensity = 0.38 + litProgress * 1.05;
+    mats.stepLed.emissiveIntensity = 1.25 - litProgress * 0.4;
+    mats.screenSurface.emissiveIntensity = 0.28 + (1 - litProgress) * 0.68;
+    screenBounce.intensity = 0.7 + (1 - litProgress) * 1.75;
 
-    const baseDistance = DEFAULT_CAM_POS.length();
-    const elevatedY = DEFAULT_CAM_POS.y + currentOrbitAngleX * 2.2;
-    const radius = Math.sqrt(Math.max(1, baseDistance * baseDistance - elevatedY * elevatedY));
+    const beamPulse = soundConesEnabled && !isReducedMotion ? Math.sin(elapsed * 8) * 0.008 : 0;
+    mats.projectorBeam.opacity = 0.02 + (1 - litProgress) * 0.125 + beamPulse;
 
-    const baseAngle = Math.atan2(DEFAULT_CAM_POS.x, DEFAULT_CAM_POS.z);
-    camera.position.x = Math.sin(baseAngle + currentOrbitAngleY) * radius;
-    camera.position.z = Math.cos(baseAngle + currentOrbitAngleY) * radius;
-    camera.position.y = elevatedY;
-    camera.lookAt(DEFAULT_TARGET);
+    // 2. Smooth Camera Glide Across Presets + Drag Orbit
+    const goal = computePresetPose(currentPreset);
+    let desiredPos = goal.pos.clone();
+    let desiredTarget = goal.target.clone();
 
-    // Audio Simulation Dynamics
-    if (isSimulating && !isReducedMotion) {
-      // 1. Volumetric projector light flicker
-      projectorBeamMat.opacity = 0.07 + Math.sin(elapsedTime * 12) * 0.012;
-
-      // 2. Speaker Driver Excursions & Shockwave Pulse Rings
-      speakerMeshes.forEach(item => {
-        if (!item.group.visible) return;
-
-        // Subwoofer cone physical excursion stroke
-        if (item.wooferCone) {
-          const bassStroke = Math.sin(elapsedTime * 8) * 0.035;
-          item.wooferCone.position.z = 0.33 + bassStroke;
-        }
-
-        // Concentric acoustic pulse rings
-        if (item.pulseRing) {
-          item.pulseRing.visible = true;
-          const cycle = (elapsedTime * 1.6) % 1;
-          const scale = 1 + cycle * 4.5;
-          item.pulseRing.scale.set(scale, scale, 1);
-          (item.pulseRing.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.55 * (1 - cycle));
-        }
-      });
-
-      // Sweet spot target pulse
-      sweetSpotRingMat.opacity = 0.45 + Math.sin(elapsedTime * 4) * 0.2;
-    } else {
-      speakerMeshes.forEach(item => {
-        if (item.pulseRing) item.pulseRing.visible = false;
-        if (item.wooferCone) item.wooferCone.position.z = 0.33;
-      });
-      projectorBeamMat.opacity = 0.075;
-      sweetSpotRingMat.opacity = 0.5;
+    if (currentPreset === "studio") {
+      const offset = goal.pos.clone().sub(goal.target);
+      const radiusXZ = Math.hypot(offset.x, offset.z);
+      const baseYaw = Math.atan2(offset.x, offset.z);
+      const yaw = baseYaw + dragOrbitYaw + (isReducedMotion ? 0 : pointerYaw);
+      const yVal = Math.max(1.2, goal.pos.y + (dragOrbitPitch + (isReducedMotion ? 0 : pointerPitch)) * 2.4);
+      desiredPos.set(
+        goal.target.x + Math.sin(yaw) * radiusXZ,
+        yVal,
+        goal.target.z + Math.cos(yaw) * radiusXZ,
+      );
+    } else if (currentPreset === "seat") {
+      // Gentle head look-around in Seat POV
+      const yawLook = (dragOrbitYaw + (isReducedMotion ? 0 : pointerYaw * 0.5)) * 1.8;
+      const pitchLook = (dragOrbitPitch + (isReducedMotion ? 0 : pointerPitch * 0.5)) * 1.1;
+      desiredTarget = new THREE.Vector3(yawLook, currentLayout.screenCenterY + pitchLook, currentLayout.frontZ);
     }
+
+    const camAlpha = isReducedMotion ? 1 : 0.085;
+    curCamPos.lerp(desiredPos, camAlpha);
+    curCamTarget.lerp(desiredTarget, camAlpha);
+    curCamFov += (goal.fov - curCamFov) * camAlpha;
+
+    camera.position.copy(curCamPos);
+    camera.fov = curCamFov;
+    camera.lookAt(curCamTarget);
+    camera.updateProjectionMatrix();
+
+    // 3. Acoustic Dispersion Cone Breathing & Woofer Physics
+    speakerRuntime.forEach((item, id) => {
+      if (!item.group.visible) return;
+      const isFocused = hoveredSpeakerId === id || highlightedRole === item.role;
+
+      if (item.woofer) {
+        item.woofer.position.z =
+          soundConesEnabled && !isReducedMotion ? 0.3 + Math.sin(elapsed * 8.5) * 0.03 : 0.3;
+      }
+
+      if (item.cone && item.coneMat) {
+        item.cone.visible = soundConesEnabled || isFocused;
+        const pulse = soundConesEnabled && !isReducedMotion ? 0.5 + 0.5 * Math.sin(elapsed * 3.0) : 0.5;
+        item.coneMat.opacity = isFocused ? 0.16 : 0.045 + pulse * 0.045;
+      }
+
+      if (item.hoverRing) {
+        const ringMat = item.hoverRing.material as THREE.MeshBasicMaterial;
+        ringMat.opacity += ((isFocused ? 0.85 : 0) - ringMat.opacity) * 0.18;
+      }
+    });
+
+    mats.sweetSpotRing.opacity =
+      soundConesEnabled && !isReducedMotion ? 0.45 + Math.sin(elapsed * 3.5) * 0.16 : 0.52;
 
     renderer.render(scene, camera);
   }
@@ -776,26 +874,55 @@ export function createCinemaRoomScene(
   animate();
 
   return {
-    setConfig(configId: RoomConfigId) {
-      updateConfig(configId);
+    setConfig(configId) {
+      if (currentConfig === configId) return;
+      currentConfig = configId;
+      applyActiveConfigVisibility();
     },
-    setSimulating(sim: boolean) {
-      isSimulating = sim;
+    setLayout(layout) {
+      rebuildRoomFromLayout(layout);
     },
-    setHoveredSpeaker(spId: string | null) {
-      hoveredSpeakerId = spId;
+    setLightsOn(lightsOn) {
+      targetLightsOn = lightsOn;
+    },
+    setCameraPreset(preset) {
+      if (currentPreset === preset) return;
+      currentPreset = preset;
+      dragOrbitYaw = 0;
+      dragOrbitPitch = 0;
+    },
+    setSoundCones(show) {
+      soundConesEnabled = show;
+      applyActiveConfigVisibility();
+    },
+    setShowDimensions(show) {
+      showDimensionsEnabled = show;
+      dimensionsGroup.visible = show;
+    },
+    setHoveredSpeaker(speakerId) {
+      if (hoveredSpeakerId === speakerId) return;
+      hoveredSpeakerId = speakerId;
       rebuildRayLines();
     },
-    setSweetSpotFocus(focus: boolean) {
+    setHighlightRole(role) {
+      if (highlightedRole === role) return;
+      highlightedRole = role;
+      rebuildRayLines();
+    },
+    setSweetSpotFocus(focus) {
+      if (isSweetSpotFocused === focus) return;
       isSweetSpotFocused = focus;
       rebuildRayLines();
     },
-    setReducedMotion(reduced: boolean) {
+    setReducedMotion(reduced) {
       isReducedMotion = reduced;
     },
     resetCamera() {
-      targetOrbitAngleX = 0;
-      targetOrbitAngleY = 0;
+      currentPreset = "studio";
+      dragOrbitYaw = 0;
+      dragOrbitPitch = 0;
+      pointerYaw = 0;
+      pointerPitch = 0;
     },
     resize() {
       const width = canvas.clientWidth;
@@ -814,6 +941,13 @@ export function createCinemaRoomScene(
       canvas.removeEventListener("touchmove", onPointerMove);
       window.removeEventListener("touchend", onPointerUp);
 
+      disposeGroupChildren(roomShellGroup, sharedMatsSet);
+      disposeGroupChildren(speakersGroup, sharedMatsSet);
+      disposeGroupChildren(conesGroup, sharedMatsSet);
+      disposeGroupChildren(raysGroup, sharedMatsSet);
+      disposeGroupChildren(dimensionsGroup, sharedMatsSet);
+      sharedMatsSet.forEach(mat => mat.dispose());
+      screenTexture?.dispose();
       renderer.dispose();
       scene.clear();
     },
