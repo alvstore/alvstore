@@ -1,18 +1,19 @@
 "use client";
 
+import { useId } from "react";
 import { Box, type SxProps, type Theme } from "@mui/material";
 
-const ALV_A_PATH =
-  "M 150 202 C 150 140, 198 110, 290 110 C 386 110, 428 144, 428 210 L 428 388 L 356 388 L 356 356 C 324 384, 282 396, 228 396 C 162 396, 124 360, 124 308 C 124 252, 166 226, 248 221 L 356 215 L 356 200 C 356 173, 328 162, 284 162 C 242 162, 220 174, 214 202 Z M 196 304 C 196 281, 212 271, 250 269 L 356 264 L 356 298 C 356 327, 326 342, 260 342 C 214 342, 196 329, 196 304 Z";
+const ALV_SCULPTED_A =
+  "M 152 196 C 152 138, 198 112, 284 112 C 372 112, 410 144, 410 206 L 410 348 H 430 V 384 H 348 V 353 C 318 378, 280 388, 230 388 C 168 388, 130 354, 130 304 C 130 252, 170 226, 248 221 L 348 215 L 348 200 C 348 175, 322 165, 282 165 C 242 165, 222 176, 216 196 Z M 194 300 C 194 280, 210 270, 248 268 L 348 263 L 348 296 C 348 322, 320 335, 260 335 C 214 335, 194 323, 194 300 Z";
 
 /**
- * Vector monogram emblem derived from the official ALVStore circular "a" mark.
+ * High-definition Obsidian Titanium Lens Crest derived from the official ALVStore emblem.
  */
 export function BrandMark({
   size = 36,
   badgeColor,
   foregroundColor = "#FFFFFF",
-  crescentColor = "rgba(0, 0, 0, 0.22)",
+  crescentColor,
   variant = "squircle",
   sx,
 }: {
@@ -23,26 +24,60 @@ export function BrandMark({
   variant?: "squircle" | "circle";
   sx?: SxProps<Theme>;
 }) {
+  const gradId = `alv-bm-${useId().replace(/:/g, "")}`;
+  const isDefaultObsidian = !badgeColor;
+  const rx = variant === "circle" ? "256" : "122";
+
   return (
     <Box
       component="svg"
       viewBox="0 0 512 512"
       aria-hidden="true"
       sx={[
-        theme => ({
+        {
           width: size,
           height: size,
           flexShrink: 0,
           display: "block",
           borderRadius: variant === "circle" ? "50%" : `${Math.round(size * 0.24)}px`,
-          color: badgeColor || theme.palette.primary.main,
-        }),
+        },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
     >
-      <rect width="512" height="512" rx={variant === "circle" ? "256" : "124"} fill="currentColor" />
-      <circle cx="242" cy="256" r="192" fill={crescentColor} />
-      <path fillRule="evenodd" d={ALV_A_PATH} fill={foregroundColor} />
+      <defs>
+        <radialGradient id={`${gradId}-bg`} cx="32%" cy="20%" r="86%">
+          <stop offset="0%" stopColor="#27272A" />
+          <stop offset="52%" stopColor="#111114" />
+          <stop offset="100%" stopColor="#040406" />
+        </radialGradient>
+        <linearGradient id={`${gradId}-arc`} x1="60" y1="90" x2="290" y2="420" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor={crescentColor || "#FFFFFF"} stopOpacity="0.88" />
+          <stop offset="100%" stopColor={crescentColor || "#FFFFFF"} stopOpacity="0.1" />
+        </linearGradient>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="496"
+        height="496"
+        rx={rx}
+        fill={isDefaultObsidian ? `url(#${gradId}-bg)` : badgeColor}
+        stroke="rgba(255,255,255,0.28)"
+        strokeWidth="12"
+      />
+      <circle
+        cx="242"
+        cy="256"
+        r="192"
+        fill="none"
+        stroke={`url(#${gradId}-arc)`}
+        strokeWidth="18"
+        strokeDasharray="550 720"
+        strokeDashoffset="-172"
+        strokeLinecap="round"
+      />
+      <path fillRule="evenodd" d={ALV_SCULPTED_A} fill={foregroundColor} />
+      <circle cx="404" cy="108" r="10" fill={foregroundColor} opacity="0.9" />
     </Box>
   );
 }

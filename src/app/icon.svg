@@ -1,34 +1,69 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <linearGradient id="alv-emerald" x1="24" y1="16" x2="488" y2="496" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#10B981"/>
-      <stop offset="55%" stop-color="#059669"/>
-      <stop offset="100%" stop-color="#047857"/>
+    <radialGradient id="alvObsidianBg" cx="32%" cy="20%" r="86%">
+      <stop offset="0%" stop-color="#27272A"/>
+      <stop offset="48%" stop-color="#111114"/>
+      <stop offset="100%" stop-color="#040406"/>
+    </radialGradient>
+    <linearGradient id="alvPlatinumRim" x1="28" y1="16" x2="484" y2="496" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.78"/>
+      <stop offset="35%" stop-color="#D4D4D8" stop-opacity="0.34"/>
+      <stop offset="70%" stop-color="#52525B" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.28"/>
     </linearGradient>
+    <linearGradient id="alvCrescentArc" x1="60" y1="90" x2="290" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.92"/>
+      <stop offset="55%" stop-color="#D4D4D8" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="alvGlassSheen" x1="0" y1="0" x2="460" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.13"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.025"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="alvTileClip"><rect x="4" y="4" width="504" height="504" rx="122"/></clipPath>
   </defs>
-  <rect width="512" height="512" rx="124" fill="url(#alv-emerald)"/>
-  <circle cx="242" cy="256" r="192" fill="#047857" opacity="0.5"/>
-  <path fill-rule="evenodd" d="
-  M 150 202
-  C 150 140, 198 110, 290 110
-  C 386 110, 428 144, 428 210
-  L 428 388
-  L 356 388
-  L 356 356
-  C 324 384, 282 396, 228 396
-  C 162 396, 124 360, 124 308
-  C 124 252, 166 226, 248 221
-  L 356 215
-  L 356 200
-  C 356 173, 328 162, 284 162
-  C 242 162, 220 174, 214 202
-  Z
-  M 196 304
-  C 196 281, 212 271, 250 269
-  L 356 264
-  L 356 298
-  C 356 327, 326 342, 260 342
-  C 214 342, 196 329, 196 304
-  Z
-" fill="#FFFFFF"/>
+
+  <g clip-path="url(#alvTileClip)">
+    <!-- Deep obsidian titanium dial -->
+    <rect x="0" y="0" width="512" height="512" fill="url(#alvObsidianBg)"/>
+    <!-- Precision optical glass coating sheen -->
+    <path d="M 0 0 H 512 V 214 C 372 152, 192 192, 0 314 Z" fill="url(#alvGlassSheen)"/>
+    <!-- Concentric cinema-lens gauge rings -->
+    <circle cx="252" cy="256" r="204" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+    <circle cx="252" cy="256" r="172" stroke="rgba(255,255,255,0.06)" stroke-width="1.5"/>
+    <!-- Machined silver-white crescent track cradling the left of 'a' -->
+    <circle cx="242" cy="256" r="196" stroke="url(#alvCrescentArc)" stroke-width="18" stroke-dasharray="560 720" stroke-dashoffset="-172" stroke-linecap="round"/>
+    <!-- Custom ALV 'a' sculpted with architectural slab foot matching LVStore serif -->
+    <g transform="translate(-4, 0)">
+      <path fill-rule="evenodd" d="
+        M 156 196
+        C 156 138, 202 112, 288 112
+        C 376 112, 414 144, 414 206
+        L 414 348
+        H 434
+        V 384
+        H 352
+        V 353
+        C 322 378, 284 388, 234 388
+        C 172 388, 134 354, 134 304
+        C 134 252, 174 226, 252 221
+        L 352 215
+        L 352 200
+        C 352 175, 326 165, 286 165
+        C 246 165, 226 176, 220 196
+        Z
+        M 198 300
+        C 198 280, 214 270, 252 268
+        L 352 263
+        L 352 296
+        C 352 322, 324 335, 264 335
+        C 218 335, 198 323, 198 300
+        Z
+      " fill="#FFFFFF"/>
+    </g>
+    <!-- Micro specular optical calibration dot -->
+    <circle cx="404" cy="108" r="10" fill="#FFFFFF" opacity="0.92"/>
+    <rect x="4" y="4" width="504" height="504" rx="122" stroke="url(#alvPlatinumRim)" stroke-width="14"/>
+  </g>
 </svg>
