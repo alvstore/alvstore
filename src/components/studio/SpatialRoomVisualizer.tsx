@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Box, Button, Collapse, Slider, Tooltip, Typography } from "@mui/material";
 import {
   ArrowOutward,
@@ -60,7 +60,8 @@ export function SpatialRoomVisualizer() {
 
   const [selectedSpeakerId, setSelectedSpeakerId] = useState<string | null>(null);
   const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null);
-  const [highlightRole, setHighlightRole] = useState<string | null>(null);
+  const [lockedRole, setLockedRole] = useState<string | null>(null);
+  const [hoveredRole, setHoveredRole] = useState<string | null>(null);
   const [sweetSpotHovered, setSweetSpotHovered] = useState<boolean>(false);
   const [techSpecsOpen, setTechSpecsOpen] = useState<boolean>(false);
 
@@ -76,25 +77,20 @@ export function SpatialRoomVisualizer() {
     [lengthFt, widthFt, seatingRows],
   );
 
-  // Sync recommended package tier automatically as room sliders move unless user manually chose a tier
-  useEffect(() => {
-    if (!manualTabLocked) {
-      setActiveTab(recommendation.recommendedConfigId);
-    }
-  }, [manualTabLocked, recommendation.recommendedConfigId]);
-
-  const config = ROOM_CONFIGS.find(c => c.id === activeTab) ?? ROOM_CONFIGS[3];
+  const effectiveTab = manualTabLocked ? activeTab : recommendation.recommendedConfigId;
+  const config = ROOM_CONFIGS.find(c => c.id === effectiveTab) ?? ROOM_CONFIGS[3];
+  const highlightRole = hoveredRole ?? lockedRole;
   const focusedSpeakerId = hoveredSpeakerId ?? selectedSpeakerId;
   const focusedSpeaker: SpeakerMeta | null = focusedSpeakerId
     ? config.speakers.find(s => s.id === focusedSpeakerId) ?? null
     : null;
   const focusedNode = focusedSpeaker ? layout.speakers[focusedSpeaker.id] : null;
 
-  const isRecommendedMatch = activeTab === recommendation.recommendedConfigId;
+  const isRecommendedMatch = effectiveTab === recommendation.recommendedConfigId;
 
   const handleSelectTab = (tabId: RoomConfigId) => {
     setActiveTab(tabId);
-    setManualTabLocked(true);
+    setManualTabLocked(tabId !== recommendation.recommendedConfigId);
     setSelectedSpeakerId(null);
     setHoveredSpeakerId(null);
   };
@@ -105,18 +101,12 @@ export function SpatialRoomVisualizer() {
     setSelectedSpeakerId(null);
   };
 
-  const handleCameraSwitch = (preset: CameraPreset) => {
-    setCameraPreset(preset);
-    if (viewMode === "plan") {
-      setViewMode("isometric");
-    }
-  };
-
   const handleResetView = () => {
     setCameraPreset("studio");
     setSelectedSpeakerId(null);
     setHoveredSpeakerId(null);
-    setHighlightRole(null);
+    setLockedRole(null);
+    setHoveredRole(null);
     setResetSignal(n => n + 1);
   };
 
@@ -235,7 +225,7 @@ export function SpatialRoomVisualizer() {
                   initial={reduced ? false : { opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={reduced ? undefined : { opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
+                  transition={{ duration: reduced ? 0 : 0.2 }}
                 >
                   <Button
                     size="small"
@@ -244,7 +234,7 @@ export function SpatialRoomVisualizer() {
                       ...TYPE.label,
                       fontSize: "0.64rem",
                       px: 1.4,
-                      minHeight: 34,
+                      minHeight: 36,
                       bgcolor: STUDIO.brass,
                       color: "#121315",
                       borderRadius: "3px",
@@ -349,12 +339,13 @@ export function SpatialRoomVisualizer() {
             >
               {[1, 2].map(rowCount => {
                 const count = rowCount as 1 | 2;
-                const disabled = count === 2 && lengthFt < 16;
+                const disabled = count === 2 && lengthFt < 18;
                 const active = recommendation.effectiveRows === count;
                 return (
                   <Button
                     key={count}
                     size="small"
+                    aria-pressed={active}
                     disabled={disabled}
                     onClick={() => setSeatingRows(count)}
                     sx={{
@@ -425,8 +416,8 @@ export function SpatialRoomVisualizer() {
             width: { xs: "100%", sm: "auto" },
           }}
         >
-          {ROOM_CONFIGS.map(tab => {
-            const isActive = tab.id === activeTab;
+          {ROOM_CONFIGS.map((tab, idx) => {
+            const isActive = tab.id === effectiveTab;
             const isBestFit = tab.id === recommendation.recommendedConfigId;
             return (
               <Box
@@ -435,6 +426,18 @@ export function SpatialRoomVisualizer() {
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => handleSelectTab(tab.id)}
+                onKeyDown={(event: React.KeyboardEvent) => {
+                  if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                    event.preventDefault();
+                    const dir = event.key === "ArrowRight" ? 1 : -1;
+                    const next = ROOM_CONFIGS[(idx + dir + ROOM_CONFIGS.length) % ROOM_CONFIGS.length];
+                    handleSelectTab(next.id);
+                    const nextEl = event.currentTarget.parentElement?.children[
+                      (idx + dir + ROOM_CONFIGS.length) % ROOM_CONFIGS.length
+                    ] as HTMLElement | undefined;
+                    nextEl?.focus();
+                  }
+                }}
                 sx={{
                   all: "unset",
                   boxSizing: "border-box",
@@ -541,13 +544,14 @@ export function SpatialRoomVisualizer() {
             >
               <Button
                 size="small"
+                aria-pressed={viewMode === "isometric"}
                 onClick={() => setViewMode("isometric")}
                 startIcon={<ViewInAr sx={{ fontSize: "0.85rem !important" }} />}
                 sx={{
                   ...TYPE.label,
                   fontSize: { xs: "0.6rem", sm: "0.64rem" },
                   px: { xs: 1.1, sm: 1.4 },
-                  minHeight: 34,
+                  minHeight: 36,
                   whiteSpace: "nowrap",
                   color: viewMode === "isometric" ? "#121315" : "rgba(255,255,255,0.7)",
                   bgcolor: viewMode === "isometric" ? STUDIO.brass : "transparent",
@@ -559,13 +563,14 @@ export function SpatialRoomVisualizer() {
               </Button>
               <Button
                 size="small"
+                aria-pressed={viewMode === "plan"}
                 onClick={() => setViewMode("plan")}
                 startIcon={<GridOn sx={{ fontSize: "0.85rem !important" }} />}
                 sx={{
                   ...TYPE.label,
                   fontSize: { xs: "0.6rem", sm: "0.64rem" },
                   px: { xs: 1.1, sm: 1.4 },
-                  minHeight: 34,
+                  minHeight: 36,
                   whiteSpace: "nowrap",
                   color: viewMode === "plan" ? "#121315" : "rgba(255,255,255,0.7)",
                   bgcolor: viewMode === "plan" ? STUDIO.brass : "transparent",
@@ -584,7 +589,7 @@ export function SpatialRoomVisualizer() {
             </Box>
           </Box>
 
-          {/* Viewport Stage */}
+          {/* Viewport Stage: Keep WebGL Canvas Mounted (paused when 2D CAD active) */}
           <Box
             sx={{
               position: "relative",
@@ -595,63 +600,71 @@ export function SpatialRoomVisualizer() {
               overflow: "hidden",
             }}
           >
-            {viewMode === "isometric" ? (
-              <Box sx={{ position: "relative", width: "100%", height: "100%" }}>
-                <CinemaRoomCanvas
-                  configId={activeTab}
-                  layout={layout}
-                  lightsOn={lightsOn}
-                  cameraPreset={cameraPreset}
-                  soundCones={soundCones}
-                  showDimensions={showDimensions}
-                  hoveredSpeakerId={focusedSpeakerId}
-                  highlightRole={highlightRole}
-                  isSweetSpotFocused={sweetSpotHovered}
-                  onSpeakerSelect={id => setSelectedSpeakerId(id)}
-                  resetSignal={resetSignal}
-                />
+            <Box
+              sx={{
+                position: "relative",
+                width: "100%",
+                height: "100%",
+                display: viewMode === "isometric" ? "block" : "none",
+              }}
+            >
+              <CinemaRoomCanvas
+                configId={effectiveTab}
+                layout={layout}
+                lightsOn={lightsOn}
+                cameraPreset={cameraPreset}
+                soundCones={soundCones}
+                showDimensions={showDimensions}
+                hoveredSpeakerId={focusedSpeakerId}
+                highlightRole={highlightRole}
+                isSweetSpotFocused={sweetSpotHovered}
+                onSpeakerSelect={id => setSelectedSpeakerId(prev => (prev === id ? null : id))}
+                resetSignal={resetSignal}
+                paused={viewMode !== "isometric"}
+              />
 
-                {/* Non-blocking Corner Dimension Pill & Lighting Indicator in 3D */}
-                {showDimensions && (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: 10,
-                      left: 10,
-                      pointerEvents: "none",
-                      px: 1.2,
-                      py: 0.5,
-                      borderRadius: "3px",
-                      bgcolor: "rgba(18,19,21,0.78)",
-                      backdropFilter: "blur(6px)",
-                      border: "1px solid rgba(226,186,122,0.28)",
-                    }}
-                  >
-                    <Typography sx={{ ...TYPE.label, color: "#F3D59B", fontSize: "0.58rem" }}>
-                      {recommendation.lengthFt} × {recommendation.widthFt} ft · Screen {recommendation.recommendedScreenIn}″ · Throw {recommendation.throwDistFt} ft
-                    </Typography>
-                  </Box>
-                )}
-
+              {/* Non-blocking Corner Dimension Pill & Lighting Indicator in 3D */}
+              {showDimensions && (
                 <Box
                   sx={{
                     position: "absolute",
-                    bottom: 8,
-                    right: 10,
+                    top: 10,
+                    left: 10,
                     pointerEvents: "none",
-                    px: 1,
-                    py: 0.35,
+                    px: 1.2,
+                    py: 0.5,
                     borderRadius: "3px",
-                    bgcolor: "rgba(18,19,21,0.72)",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    bgcolor: "rgba(18,19,21,0.78)",
+                    backdropFilter: "blur(6px)",
+                    border: "1px solid rgba(226,186,122,0.28)",
                   }}
                 >
-                  <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.58)", fontSize: "0.56rem" }}>
-                    Drag to orbit · Click any speaker to inspect
+                  <Typography sx={{ ...TYPE.label, color: "#F3D59B", fontSize: "0.58rem" }}>
+                    {recommendation.lengthFt} × {recommendation.widthFt} ft · Screen {recommendation.recommendedScreenIn}″ · Throw {recommendation.throwDistFt} ft
                   </Typography>
                 </Box>
+              )}
+
+              <Box
+                sx={{
+                  position: "absolute",
+                  bottom: 8,
+                  right: 10,
+                  pointerEvents: "none",
+                  px: 1,
+                  py: 0.35,
+                  borderRadius: "3px",
+                  bgcolor: "rgba(18,19,21,0.72)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.58)", fontSize: "0.56rem" }}>
+                  Drag to orbit · Click any speaker to inspect
+                </Typography>
               </Box>
-            ) : (
+            </Box>
+
+            {viewMode === "plan" && (
               <ParametricCinemaCadSvg
                 layout={layout}
                 recommendation={recommendation}
@@ -662,7 +675,8 @@ export function SpatialRoomVisualizer() {
                 soundCones={soundCones}
                 showDimensions={showDimensions}
                 reducedMotion={!!reduced}
-                onSelectSpeaker={id => setSelectedSpeakerId(id)}
+                onSelectSpeaker={id => setSelectedSpeakerId(prev => (prev === id ? null : id))}
+                onHoverSpeaker={setHoveredSpeakerId}
                 onHoverSweetSpot={setSweetSpotHovered}
               />
             )}
@@ -683,9 +697,10 @@ export function SpatialRoomVisualizer() {
             {viewMode === "isometric" ? (
               <>
                 <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75 }}>
-                  <Tooltip title={lightsOn ? "Dim overhead studio lighting for cinema viewing" : "Turn on architectural studio lighting"}>
+                  <Tooltip describeChild title={lightsOn ? "Dim overhead studio lighting for cinema viewing" : "Turn on architectural studio lighting"}>
                     <Button
                       size="small"
+                      aria-pressed={lightsOn}
                       onClick={() => setLightsOn(v => !v)}
                       startIcon={
                         lightsOn ? (
@@ -703,7 +718,8 @@ export function SpatialRoomVisualizer() {
                   <Box sx={{ display: "inline-flex", gap: 0.5 }}>
                     <Button
                       size="small"
-                      onClick={() => handleCameraSwitch("studio")}
+                      aria-pressed={cameraPreset === "studio"}
+                      onClick={() => setCameraPreset("studio")}
                       startIcon={<ThreeDRotation sx={{ fontSize: "0.85rem !important" }} />}
                       sx={dockButtonSx(cameraPreset === "studio")}
                     >
@@ -711,7 +727,8 @@ export function SpatialRoomVisualizer() {
                     </Button>
                     <Button
                       size="small"
-                      onClick={() => handleCameraSwitch("seat")}
+                      aria-pressed={cameraPreset === "seat"}
+                      onClick={() => setCameraPreset("seat")}
                       startIcon={<Weekend sx={{ fontSize: "0.85rem !important" }} />}
                       sx={dockButtonSx(cameraPreset === "seat")}
                     >
@@ -719,7 +736,8 @@ export function SpatialRoomVisualizer() {
                     </Button>
                     <Button
                       size="small"
-                      onClick={() => handleCameraSwitch("top")}
+                      aria-pressed={cameraPreset === "top"}
+                      onClick={() => setCameraPreset("top")}
                       startIcon={<VerticalAlignTop sx={{ fontSize: "0.85rem !important" }} />}
                       sx={dockButtonSx(cameraPreset === "top")}
                     >
@@ -731,6 +749,7 @@ export function SpatialRoomVisualizer() {
                 <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75 }}>
                   <Button
                     size="small"
+                    aria-pressed={soundCones}
                     onClick={() => setSoundCones(v => !v)}
                     startIcon={<GraphicEq sx={{ fontSize: "0.85rem !important" }} />}
                     sx={dockButtonSx(soundCones)}
@@ -739,13 +758,14 @@ export function SpatialRoomVisualizer() {
                   </Button>
                   <Button
                     size="small"
+                    aria-pressed={showDimensions}
                     onClick={() => setShowDimensions(v => !v)}
                     startIcon={<Straighten sx={{ fontSize: "0.85rem !important" }} />}
                     sx={dockButtonSx(showDimensions)}
                   >
                     Dimensions
                   </Button>
-                  <Tooltip title="Reset 3D camera & selection">
+                  <Tooltip describeChild title="Reset 3D camera & selection">
                     <Button
                       size="small"
                       aria-label="Reset 3D camera"
@@ -770,6 +790,7 @@ export function SpatialRoomVisualizer() {
                 <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75 }}>
                   <Button
                     size="small"
+                    aria-pressed={soundCones}
                     onClick={() => setSoundCones(v => !v)}
                     startIcon={<GraphicEq sx={{ fontSize: "0.85rem !important" }} />}
                     sx={dockButtonSx(soundCones)}
@@ -778,6 +799,7 @@ export function SpatialRoomVisualizer() {
                   </Button>
                   <Button
                     size="small"
+                    aria-pressed={showDimensions}
                     onClick={() => setShowDimensions(v => !v)}
                     startIcon={<Straighten sx={{ fontSize: "0.85rem !important" }} />}
                     sx={dockButtonSx(showDimensions)}
@@ -799,7 +821,7 @@ export function SpatialRoomVisualizer() {
                   initial={reduced ? false : { opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={reduced ? undefined : { opacity: 0, y: -4 }}
-                  transition={{ duration: 0.18 }}
+                  transition={{ duration: reduced ? 0 : 0.18 }}
                   sx={{
                     display: "flex",
                     flexDirection: { xs: "column", sm: "row" },
@@ -840,7 +862,7 @@ export function SpatialRoomVisualizer() {
                         setSelectedSpeakerId(null);
                         setHoveredSpeakerId(null);
                       }}
-                      sx={{ minWidth: 32, minHeight: 32, p: 0.5, color: "rgba(255,255,255,0.6)" }}
+                      sx={{ minWidth: 36, minHeight: 36, p: 0.5, color: "rgba(255,255,255,0.68)" }}
                     >
                       <Close sx={{ fontSize: "0.95rem" }} />
                     </Button>
@@ -848,28 +870,29 @@ export function SpatialRoomVisualizer() {
                 </Box>
               ) : (
                 <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1.25 }}>
-                  <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1.5 }}>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1 }}>
                     {Object.entries(ROLE_COLORS).map(([key, val]) => {
                       const active = highlightRole === key;
                       return (
                         <Button
                           key={key}
                           size="small"
-                          onClick={() => setHighlightRole(active ? null : key)}
-                          onMouseEnter={() => setHighlightRole(key)}
-                          onMouseLeave={() => setHighlightRole(prev => (prev === key ? null : prev))}
+                          aria-pressed={lockedRole === key}
+                          onClick={() => setLockedRole(prev => (prev === key ? null : key))}
+                          onMouseEnter={() => setHoveredRole(key)}
+                          onMouseLeave={() => setHoveredRole(prev => (prev === key ? null : prev))}
                           sx={{
                             ...TYPE.label,
                             minWidth: "auto",
-                            minHeight: 30,
-                            px: 0.85,
-                            py: 0.25,
+                            minHeight: 36,
+                            px: 1,
+                            py: 0.35,
                             display: "inline-flex",
                             alignItems: "center",
                             gap: 0.65,
                             borderRadius: "3px",
-                            bgcolor: active ? "rgba(255,255,255,0.1)" : "transparent",
-                            color: active ? "#FFFFFF" : "rgba(255,255,255,0.7)",
+                            bgcolor: active ? "rgba(255,255,255,0.12)" : "transparent",
+                            color: active ? "#FFFFFF" : "rgba(255,255,255,0.74)",
                             fontSize: "0.62rem",
                           }}
                         >
@@ -880,7 +903,7 @@ export function SpatialRoomVisualizer() {
                     })}
                   </Box>
 
-                  <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.45)", fontSize: "0.58rem" }}>
+                  <Typography sx={{ ...TYPE.label, color: "rgba(255,255,255,0.48)", fontSize: "0.58rem" }}>
                     Tap a transducer or group to trace sightlines to seats
                   </Typography>
                 </Box>
@@ -993,23 +1016,39 @@ export function SpatialRoomVisualizer() {
               </Typography>
               <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.1 }}>
                 {config.inventory.map(item => {
-                  const isRoleHovered = highlightRole === item.role;
+                  const hasSpeakers = item.count !== "None";
+                  const isRoleActive = hasSpeakers && highlightRole === item.role;
                   return (
-                    <Box
+                    <Button
                       key={item.label}
-                      onClick={() => setHighlightRole(isRoleHovered ? null : item.role)}
-                      onMouseEnter={() => setHighlightRole(item.role)}
-                      onMouseLeave={() => setHighlightRole(prev => (prev === item.role ? null : prev))}
+                      disabled={!hasSpeakers}
+                      aria-pressed={hasSpeakers ? lockedRole === item.role : undefined}
+                      onClick={() => setLockedRole(prev => (prev === item.role ? null : item.role))}
+                      onMouseEnter={() => {
+                        if (hasSpeakers) setHoveredRole(item.role);
+                      }}
+                      onMouseLeave={() => setHoveredRole(prev => (prev === item.role ? null : prev))}
                       sx={{
                         p: 1.2,
-                        bgcolor: isRoleHovered ? "rgba(156,123,73,0.12)" : "rgba(255,255,255,0.6)",
-                        border: `1px solid ${isRoleHovered ? STUDIO.brass : STUDIO.hair}`,
+                        textAlign: "left",
+                        textTransform: "none",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "stretch",
+                        justifyContent: "flex-start",
+                        minHeight: 56,
+                        bgcolor: isRoleActive ? "rgba(156,123,73,0.12)" : "rgba(255,255,255,0.6)",
+                        border: `1px solid ${isRoleActive ? STUDIO.brass : STUDIO.hair}`,
                         borderRadius: "4px",
-                        cursor: "pointer",
                         transition: `all 180ms ${EASE}`,
+                        "&:hover": {
+                          bgcolor: hasSpeakers ? "rgba(156,123,73,0.1)" : "rgba(255,255,255,0.6)",
+                          borderColor: hasSpeakers ? STUDIO.brass : STUDIO.hair,
+                        },
+                        "&.Mui-disabled": { opacity: 0.65 },
                       }}
                     >
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, width: "100%" }}>
                         <Typography sx={{ ...TYPE.label, color: STUDIO.graphite, fontSize: "0.72rem", fontWeight: 600 }}>
                           {item.label}
                         </Typography>
@@ -1020,7 +1059,7 @@ export function SpatialRoomVisualizer() {
                       <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.74rem", mt: 0.3, lineHeight: 1.35 }}>
                         {item.detail}
                       </Typography>
-                    </Box>
+                    </Button>
                   );
                 })}
               </Box>
@@ -1031,6 +1070,7 @@ export function SpatialRoomVisualizer() {
               <Button
                 fullWidth
                 size="small"
+                aria-expanded={techSpecsOpen}
                 onClick={() => setTechSpecsOpen(o => !o)}
                 endIcon={
                   <ExpandMore

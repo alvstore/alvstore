@@ -107,6 +107,7 @@ export const STUDIO_ROOM_SELECT_EVENT = "alv-studio-room-select";
 const FT_TO_M = 0.3048;
 const ASPECT_16_9_WIDTH_FACTOR = 16 / Math.sqrt(16 * 16 + 9 * 9); // ~0.8716
 const PLANNER_MARKER = "[Room Planner]";
+const PLANNER_END_MARKER = "[/Room Planner]";
 
 export const ROLE_COLORS: Record<SpeakerRole, { fill: string; stroke: string; glow: string; text: string }> = {
   screen: { fill: "#9C7B49", stroke: "#B28A4F", glow: "rgba(156,123,73,0.45)", text: "Screen LCR" },
@@ -393,11 +394,11 @@ function normalizeInputs(inputs: RoomInputs): { lengthFt: number; widthFt: numbe
 /** Calculates screen size, seating capacity, projector throw, and matching audio package. */
 export function calculateRoomRecommendation(inputs: RoomInputs): RoomRecommendation {
   const { lengthFt, widthFt, requestedRows } = normalizeInputs(inputs);
-  const canFitTwoRows = lengthFt >= 16;
+  const canFitTwoRows = lengthFt >= 18;
   const effectiveRows: 1 | 2 = canFitTwoRows ? requestedRows : 1;
   const rowCapNotice =
     !canFitTwoRows && requestedRows === 2
-      ? "1 row recommended below 16 ft length for clear sightlines and rear surround spacing."
+      ? "1 row recommended below 18 ft length for clear sightlines and rear surround spacing."
       : null;
 
   const areaSqFt = Math.round(lengthFt * widthFt);
@@ -408,13 +409,14 @@ export function calculateRoomRecommendation(inputs: RoomInputs): RoomRecommendat
 
   const primarySeatDistFt = Number(clampNumber(lengthFt * 0.6, 8.5, 19.5, 14.4).toFixed(1));
   const idealWidthFt = 2 * primarySeatDistFt * Math.tan((42 * Math.PI) / 360);
-  const maxWidthFt = widthFt * 0.72;
+  const maxWidthFt = widthFt <= 12 ? Math.min(widthFt * 0.67, widthFt - 1.15) : widthFt * 0.72;
   const boundedTargetWidthFt = Math.min(idealWidthFt, maxWidthFt);
 
   const rawDiagIn = (boundedTargetWidthFt / ASPECT_16_9_WIDTH_FACTOR) * 12;
   const maxDiagByWall = Math.floor(((maxWidthFt / ASPECT_16_9_WIDTH_FACTOR) * 12) / 5) * 5;
+  const minDiag = maxDiagByWall < 100 ? 90 : 100;
   const roundedDiagIn = Math.round(rawDiagIn / 5) * 5;
-  const recommendedScreenIn = Math.max(90, Math.min(200, Math.min(roundedDiagIn, Math.max(90, maxDiagByWall))));
+  const recommendedScreenIn = Math.max(minDiag, Math.min(200, Math.min(roundedDiagIn, Math.max(minDiag, maxDiagByWall))));
   const screenWidthFt = Number(((recommendedScreenIn / 12) * ASPECT_16_9_WIDTH_FACTOR).toFixed(2));
   const viewingAngleDeg = Math.round(
     ((2 * Math.atan(screenWidthFt / 2 / primarySeatDistFt)) * 180) / Math.PI,
@@ -468,16 +470,22 @@ export function computeRoomLayout(inputs: RoomInputs): RoomLayout {
   const lengthM = rec.lengthFt * FT_TO_M;
   const ceilingM = rec.ceilingHeightFt * FT_TO_M;
 
-  const screenWidthM = Math.min(widthM * 0.72, rec.screenWidthFt * FT_TO_M);
+  const maxScreenM = widthM <= 3.7 ? widthM * 0.66 : widthM * 0.72;
+  const screenWidthM = Math.min(maxScreenM, rec.screenWidthFt * FT_TO_M);
   const screenHeightM = (screenWidthM * 9) / 16;
   const screenCenterY = Math.max(1.56, ceilingM * 0.56);
   const frontZ = -lengthM / 2 + 0.32;
 
   const primarySeatDistM = rec.primarySeatDistFt * FT_TO_M;
-  const primarySeatZ = Math.min(lengthM / 2 - 1.25, Math.max(-0.4, frontZ + primarySeatDistM));
-  const row2Z = Math.min(lengthM / 2 - 0.75, primarySeatZ + 1.38);
+  const rowPitchM = 1.22;
+  const maxRow2Z = lengthM / 2 - 0.96;
+  const primarySeatZ =
+    rec.effectiveRows === 2
+      ? Math.min(frontZ + primarySeatDistM, maxRow2Z - rowPitchM)
+      : Math.min(lengthM / 2 - 1.1, Math.max(-0.4, frontZ + primarySeatDistM));
+  const row2Z = Number((primarySeatZ + rowPitchM).toFixed(3));
   const riserHeightM = 0.24;
-  const riserZStartM = primarySeatZ + 0.72;
+  const riserZStartM = Number((row2Z - 0.52).toFixed(3));
   const listenerHead3d: [number, number, number] = [0, 1.16, primarySeatZ];
 
   const projectorZ = lengthM / 2 - 0.45;
@@ -492,8 +500,8 @@ export function computeRoomLayout(inputs: RoomInputs): RoomLayout {
   const toCadX = (xM: number) => Number((cadX0 + (xM / widthM + 0.5) * cadW).toFixed(2));
   const toCadY = (zM: number) => Number((cadY0 + (zM / lengthM + 0.5) * cadH).toFixed(2));
 
-  // Build seating grid
-  const seatSpacingM = Math.min(0.86, Math.max(0.66, (widthM - 1.2) / Math.max(1, rec.seatsPerRow)));
+  // Build seating grid (keep outermost seat clear of rear corner SUB2 housing)
+  const seatSpacingM = Math.min(0.82, Math.max(0.64, (widthM - 1.55) / Math.max(1, rec.seatsPerRow)));
   const seats: SeatPosition[] = [];
   for (let row = 0; row < rec.effectiveRows; row++) {
     const rowIdx = row as 0 | 1;
@@ -512,8 +520,8 @@ export function computeRoomLayout(inputs: RoomInputs): RoomLayout {
     }
   }
 
-  // Front L / C / R coordinates (never overlap walls or screen)
-  const frontX = Math.min(widthM / 2 - 0.34, Math.max(screenWidthM / 2 + 0.34, widthM * 0.36));
+  // Front L / C / R coordinates (keep inner tower edge clear of screen frame & outer edge inside walls)
+  const frontX = Math.min(widthM / 2 - 0.25, Math.max(screenWidthM / 2 + 0.3, widthM * 0.36));
   const rearZ = lengthM / 2 - 0.32;
   const surroundSideX = widthM / 2 - 0.24;
   const surroundSideZ = clampNumber(primarySeatZ + 0.15, -lengthM * 0.1, lengthM * 0.35, 0.4);
@@ -525,8 +533,8 @@ export function computeRoomLayout(inputs: RoomInputs): RoomLayout {
     { id: "L", role: "screen", pos: [-frontX, 0, frontZ + 0.34], rot: [0, Math.PI / 14, 0] },
     { id: "C", role: "screen", pos: [0, 0.24, frontZ + 0.34], rot: [0, 0, 0] },
     { id: "R", role: "screen", pos: [frontX, 0, frontZ + 0.34], rot: [0, -Math.PI / 14, 0] },
-    { id: "SUB1", role: "subwoofer", pos: [-(widthM / 2 - 0.46), 0, frontZ + 1.08], rot: [0, Math.PI / 7, 0] },
-    { id: "SUB2", role: "subwoofer", pos: [widthM / 2 - 0.46, 0, rearZ - 0.55], rot: [0, -Math.PI * 0.85, 0] },
+    { id: "SUB1", role: "subwoofer", pos: [-(widthM / 2 - 0.38), 0, frontZ + 1.08], rot: [0, Math.PI / 7, 0] },
+    { id: "SUB2", role: "subwoofer", pos: [widthM / 2 - 0.38, 0, rearZ - 0.36], rot: [0, -Math.PI * 0.85, 0] },
     { id: "SL", role: "surround", pos: [-surroundSideX, 1.25, surroundSideZ], rot: [0, Math.PI / 2, 0] },
     { id: "SR", role: "surround", pos: [surroundSideX, 1.25, surroundSideZ], rot: [0, -Math.PI / 2, 0] },
     { id: "SBL", role: "surround", pos: [-rearSpeakerX, 1.32, rearZ - 0.15], rot: [0, Math.PI * 0.92, 0] },
@@ -595,18 +603,23 @@ export function formatConsultationNote(payload: StudioRoomSelectionPayload): str
     `Package: ${payload.configLabel} (${payload.configId})`,
     `Target Display: ${payload.screenIn}″ 4K Screen · ~${payload.throwDistFt} ft Projector Throw`,
     `Preferred System: ${payload.amplification}`,
+    PLANNER_END_MARKER,
   ].join("\n");
 }
 
-/** Merges an auto-generated room planner block cleanly without erasing custom user text. */
+/** Merges an auto-generated room planner block cleanly without erasing custom user prose before or after it. */
 export function mergeConsultationNote(existingNote: string, generatedNote: string): string {
   const trimmed = existingNote.trim();
   if (!trimmed) return generatedNote;
 
-  const markerIdx = existingNote.indexOf(PLANNER_MARKER);
-  if (markerIdx !== -1) {
-    const prefix = existingNote.slice(0, markerIdx).trimEnd();
-    return prefix ? `${prefix}\n\n${generatedNote}` : generatedNote;
+  const startIdx = existingNote.indexOf(PLANNER_MARKER);
+  if (startIdx !== -1) {
+    const endIdx = existingNote.indexOf(PLANNER_END_MARKER, startIdx);
+    const prefix = existingNote.slice(0, startIdx).trimEnd();
+    const suffix =
+      endIdx !== -1 ? existingNote.slice(endIdx + PLANNER_END_MARKER.length).trimStart() : "";
+    const parts = [prefix, generatedNote, suffix].filter(Boolean);
+    return parts.join("\n\n");
   }
 
   return `${trimmed}\n\n${generatedNote}`;

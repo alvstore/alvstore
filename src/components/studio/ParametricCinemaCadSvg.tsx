@@ -19,6 +19,7 @@ export interface ParametricCinemaCadSvgProps {
   showDimensions: boolean;
   reducedMotion: boolean;
   onSelectSpeaker: (id: string | null) => void;
+  onHoverSpeaker?: (id: string | null) => void;
   onHoverSweetSpot: (hovered: boolean) => void;
 }
 
@@ -37,6 +38,7 @@ export function ParametricCinemaCadSvg({
   showDimensions,
   reducedMotion,
   onSelectSpeaker,
+  onHoverSpeaker,
   onHoverSweetSpot,
 }: ParametricCinemaCadSvgProps) {
   const { cadRoomRect: r, cadScreenSpan: scr, cadRiserY, seats, speakers: nodeMap } = layout;
@@ -61,7 +63,6 @@ export function ParametricCinemaCadSvg({
     >
       <svg
         viewBox="0 0 120 120"
-        role="img"
         aria-label={`Parametric 2D blueprint for ${recommendation.widthFt} by ${recommendation.lengthFt} ft room`}
         style={{
           width: "100%",
@@ -434,17 +435,26 @@ export function ParametricCinemaCadSvg({
               strokeWidth="0.35"
               strokeDasharray="1.2 1.2"
             />
-            <rect x="47" y={(scr.y + sweetSpotY) / 2 - 2.2} width="26" height="3.8" rx="1" fill="rgba(19,21,23,0.9)" />
+            <rect
+              x={r.w < 32 ? 49 : 46}
+              y={(scr.y + sweetSpotY) / 2 - 2.2}
+              width={r.w < 32 ? 22 : 28}
+              height="3.8"
+              rx="1"
+              fill="rgba(19,21,23,0.9)"
+            />
             <text
               x="60"
               y={(scr.y + sweetSpotY) / 2 + 0.3}
               textAnchor="middle"
               fill="#EAE7DD"
-              fontSize="1.9"
+              fontSize={r.w < 32 ? "1.65" : "1.85"}
               fontWeight="600"
               fontFamily="sans-serif"
             >
-              {recommendation.primarySeatDistFt} FT VIEWING · {recommendation.throwDistFt} FT THROW
+              {r.w < 32
+                ? `${recommendation.throwDistFt} FT THROW`
+                : `${recommendation.primarySeatDistFt} FT VIEWING · ${recommendation.throwDistFt} FT THROW`}
             </text>
           </g>
         )}
@@ -463,9 +473,19 @@ export function ParametricCinemaCadSvg({
           return (
             <g
               key={`cad-sp-${sp.id}`}
-              style={{ cursor: "pointer" }}
+              role="button"
+              tabIndex={0}
+              aria-label={`${sp.name} (${sp.code})`}
+              style={{ cursor: "pointer", outline: "none" }}
               onClick={() => onSelectSpeaker(isHovered ? null : sp.id)}
-              onMouseEnter={() => onSelectSpeaker(sp.id)}
+              onMouseEnter={() => onHoverSpeaker?.(sp.id)}
+              onMouseLeave={() => onHoverSpeaker?.(null)}
+              onKeyDown={event => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectSpeaker(isHovered ? null : sp.id);
+                }
+              }}
             >
               {(isHovered || isRoleMatch) && (
                 <circle

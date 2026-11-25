@@ -34,6 +34,7 @@ export interface CinemaRoomHandle {
   setHighlightRole: (role: string | null) => void;
   setSweetSpotFocus: (focus: boolean) => void;
   setReducedMotion: (reduced: boolean) => void;
+  setPaused: (paused: boolean) => void;
   resetCamera: () => void;
   resize: () => void;
   destroy: () => void;
@@ -138,8 +139,16 @@ export function createCinemaRoomScene(
   canvas: HTMLCanvasElement,
   options: CinemaRoomOptions,
 ): CinemaRoomHandle | null {
-  const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
-  if (!gl) return null;
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+  } catch {
+    return null;
+  }
 
   let currentConfig = options.configId;
   let currentLayout = options.layout;
@@ -149,6 +158,7 @@ export function createCinemaRoomScene(
   let soundConesEnabled = options.soundCones;
   let showDimensionsEnabled = options.showDimensions;
   let isReducedMotion = options.reducedMotion;
+  let isPaused = false;
   let hoveredSpeakerId: string | null = null;
   let highlightedRole: string | null = null;
   let isSweetSpotFocused = false;
@@ -157,15 +167,11 @@ export function createCinemaRoomScene(
   const scene = new THREE.Scene();
   const bgLit = new THREE.Color(0x28241f);
   const bgDark = new THREE.Color(0x0b0c0e);
-  scene.background = bgLit.clone().lerp(bgDark, 1 - litProgress);
+  const scratchBg = new THREE.Color().copy(bgLit).lerp(bgDark, 1 - litProgress);
+  scene.background = scratchBg;
 
   const camera = new THREE.PerspectiveCamera(44, (canvas.clientWidth || 640) / (canvas.clientHeight || 420), 0.1, 60);
 
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: true,
-    powerPreference: "high-performance",
-  });
   renderer.setSize(canvas.clientWidth || 640, canvas.clientHeight || 420, false);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -495,7 +501,7 @@ export function createCinemaRoomScene(
 
     // 4. Tiered Rear Seating Riser Platform (when 2 rows active)
     if (layout.cadRiserY !== null) {
-      const riserLen = Math.max(1.2, l / 2 - riserZStartM - 0.08);
+      const riserLen = Math.max(0.85, l / 2 - riserZStartM - 0.08);
       const riserCenterZ = riserZStartM + riserLen / 2;
       const riser = new THREE.Mesh(
         new RoundedBoxGeometry(Math.max(1.4, w - 0.9), riserHeightM, riserLen, 2, 0.02),
@@ -570,7 +576,12 @@ export function createCinemaRoomScene(
         woofer = buildSubwoofer(group);
       } else if (node.role === "surround") {
         buildSurroundSpeaker(group);
-        if (node.id === "SR" || node.id === "SBL" || node.id === "SBR") {
+        if (node.id === "SL") {
+          // Horizontal brass mounting arm tying SL cleanly into the full-height left wall
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.03), mats.brassTrim);
+          arm.position.set(0, 0, -0.14);
+          group.add(arm);
+        } else {
           // Grounded slim brushed-brass pedestal stanchion above low cutaway wainscot curb
           const postH = Math.max(0.2, node.pos3d[1] - 0.22);
           const post = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, postH, 10), mats.brassTrim);
@@ -805,13 +816,16 @@ export function createCinemaRoomScene(
 
   rebuildRoomFromLayout(currentLayout);
 
-  // Main Animation Loop
+  // Main Animation Loop & Scratch Vectors (zero per-frame heap churn)
   let animId = 0;
   const clock = new THREE.Clock();
+  const scratchOffset = new THREE.Vector3();
+  const scratchGoalPos = new THREE.Vector3();
+  const scratchGoalTarget = new THREE.Vector3();
+  const scratchDesiredPos = new THREE.Vector3();
+  const scratchDesiredTarget = new THREE.Vector3();
 
-  function animate() {
-    animId = requestAnimationFrame(animate);
-    const delta = Math.min(0.1, clock.getDelta());
+  function renderFrame(delta: number) {
     const elapsed = clock.elapsedTime;
 
     // 1. Animate Lights On <-> Cinema Dark Mode transition (frame-rate independent)
@@ -819,7 +833,8 @@ export function createCinemaRoomScene(
     const litStep = isReducedMotion ? 1 : Math.min(1, delta * 5.2);
     litProgress += (desiredLit - litProgress) * litStep;
 
-    scene.background = bgLit.clone().lerp(bgDark, 1 - litProgress);
+    scratchBg.copy(bgLit).lerp(bgDark, 1 - litProgress);
+    scene.background = scratchBg;
     hemiLight.intensity = 0.08 + litProgress * 1.28;
     keyLight.intensity = 0.12 + litProgress * 1.45;
     fillLight.intensity = 0.03 + litProgress * 0.5;
@@ -833,30 +848,31 @@ export function createCinemaRoomScene(
 
     // 2. Smooth Camera Glide Across Presets + Drag Orbit
     const goal = computePresetPose(currentPreset);
-    let desiredPos = goal.pos.clone();
-    let desiredTarget = goal.target.clone();
+    scratchGoalPos.copy(goal.pos);
+    scratchGoalTarget.copy(goal.target);
+    scratchDesiredPos.copy(scratchGoalPos);
+    scratchDesiredTarget.copy(scratchGoalTarget);
 
     if (currentPreset === "studio") {
-      const offset = goal.pos.clone().sub(goal.target);
-      const radiusXZ = Math.hypot(offset.x, offset.z);
-      const baseYaw = Math.atan2(offset.x, offset.z);
+      scratchOffset.copy(scratchGoalPos).sub(scratchGoalTarget);
+      const radiusXZ = Math.hypot(scratchOffset.x, scratchOffset.z);
+      const baseYaw = Math.atan2(scratchOffset.x, scratchOffset.z);
       const yaw = baseYaw + dragOrbitYaw + (isReducedMotion ? 0 : pointerYaw);
-      const yVal = Math.max(1.2, goal.pos.y + (dragOrbitPitch + (isReducedMotion ? 0 : pointerPitch)) * 2.4);
-      desiredPos.set(
-        goal.target.x + Math.sin(yaw) * radiusXZ,
+      const yVal = Math.max(1.2, scratchGoalPos.y + (dragOrbitPitch + (isReducedMotion ? 0 : pointerPitch)) * 2.4);
+      scratchDesiredPos.set(
+        scratchGoalTarget.x + Math.sin(yaw) * radiusXZ,
         yVal,
-        goal.target.z + Math.cos(yaw) * radiusXZ,
+        scratchGoalTarget.z + Math.cos(yaw) * radiusXZ,
       );
     } else if (currentPreset === "seat") {
-      // Gentle head look-around in Seat POV
       const yawLook = (dragOrbitYaw + (isReducedMotion ? 0 : pointerYaw * 0.5)) * 1.8;
       const pitchLook = (dragOrbitPitch + (isReducedMotion ? 0 : pointerPitch * 0.5)) * 1.1;
-      desiredTarget = new THREE.Vector3(yawLook, currentLayout.screenCenterY + pitchLook, currentLayout.frontZ);
+      scratchDesiredTarget.set(yawLook, currentLayout.screenCenterY + pitchLook, currentLayout.frontZ);
     }
 
     const camAlpha = isReducedMotion ? 1 : Math.min(1, delta * 6.5);
-    curCamPos.lerp(desiredPos, camAlpha);
-    curCamTarget.lerp(desiredTarget, camAlpha);
+    curCamPos.lerp(scratchDesiredPos, camAlpha);
+    curCamTarget.lerp(scratchDesiredTarget, camAlpha);
     curCamFov += (goal.fov - curCamFov) * camAlpha;
 
     camera.position.copy(curCamPos);
@@ -882,7 +898,8 @@ export function createCinemaRoomScene(
 
       if (item.hoverRing) {
         const ringMat = item.hoverRing.material as THREE.MeshBasicMaterial;
-        ringMat.opacity += ((isFocused ? 0.85 : 0) - ringMat.opacity) * 0.18;
+        const targetOp = isFocused ? 0.85 : 0;
+        ringMat.opacity = isReducedMotion ? targetOp : ringMat.opacity + (targetOp - ringMat.opacity) * 0.18;
       }
     });
 
@@ -892,6 +909,25 @@ export function createCinemaRoomScene(
     renderer.render(scene, camera);
   }
 
+  function animate() {
+    if (isPaused) {
+      animId = 0;
+      return;
+    }
+    animId = requestAnimationFrame(animate);
+    const delta = Math.min(0.1, clock.getDelta());
+    renderFrame(delta);
+  }
+
+  function wakeRenderLoop() {
+    if (!isPaused && animId === 0) {
+      clock.getDelta();
+      animate();
+    } else if (isPaused) {
+      renderFrame(0.05);
+    }
+  }
+
   animate();
 
   return {
@@ -899,44 +935,65 @@ export function createCinemaRoomScene(
       if (currentConfig === configId) return;
       currentConfig = configId;
       applyActiveConfigVisibility();
+      wakeRenderLoop();
     },
     setLayout(layout) {
+      if (currentLayout === layout) return;
       rebuildRoomFromLayout(layout);
+      wakeRenderLoop();
     },
     setLightsOn(lightsOn) {
       targetLightsOn = lightsOn;
+      wakeRenderLoop();
     },
     setCameraPreset(preset) {
       if (currentPreset === preset) return;
       currentPreset = preset;
       dragOrbitYaw = 0;
       dragOrbitPitch = 0;
+      wakeRenderLoop();
     },
     setSoundCones(show) {
       soundConesEnabled = show;
       applyActiveConfigVisibility();
+      wakeRenderLoop();
     },
     setShowDimensions(show) {
       showDimensionsEnabled = show;
       dimensionsGroup.visible = show;
+      wakeRenderLoop();
     },
     setHoveredSpeaker(speakerId) {
       if (hoveredSpeakerId === speakerId) return;
       hoveredSpeakerId = speakerId;
       rebuildRayLines();
+      wakeRenderLoop();
     },
     setHighlightRole(role) {
       if (highlightedRole === role) return;
       highlightedRole = role;
       rebuildRayLines();
+      wakeRenderLoop();
     },
     setSweetSpotFocus(focus) {
       if (isSweetSpotFocused === focus) return;
       isSweetSpotFocused = focus;
       rebuildRayLines();
+      wakeRenderLoop();
     },
     setReducedMotion(reduced) {
       isReducedMotion = reduced;
+      wakeRenderLoop();
+    },
+    setPaused(paused) {
+      if (isPaused === paused) return;
+      isPaused = paused;
+      if (paused && animId !== 0) {
+        cancelAnimationFrame(animId);
+        animId = 0;
+      } else if (!paused) {
+        wakeRenderLoop();
+      }
     },
     resetCamera() {
       currentPreset = "studio";
@@ -944,6 +1001,7 @@ export function createCinemaRoomScene(
       dragOrbitPitch = 0;
       pointerYaw = 0;
       pointerPitch = 0;
+      wakeRenderLoop();
     },
     resize() {
       const width = canvas.clientWidth;
@@ -952,9 +1010,12 @@ export function createCinemaRoomScene(
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      renderFrame(0.016);
     },
     destroy() {
+      isPaused = true;
       cancelAnimationFrame(animId);
+      animId = 0;
       canvas.removeEventListener("mousedown", onPointerDown);
       canvas.removeEventListener("mousemove", onPointerMove);
       window.removeEventListener("mouseup", onPointerUp);
@@ -970,6 +1031,7 @@ export function createCinemaRoomScene(
       sharedMatsSet.forEach(mat => mat.dispose());
       screenTexture?.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       scene.clear();
     },
   };
