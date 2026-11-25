@@ -99,6 +99,10 @@ test("createPublicLead inserts parameterized website lead, activity, and admin n
   assert.ok(activity);
   assert.equal(activity.params[0], result.leadId);
 
+  const notifQuery = queries.find((q) => /FROM public\.user_roles/i.test(q.sql));
+  assert.ok(notifQuery);
+  assert.match(notifQuery.sql, /role IN \('admin', 'staff'\)/);
+
   const notifications = queries.filter((q) => /INSERT INTO public\.notification_feed/i.test(q.sql));
   assert.equal(notifications.length, 2);
   assert.equal(notifications[0].params[0], "admin-1");

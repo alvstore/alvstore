@@ -169,18 +169,20 @@ export async function createPublicLead(
     [leadId, data.formattedNotes ?? `Website consultation request from ${data.name}`]
   );
 
-  const admins = (await db.query("SELECT user_id FROM public.user_roles WHERE role = 'admin'")) as {
+  const recipients = (await db.query(
+    "SELECT DISTINCT user_id FROM public.user_roles WHERE role IN ('admin', 'staff')"
+  )) as {
     rows: { user_id: string }[];
   };
   const summaryParts = [data.name, data.city || null, data.topic || null].filter(Boolean);
   const bodyText = `${summaryParts.join(" · ")} (${data.phone})`;
   const metaJson = JSON.stringify({ lead_id: leadId, source: "website", link: "/leads" });
 
-  for (const admin of admins.rows) {
+  for (const recipient of recipients.rows) {
     await db.query(
       `INSERT INTO public.notification_feed (user_id, type, title, body, metadata)
        VALUES ($1::uuid, 'lead', 'New Website Lead', $2, $3)`,
-      [admin.user_id, bodyText, metaJson]
+      [recipient.user_id, bodyText, metaJson]
     );
   }
 
