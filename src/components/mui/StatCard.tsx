@@ -68,9 +68,9 @@ export function StatCard({ label, value, icon, accent = "primary", isCurrency, f
       {sparkline && sparkline.length > 1 && <Sparkline values={sparkline} color={color} label={`${typeof label === "string" ? label : "Statistic"} recent values`} sx={{ mt: 1.25, height: 36 }} />}
     </>}
   </CardContent>;
-  return <MotionSection index={index}><Box component={motion.div} whileHover={reduced ? undefined : { y: -2 }}
+  return <MotionSection index={index}><Box component={motion.div} whileHover={reduced || !onClick ? undefined : { y: -2 }}
     transition={{ duration: reduced ? 0 : motionTokens.fast, ease: easeOut }} sx={{ height: "100%", minWidth: 0 }}>
-    <Card data-stat-card sx={[{ height: "100%", borderRadius: "18px", transition: "border-color .2s, box-shadow .2s", "@media (hover: hover)": { "&:hover": { borderColor: alpha(color, .3), boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, theme.palette.mode === "dark" ? .12 : .035)}` } } }, ...(Array.isArray(sx) ? sx : [sx])]}>
+    <Card data-stat-card sx={[{ height: "100%", borderRadius: "18px", transition: "border-color .18s ease, box-shadow .18s ease", ...(onClick && { "@media (hover: hover) and (pointer: fine)": { "&:hover": { borderColor: alpha(color, .32), boxShadow: `0 8px 24px ${alpha(theme.palette.common.black, theme.palette.mode === "dark" ? .14 : .045)}` } } }) }, ...(Array.isArray(sx) ? sx : [sx])]}>
       {onClick ? <CardActionArea onClick={onClick} sx={{ height: "100%" }}>{content}</CardActionArea> : content}
     </Card>
   </Box></MotionSection>;

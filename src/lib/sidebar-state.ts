@@ -46,6 +46,16 @@ export function revealNavigationGroup(groups: Record<string, boolean>, active?: 
   return active && groups[active] === false ? { ...groups, [active]: true } : groups;
 }
 
+export type AppRole = "admin" | "staff" | "technician" | "customer";
+
+/** Resolve a single authoritative role when legacy user_roles rows contain duplicates. */
+export function primaryUserRole(roles: readonly string[]): AppRole {
+  if (roles.includes("admin")) return "admin";
+  if (roles.includes("technician")) return "technician";
+  if (roles.includes("customer")) return "customer";
+  return "staff";
+}
+
 /** Match the existing navigation precedence, including accounts with multiple roles. */
 export function sidebarRoleLabel(roles: readonly string[]) {
   if (roles.includes("customer")) return "Customer";

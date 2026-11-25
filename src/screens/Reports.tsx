@@ -6,15 +6,17 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import {
-  AnimatedPage, DataTable, DistributionWidget, EmptyState, PageHeader,
-  StatCard, TabBar, TabPanel, TabView, toast,
+  AnimatedPage, ChartTooltipCard, ChartViewport, DataTable, DistributionWidget, EmptyState, PageHeader,
+  StatCard, TabBar, TabPanel, TabView, WidgetCard, toast,
 } from "@/components/mui";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, BarChart, Bar, Cell, ReferenceLine, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { compactAxisNumber, sortChronologicalTrend } from "@/lib/chart-theme";
+import { motionTokens } from "@/lib/motion-presets";
 import { Download, TrendingUp, Package, Wrench, DollarSign, CheckCircle, AlertTriangle } from "lucide-react";
 import { format, subDays } from "date-fns";
 
@@ -139,15 +141,12 @@ function SalesReport({ start, end }: { start: string; end: string }) {
   const totalSales = data.reduce((s, d) => s + (d.total || 0), 0);
   const avgSale = data.length ? totalSales / data.length : 0;
   const maxSale = data.length ? Math.max(...data.map(d => d.total || 0)) : 0;
+  const salesGradId = `sales-grad-${useId().replace(/:/g, "")}`;
 
-  const dailyTrend = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const d of data) {
-      const dateKey = format(new Date(d.created_at), "dd MMM");
-      map[dateKey] = (map[dateKey] || 0) + (d.total || 0);
-    }
-    return Object.entries(map).map(([date, total]) => ({ date, total }));
-  }, [data]);
+  const dailyTrend = useMemo(() => sortChronologicalTrend(data), [data]);
+  const dailyAverage = dailyTrend.length
+    ? dailyTrend.reduce((sum, point) => sum + point.total, 0) / dailyTrend.length
+    : 0;
 
   const exportCSV = () => {
     const csv =
@@ -167,12 +166,14 @@ function SalesReport({ start, end }: { start: string; end: string }) {
           isCurrency
           accent="primary"
           loading={loading}
+          index={0}
         />
         <StatCard
           label="Transactions"
           value={data.length}
           accent="info"
           loading={loading}
+          index={1}
         />
         <StatCard
           label="Avg Ticket Size"
@@ -180,6 +181,7 @@ function SalesReport({ start, end }: { start: string; end: string }) {
           isCurrency
           accent="success"
           loading={loading}
+          index={2}
         />
         <StatCard
           label="Peak Sale"
@@ -187,20 +189,16 @@ function SalesReport({ start, end }: { start: string; end: string }) {
           isCurrency
           accent="secondary"
           loading={loading}
+          index={3}
         />
       </Box>
 
       {dailyTrend.length > 1 && (
-        <Card sx={{ borderRadius: "18px" }}>
-          <Box sx={{ p: 2.5, pb: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                Sales Trajectory
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Daily aggregated POS collections for selected window
-              </Typography>
-            </Box>
+        <WidgetCard
+          title="Sales Trajectory"
+          subtitle="Daily aggregated POS collections for selected window · chronological order"
+          index={1}
+          action={
             <Button
               onClick={exportCSV}
               variant="outlined"
@@ -209,42 +207,60 @@ function SalesReport({ start, end }: { start: string; end: string }) {
             >
               Export CSV
             </Button>
-          </Box>
-          <CardContent sx={{ pt: 1, pb: 2.5 }}>
-            <Box sx={{ width: "100%", height: 240 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dailyTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          }
+        >
+          <ChartViewport
+            height={240}
+            label={`POS sales trajectory across ${dailyTrend.length} active days totaling ${money(totalSales)}`}
+          >
+            {animate => (
+              <ResponsiveContainer width="100%" height="100%" minWidth={1}>
+                <AreaChart accessibilityLayer data={dailyTrend} margin={{ top: 10, right: 10, left: -8, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={theme.palette.primary.main} stopOpacity={0.25} />
-                      <stop offset="95%" stopColor={theme.palette.primary.main} stopOpacity={0} />
+                    <linearGradient id={salesGradId} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={theme.palette.primary.main} stopOpacity={0.26} />
+                      <stop offset="95%" stopColor={theme.palette.primary.main} stopOpacity={0.015} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
-                  <XAxis dataKey="date" stroke={theme.palette.text.secondary} fontSize={11} tickLine={false} />
-                  <YAxis stroke={theme.palette.text.secondary} fontSize={11} tickLine={false} tickFormatter={val => `₹${val}`} />
+                  <CartesianGrid strokeDasharray="3 5" stroke={alpha(theme.palette.divider, 0.75)} vertical={false} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} dy={6} />
+                  <YAxis width={46} axisLine={false} tickLine={false} tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} tickFormatter={compactAxisNumber} tickCount={4} />
+                  {dailyAverage > 0 && (
+                    <ReferenceLine y={dailyAverage} stroke={alpha(theme.palette.text.secondary, 0.4)} strokeDasharray="3 4" />
+                  )}
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: theme.palette.background.paper,
-                      borderColor: theme.palette.divider,
-                      borderRadius: 10,
-                      fontSize: 12,
+                    cursor={{ stroke: alpha(theme.palette.primary.main, 0.25), strokeWidth: 1 }}
+                    content={({ active, payload }) => {
+                      const pt = payload?.[0]?.payload as { isoDate?: string; date?: string } | undefined;
+                      return (
+                        <ChartTooltipCard
+                          active={active}
+                          title={pt?.isoDate || pt?.date}
+                          entries={payload?.map(item => ({ name: "POS Sales", value: Number(item.value ?? 0), color: theme.palette.primary.main }))}
+                          formatter={money}
+                          hint={dailyAverage > 0 ? `Daily avg: ${money(dailyAverage)}` : undefined}
+                        />
+                      );
                     }}
-                    formatter={(val: number) => [money(val), "Sales"]}
                   />
                   <Area
                     type="monotone"
                     dataKey="total"
                     stroke={theme.palette.primary.main}
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     fillOpacity={1}
-                    fill="url(#salesGrad)"
+                    fill={`url(#${salesGradId})`}
+                    dot={dailyTrend.length <= 10 ? { r: 3, strokeWidth: 1.75, stroke: theme.palette.primary.main, fill: theme.palette.background.paper } : false}
+                    activeDot={{ r: 5, strokeWidth: 2, stroke: theme.palette.background.paper, fill: theme.palette.primary.main }}
+                    animationDuration={motionTokens.chart * 1000}
+                    animationEasing="ease-out"
+                    isAnimationActive={animate}
                   />
                 </AreaChart>
               </ResponsiveContainer>
-            </Box>
-          </CardContent>
-        </Card>
+            )}
+          </ChartViewport>
+        </WidgetCard>
       )}
 
       <Card sx={{ borderRadius: "18px" }}>
@@ -367,16 +383,11 @@ function InventoryReport() {
       </Box>
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.6fr 1fr" }, gap: 2.5 }}>
-        <Card sx={{ borderRadius: "18px" }}>
-          <Box sx={{ p: 2.5, pb: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                Stock Levels by SKU
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Lowest 15 inventory items by on-hand quantity
-              </Typography>
-            </Box>
+        <WidgetCard
+          title="Stock Levels by SKU"
+          subtitle="Lowest 12 inventory items by on-hand quantity"
+          index={0}
+          action={
             <Button
               onClick={exportCSV}
               variant="outlined"
@@ -385,35 +396,76 @@ function InventoryReport() {
             >
               Export CSV
             </Button>
-          </Box>
-          <CardContent sx={{ pt: 1, pb: 2.5 }}>
-            <Box sx={{ width: "100%", height: 260 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.slice(0, 15)} margin={{ top: 10, right: 10, left: -10, bottom: 40 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    fontSize={10.5}
-                    angle={-30}
-                    textAnchor="end"
-                    interval={0}
-                    stroke={theme.palette.text.secondary}
-                  />
-                  <YAxis stroke={theme.palette.text.secondary} fontSize={11} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: theme.palette.background.paper,
-                      borderColor: theme.palette.divider,
-                      borderRadius: 10,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar dataKey="stock_quantity" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </Box>
-          </CardContent>
-        </Card>
+          }
+        >
+          {data.length === 0 ? (
+            <EmptyState title="No products in catalog" description="Stock comparisons appear once products are recorded." sx={{ py: 4 }} />
+          ) : (
+            <>
+              <ChartViewport
+                height={Math.max(240, Math.min(data.length, 12) * 28)}
+                label={`On-hand stock levels for lowest ${Math.min(data.length, 12)} SKUs`}
+              >
+                {animate => (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1}>
+                    <BarChart accessibilityLayer layout="vertical" data={data.slice(0, 12)} margin={{ top: 4, right: 20, left: 6, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 5" stroke={alpha(theme.palette.divider, 0.75)} horizontal={false} />
+                      <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} tickFormatter={compactAxisNumber} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={128}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: theme.palette.text.secondary, fontSize: 11 }}
+                        tickFormatter={val => (String(val).length > 18 ? `${String(val).slice(0, 17)}…` : String(val))}
+                      />
+                      <Tooltip
+                        cursor={{ fill: alpha(theme.palette.primary.main, 0.06) }}
+                        content={({ active, payload }) => {
+                          const row = payload?.[0]?.payload as { name?: string; stock_quantity?: number; low_stock_threshold?: number } | undefined;
+                          const qty = Number(row?.stock_quantity ?? 0);
+                          const threshold = Number(row?.low_stock_threshold ?? 0);
+                          const barColor = qty <= 0 ? theme.palette.error.main : qty <= threshold ? theme.palette.warning.main : theme.palette.primary.main;
+                          const stateLabel = qty <= 0 ? "Out of stock" : qty <= threshold ? `Below threshold (${threshold})` : `Healthy (reorder at ${threshold})`;
+                          return (
+                            <ChartTooltipCard
+                              active={active}
+                              title={row?.name}
+                              entries={[{ name: "On-hand units", value: qty, color: barColor }]}
+                              formatter={val => `${val} units`}
+                              hint={stateLabel}
+                            />
+                          );
+                        }}
+                      />
+                      <Bar dataKey="stock_quantity" barSize={14} radius={[0, 6, 6, 0]} animationDuration={motionTokens.chart * 1000} animationEasing="ease-out" isAnimationActive={animate}>
+                        {data.slice(0, 12).map((row, idx) => {
+                          const qty = Number(row.stock_quantity ?? 0);
+                          const threshold = Number(row.low_stock_threshold ?? 0);
+                          const fill = qty <= 0 ? theme.palette.error.main : qty <= threshold ? theme.palette.warning.main : theme.palette.primary.main;
+                          return <Cell key={`${row.name}-${idx}`} fill={fill} />;
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartViewport>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, pt: 1.75, mt: 1, borderTop: 1, borderColor: "divider" }}>
+                {[
+                  { label: `Out of stock (${outOfStock})`, color: "error.main" },
+                  { label: `Low stock (${lowStock})`, color: "warning.main" },
+                  { label: `Healthy (${healthy})`, color: "primary.main" },
+                ].map(item => (
+                  <Box key={item.label} sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
+                    <Box component="span" sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: item.color }} />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10.5, fontVariantNumeric: "tabular-nums" }}>{item.label}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </>
+          )}
+        </WidgetCard>
 
         <DistributionWidget
           title="Catalog by category"

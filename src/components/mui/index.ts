@@ -16,6 +16,8 @@ export { mergeSx } from "./merge-sx";
 export { MotionSection } from "./MotionSection";
 export { SegmentedControl, type SegmentOption } from "./SegmentedControl";
 export { WidgetCard } from "./widgets/WidgetCard";
+export { ChartViewport } from "./widgets/ChartViewport";
+export { ChartTooltipCard } from "./widgets/ChartTooltipCard";
 export { Sparkline } from "./widgets/Sparkline";
 export { ProgressRing } from "./widgets/ProgressRing";
 export { TrendChart, money, type TrendSeries } from "./widgets/TrendChart";

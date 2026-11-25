@@ -5,6 +5,8 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { prisma, pool } from "../db.js";
 import { env } from "../env.js";
+import { resolveHikvisionCredentials } from "../lib/hikvision-config.js";
+import { isValidAppRole, replaceUserRole } from "../lib/user-roles.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 
 /**
@@ -38,6 +40,9 @@ async function manageStaff(req: Request, res: Response) {
     if (!email || !password || !full_name || !role) {
       return fail(res, "Missing required fields: email, password, full_name, role");
     }
+    if (!isValidAppRole(role)) {
+      return fail(res, `Invalid role: ${String(role)}`);
+    }
     const existing = await pool.query("SELECT id FROM auth.users WHERE lower(email) = lower($1)", [email]);
     if (existing.rows.length) return fail(res, "A user with this email already exists");
     const hash = await bcrypt.hash(password, 10);
@@ -47,14 +52,14 @@ async function manageStaff(req: Request, res: Response) {
     );
     const newUserId = inserted.rows[0].id;
     await prisma.profiles.updateMany({ where: { user_id: newUserId }, data: { full_name, phone: phone || null } });
-    await pool.query(
-      `INSERT INTO public.user_roles (user_id, role) VALUES ($1, $2) ON CONFLICT (user_id, role) DO NOTHING`,
-      [newUserId, role]
-    );
+    await replaceUserRole(pool, newUserId, role);
     return ok(res, { success: true, user_id: newUserId });
   }
   if (action === "update") {
     if (!user_id) return fail(res, "user_id is required");
+    if (role !== undefined && !isValidAppRole(role)) {
+      return fail(res, `Invalid role: ${String(role)}`);
+    }
     if (full_name !== undefined || phone !== undefined) {
       const updates: Record<string, unknown> = {};
       if (full_name !== undefined) updates.full_name = full_name;
@@ -62,9 +67,7 @@ async function manageStaff(req: Request, res: Response) {
       await prisma.profiles.updateMany({ where: { user_id }, data: updates });
     }
     if (role) {
-      const existing = await prisma.userRoles.findFirst({ where: { user_id } });
-      if (existing) await prisma.userRoles.updateMany({ where: { user_id }, data: { role } });
-      else await prisma.userRoles.create({ data: { user_id, role } });
+      await replaceUserRole(pool, user_id, role);
     }
     if (password) {
       const hash = await bcrypt.hash(password, 10);
@@ -650,10 +653,19 @@ type HikAny = Record<string, any>; // eslint-disable-line @typescript-eslint/no-
 
 interface HppToken { accessToken: string; areaDomain: string; expireTime: number }
 
+async function getHikvisionCredentials() {
+  const settings = await getSettings();
+  const integrations = (settings.integrations as Record<string, unknown> | undefined) || {};
+  return resolveHikvisionCredentials(integrations, env);
+}
+
 async function getHppToken(): Promise<HppToken> {
-  const appKey = env.hikPartnerAppKey;
-  const secretKey = env.hikPartnerSecretKey;
-  if (!appKey || !secretKey) throw new Error("HIK_PARTNER_APP_KEY and HIK_PARTNER_SECRET_KEY must be configured in server/.env");
+  const { appKey, secretKey } = await getHikvisionCredentials();
+  if (!appKey || !secretKey) {
+    throw new Error(
+      "Hik-Partner Pro API credentials are missing. Configure App Key and Secret Key in Settings → Hikvision or server/.env."
+    );
+  }
 
   const resp = await fetch("https://api.hik-partner.com/api/hpcgw/v1/token/get", {
     method: "POST",
@@ -1230,13 +1242,26 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
       }
     }
 
-    // ACTION: test-credentials — validate backend secrets
+    // ACTION: credential-status — report non-secret config status
+    if (action === "credential-status") {
+      const creds = await getHikvisionCredentials();
+      return ok(res, {
+        success: true,
+        configured: Boolean(creds.appKey && creds.secretKey),
+        source: creds.source,
+        hasDbCredentials: creds.hasDbCredentials,
+        hasEnvFallback: creds.hasEnvCredentials,
+        hasWebhookSecret: creds.hasWebhookSecret,
+      });
+    }
+
+    // ACTION: test-credentials — validate configured secrets (DB or env fallback)
     if (action === "test-credentials") {
       try {
         const tokenInfo = await getHppToken();
         return ok(res, {
           success: true, areaDomain: tokenInfo.areaDomain, expireTime: tokenInfo.expireTime,
-          message: "Backend credentials are valid. Token acquired.",
+          message: "Credentials are valid. Token acquired.",
         });
       } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
@@ -1486,11 +1511,12 @@ functionsRouter.post("/hikvision-sync", requireAuth, requireRole("admin"), async
 // hikvision-webhook — inbound Hik-Partner event receiver (full port)
 // ---------------------------------------------------------------------------
 async function verifyHikSignature(bodyText: string, timestamp: string, batchId: string, signature: string): Promise<boolean> {
-  if (!env.hikWebhookSignSecret) {
+  const { webhookSignSecret } = await getHikvisionCredentials();
+  if (!webhookSignSecret) {
     console.warn("[hikvision-webhook] No HIK_WEBHOOK_SIGN_SECRET configured, skipping signature check");
     return true;
   }
-  const expected = crypto.createHmac("sha256", env.hikWebhookSignSecret).update(`${timestamp}.${batchId}`).digest("hex");
+  const expected = crypto.createHmac("sha256", webhookSignSecret).update(`${timestamp}.${batchId}`).digest("hex");
   if (expected.length !== signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature.toLowerCase()));
 }

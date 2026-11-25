@@ -93,6 +93,17 @@ dataRouter.post("/query", asyncHandler(async (req, res) => {
 
   try {
     const result = await executeDataQuery(payload, req.user?.id);
+    const isAdmin = Boolean(req.user?.roles.includes("admin"));
+    if (payload.table === "business_settings" && !isAdmin && result.data) {
+      const sanitizeRow = (row: unknown) => {
+        if (row && typeof row === "object" && "integrations" in row) {
+          const { integrations: _hidden, ...rest } = row as Record<string, unknown>;
+          return rest;
+        }
+        return row;
+      };
+      result.data = Array.isArray(result.data) ? result.data.map(sanitizeRow) : sanitizeRow(result.data);
+    }
     res.json({ data: result.data, count: result.count });
   } catch (err) {
     if (isDatabaseUnavailable(err)) throw err;

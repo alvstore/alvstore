@@ -3,13 +3,13 @@ import type { Variants } from "framer-motion";
 /** One quiet motion language for pages, widgets, overlays and feedback. Seconds. */
 export const easeOut = [0.22, 1, 0.36, 1] as const;
 export const motionTokens = {
-  fast: 0.16,
-  base: 0.28,
-  page: 0.34,
-  chart: 0.72,
-  stagger: 0.045,
-  maxDelay: 0.27,
-  distance: 10,
+  fast: 0.14,
+  base: 0.22,
+  page: 0.28,
+  chart: 0.62,
+  stagger: 0.035,
+  maxDelay: 0.21,
+  distance: 8,
 } as const;
 export const entranceDelay = (index = 0) => Math.min(Math.max(index, 0) * motionTokens.stagger, motionTokens.maxDelay);
 export const fadeUp: Variants = {

@@ -1,12 +1,12 @@
 "use client";
 
-import { Box, Button, ButtonBase, Card, CardContent, Checkbox, Divider, FormLabel, IconButton, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { Box, Button, ButtonBase, Card, CardContent, Checkbox, Divider, FormLabel, IconButton, InputAdornment, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { AnimatedPage, DataTable, FormDialog, PageHeader, StatusChip, TabBar, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { User, Shield, Building2, Receipt, Mail, MessageSquare, Phone, Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock, Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench, Code, } from "lucide-react";
-type AppRole = "admin" | "staff" | "technician" | "customer";
+import { primaryUserRole, type AppRole } from "@/lib/sidebar-state";
+import { User, Shield, Building2, Receipt, Mail, MessageSquare, Phone, Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock, Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench, Code, Eye, EyeOff } from "lucide-react";
 interface Profile {
     id: string;
     user_id: string;
@@ -166,6 +166,7 @@ function UsersTab() {
         employee?: EmployeeLink | null;
     })[]>([]);
     const [loading, setLoading] = useState(true);
+    const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
     const fetchUsers = async () => {
         setLoading(true);
         const [profilesRes, rolesRes, employeesRes] = await Promise.all([
@@ -178,9 +179,10 @@ function UsersTab() {
         const employees = employeesRes.data || [];
         setUsers(profiles.map(p => {
             const emp = employees.find(e => e.user_id === p.user_id);
+            const userRoles = roles.filter(r => r.user_id === p.user_id).map(r => r.role);
             return {
                 profile: p,
-                role: (roles.find(r => r.user_id === p.user_id)?.role || "staff") as AppRole,
+                role: primaryUserRole(userRoles),
                 employee: emp ? { id: emp.id, name: emp.name, designation: emp.designation, role: emp.role } : null,
             };
         }));
@@ -188,12 +190,23 @@ function UsersTab() {
     };
     useEffect(() => { fetchUsers(); }, []);
     const updateRole = async (userId: string, newRole: AppRole) => {
-        const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
-        if (error)
-            toast.error(error.message);
-        else {
+        setUpdatingUserId(userId);
+        try {
+            const { data, error } = await supabase.functions.invoke("manage-staff", {
+                body: { action: "update", user_id: userId, role: newRole },
+            });
+            if (error)
+                throw error;
+            if (data?.error)
+                throw new Error(data.error);
             toast.success("Role updated");
-            fetchUsers();
+            await fetchUsers();
+        }
+        catch (err: any) {
+            toast.error(err?.message || "Failed to update role");
+        }
+        finally {
+            setUpdatingUserId(null);
         }
     };
     const roleColors = {
@@ -223,7 +236,7 @@ function UsersTab() {
                       </Box>) : (<Box component="span" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", fontStyle: "italic" }}>Not linked</Box>)}
                   </TableCell>
                   <TableCell>
-                    <TextField value={u.role} select size="small" fullWidth onChange={event => ((v) => updateRole(u.profile.user_id, v as AppRole))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "140px" }}>
+                    <TextField value={u.role} disabled={updatingUserId === u.profile.user_id} select size="small" fullWidth onChange={event => ((v) => updateRole(u.profile.user_id, v as AppRole))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "140px" }}>
                         <MenuItem value="admin">Admin</MenuItem>
                         <MenuItem value="staff">Staff</MenuItem>
                         <MenuItem value="technician">Technician</MenuItem>
@@ -499,27 +512,58 @@ function useIntegrations() {
     const updateField = (key: string, value: string) => {
         setIntegrations(prev => ({ ...prev, [key]: value }));
     };
-    const saveIntegrations = async () => {
+    const persistIntegrations = async (silent = false): Promise<boolean> => {
         setSaving(true);
-        if (settingsId) {
-            const { error } = await supabase.from("business_settings").update({ integrations }).eq("id", settingsId);
-            if (error)
-                toast.error(error.message);
-            else
-                toast.success("Settings saved");
-        }
-        else {
-            const { data, error } = await supabase.from("business_settings").insert({ integrations } as any).select().single();
-            if (error)
-                toast.error(error.message);
+        let ok = false;
+        try {
+            let targetId = settingsId;
+            let existingIntegrations: Record<string, string> = {};
+            if (!targetId) {
+                const { data: rows } = await supabase.from("business_settings").select("id, integrations").limit(1);
+                if (rows?.[0]) {
+                    targetId = rows[0].id;
+                    setSettingsId(targetId);
+                    if (rows[0].integrations && typeof rows[0].integrations === "object") {
+                        existingIntegrations = rows[0].integrations as Record<string, string>;
+                    }
+                }
+            } else {
+                const { data: current } = await supabase.from("business_settings").select("integrations").eq("id", targetId).single();
+                if (current?.integrations && typeof current.integrations === "object") {
+                    existingIntegrations = current.integrations as Record<string, string>;
+                }
+            }
+            const merged = { ...existingIntegrations, ...integrations };
+            if (targetId) {
+                const { error } = await supabase.from("business_settings").update({ integrations: merged }).eq("id", targetId);
+                if (error) {
+                    toast.error(error.message);
+                } else {
+                    ok = true;
+                    if (!silent)
+                        toast.success("Settings saved");
+                }
+            }
             else {
-                toast.success("Settings saved");
-                setSettingsId(data.id);
+                const { data, error } = await supabase.from("business_settings").insert({ integrations: merged } as any).select().single();
+                if (error) {
+                    toast.error(error.message);
+                } else {
+                    setSettingsId(data.id);
+                    ok = true;
+                    if (!silent)
+                        toast.success("Settings saved");
+                }
             }
         }
-        setSaving(false);
+        finally {
+            setSaving(false);
+        }
+        return ok;
     };
-    return { integrations, updateField, saveIntegrations, saving };
+    const saveIntegrations = () => persistIntegrations(false);
+    const saveIntegrationsSilent = () => persistIntegrations(true);
+    return { integrations, updateField, saveIntegrations, saveIntegrationsSilent, saving };
 }
 function IntegrationFieldGroup({ title, description, fields, integrations, updateField }: {
     title: string;
@@ -856,10 +900,18 @@ function RazorpayTab() {
 }
 // ─── Hikvision Tab ──────────────────────────────────────────────
 function HikvisionTab() {
-    const { integrations, updateField, saveIntegrations, saving } = useIntegrations();
+    const { integrations, updateField, saveIntegrations, saveIntegrationsSilent, saving } = useIntegrations();
     const [step, setStep] = useState(1);
     const [credentialStatus, setCredentialStatus] = useState<"idle" | "valid" | "invalid">("idle");
+    const [credentialError, setCredentialError] = useState("");
     const [testingCredentials, setTestingCredentials] = useState(false);
+    const [showSecretKey, setShowSecretKey] = useState(false);
+    const [showWebhookSecret, setShowWebhookSecret] = useState(false);
+    const [serverStatus, setServerStatus] = useState<{
+        configured?: boolean;
+        source?: string;
+        hasEnvFallback?: boolean;
+    } | null>(null);
     const [credentialInfo, setCredentialInfo] = useState<{
         areaDomain?: string;
         expireTime?: number;
@@ -881,15 +933,47 @@ function HikvisionTab() {
     const [syncResults, setSyncResults] = useState<Record<string, any>>({});
     const [backfillStart, setBackfillStart] = useState("");
     const [backfillEnd, setBackfillEnd] = useState("");
+    const refreshCredentialStatus = useCallback(async () => {
+        try {
+            const { data } = await supabase.functions.invoke("hikvision-sync", {
+                body: { action: "credential-status" },
+            });
+            if (data?.success)
+                setServerStatus(data);
+        }
+        catch {
+            // Non-blocking status probe
+        }
+    }, []);
     useEffect(() => {
         supabase.from("hikvision_devices").select("*").order("created_at").then(({ data }) => setSavedDevices(data || []));
+        refreshCredentialStatus();
+    }, [refreshCredentialStatus]);
+    useEffect(() => {
         if (integrations["hik_default_site_id"])
             setSelectedSiteId(integrations["hik_default_site_id"]);
     }, [integrations]);
+    const hasFormKeys = Boolean((integrations["hik_partner_app_key"] || "").trim() || (integrations["hik_partner_secret_key"] || "").trim() || (integrations["hik_webhook_sign_secret"] || "").trim());
+    const saveHikCredentials = async () => {
+        const ok = await saveIntegrations();
+        if (ok) {
+            await refreshCredentialStatus();
+        }
+    };
     const testCredentials = async () => {
         setTestingCredentials(true);
         setCredentialStatus("idle");
+        setCredentialError("");
         try {
+            if (hasFormKeys) {
+                const saved = await saveIntegrationsSilent();
+                if (!saved) {
+                    setCredentialStatus("invalid");
+                    setTestingCredentials(false);
+                    return;
+                }
+                await refreshCredentialStatus();
+            }
             const { data, error } = await supabase.functions.invoke("hikvision-sync", {
                 body: { action: "test-credentials" },
             });
@@ -898,16 +982,18 @@ function HikvisionTab() {
             if (data?.success) {
                 setCredentialStatus("valid");
                 setCredentialInfo({ areaDomain: data.areaDomain, expireTime: data.expireTime });
-                toast.success("Backend credentials are valid!");
+                toast.success("Hik-Partner Pro credentials verified!");
                 setStep(2);
             }
             else {
                 setCredentialStatus("invalid");
+                setCredentialError(data?.error || "Invalid credentials");
                 toast.error(data?.error || "Invalid credentials");
             }
         }
         catch (e: any) {
             setCredentialStatus("invalid");
+            setCredentialError(e?.message || "Credential test failed");
             toast.error(e.message || "Credential test failed");
         }
         setTestingCredentials(false);
@@ -1017,24 +1103,89 @@ function HikvisionTab() {
           </Box>))}
       </Box>
 
-      {/* Step 1: Test Connection */}
+      {/* Step 1: Configure & Test Connection */}
       {step === 1 && (<Card>
           <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}>
             <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Cloud} sx={{ height: "1.25rem", width: "1.25rem" }}/> Hik-Partner Pro Cloud API</Typography>
-            <Typography variant="body2" color="text.secondary">API keys are stored as backend secrets (HIK_PARTNER_APP_KEY, HIK_PARTNER_SECRET_KEY). Test the connection below.</Typography>
+            <Typography variant="body2" color="text.secondary">Enter your Hik-Partner Pro OpenAPI keys below. Keys saved here are stored encrypted in database settings for admins and take priority over server .env fallback secrets.</Typography>
           </Box>
           <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ padding: "0.75rem", borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderWidth: "1px", borderColor: "hsl(var(--border))", fontSize: "0.875rem", lineHeight: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
-              <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>Backend Secrets Status</Typography>
-              <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem" }}>Keys are securely stored as backend secrets. To update them, contact your administrator or use the Lovable Cloud secrets manager.</Typography>
+              <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>
+                {integrations["hik_partner_app_key"]?.trim() && integrations["hik_partner_secret_key"]?.trim()
+                    ? "Credentials Source: Settings (Frontend Configuration)"
+                    : serverStatus?.hasEnvFallback
+                        ? "Credentials Source: Server Environment Fallback (.env)"
+                        : "Credentials Not Configured"}
+              </Typography>
+              <Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem" }}>
+                {integrations["hik_partner_app_key"]?.trim() && integrations["hik_partner_secret_key"]?.trim()
+                    ? "Using App Key and Secret Key saved in Settings. Update fields below anytime and click Test Connection."
+                    : serverStatus?.hasEnvFallback
+                        ? "Server environment keys are detected. You can enter keys below to override them directly from the UI."
+                        : "Paste your App Key and Secret Key from the Hik-Partner Pro OpenAPI Developer Portal, then save and test the connection."}
+              </Typography>
+            </Box>
+            <Box sx={{ display: "grid", gap: "0.875rem" }}>
+              <TextField
+                label="Hik-Partner App Key (HIK_PARTNER_APP_KEY)"
+                value={integrations["hik_partner_app_key"] || ""}
+                onChange={e => updateField("hik_partner_app_key", e.target.value)}
+                placeholder="Enter App Key from Hik-Partner Pro"
+                size="small"
+                fullWidth
+              />
+              <TextField
+                label="Hik-Partner Secret Key (HIK_PARTNER_SECRET_KEY)"
+                type={showSecretKey ? "text" : "password"}
+                value={integrations["hik_partner_secret_key"] || ""}
+                onChange={e => updateField("hik_partner_secret_key", e.target.value)}
+                placeholder="Enter Secret Key from Hik-Partner Pro"
+                size="small"
+                fullWidth
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" aria-label={showSecretKey ? "Hide secret key" : "Show secret key"} onClick={() => setShowSecretKey(prev => !prev)} edge="end">
+                          <Box component={showSecretKey ? EyeOff : Eye} sx={{ height: "1rem", width: "1rem" }}/>
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <TextField
+                label="Webhook Signing Secret (Optional · HIK_WEBHOOK_SIGN_SECRET)"
+                type={showWebhookSecret ? "text" : "password"}
+                value={integrations["hik_webhook_sign_secret"] || ""}
+                onChange={e => updateField("hik_webhook_sign_secret", e.target.value)}
+                placeholder="Optional HMAC secret for verifying inbound Hik-Partner webhooks"
+                size="small"
+                fullWidth
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" aria-label={showWebhookSecret ? "Hide webhook secret" : "Show webhook secret"} onClick={() => setShowWebhookSecret(prev => !prev)} edge="end">
+                          <Box component={showWebhookSecret ? EyeOff : Eye} sx={{ height: "1rem", width: "1rem" }}/>
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
             </Box>
             {credentialStatus !== "idle" && (<Box sx={mergeSx({ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", borderRadius: "var(--radius)", fontSize: "0.875rem", lineHeight: "1.25rem" }, credentialStatus === "valid" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--success)) 20%, transparent)" } : { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))", borderWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--destructive)) 20%, transparent)" })}>
-                <Box component="span" sx={mergeSx({ height: "0.625rem", width: "0.625rem", borderRadius: "9999px" }, credentialStatus === "valid" ? { backgroundColor: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--destructive))" })}/>
-                {credentialStatus === "valid" ? `Connected. Area Domain: ${credentialInfo?.areaDomain || "detected"}` : "Connection failed. Check your backend secrets."}
+                <Box component="span" sx={mergeSx({ height: "0.625rem", width: "0.625rem", borderRadius: "9999px", flexShrink: 0 }, credentialStatus === "valid" ? { backgroundColor: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--destructive))" })}/>
+                {credentialStatus === "valid" ? `Connected. Area Domain: ${credentialInfo?.areaDomain || "detected"}` : (credentialError || "Connection failed. Check your App Key and Secret Key.")}
               </Box>)}
-            <Box sx={{ display: "flex", gap: "0.5rem" }}>
-              <Button onClick={testCredentials} disabled={testingCredentials} variant="contained">
-                {testingCredentials ? <Box component={RefreshCw} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={TestTube} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Test Connection
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              <Button onClick={saveHikCredentials} disabled={saving || testingCredentials} variant="outlined">
+                {saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save Keys
+              </Button>
+              <Button onClick={testCredentials} disabled={testingCredentials || saving} variant="contained">
+                {testingCredentials ? <Box component={RefreshCw} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={TestTube} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}Save & Test Connection
               </Button>
               {credentialStatus === "valid" && (<Button onClick={() => setStep(2)} variant="outlined">Continue to Sites →</Button>)}
             </Box>

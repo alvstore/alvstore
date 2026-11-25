@@ -5,8 +5,8 @@ import { AnimatedPage, FormDialog, PageHeader, SearchToolbar, StatusChip, toast 
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { primaryUserRole, type AppRole } from "@/lib/sidebar-state";
 import { Search, User, Plus, Pencil, Loader2 } from "lucide-react";
-type AppRole = "admin" | "staff" | "technician" | "customer";
 interface StaffMember {
     user_id: string;
     full_name: string | null;
@@ -35,7 +35,7 @@ export default function Staff() {
                 user_id: p.user_id,
                 full_name: p.full_name,
                 phone: p.phone,
-                role: (roles.find(r => r.user_id === p.user_id)?.role || "staff") as AppRole,
+                role: primaryUserRole(roles.filter(r => r.user_id === p.user_id).map(r => r.role)),
             }));
             if (roleFilter !== "all")
                 mapped = mapped.filter(m => m.role === roleFilter);

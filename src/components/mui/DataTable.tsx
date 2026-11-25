@@ -6,7 +6,7 @@ import { Children, isValidElement, type ReactNode } from "react";
 import { EmptyState } from "./EmptyState";
 import { entranceDelay, motionTokens } from "@/lib/motion-presets";
 
-const rowEntrance = keyframes`from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; }`;
+const rowEntrance = keyframes`from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; }`;
 export interface DataColumn<T> { key: string; label: ReactNode; render?: (row: T) => ReactNode; align?: "left" | "center" | "right"; }
 export type DataTableProps<T> = TableProps & {
   columns?: DataColumn<T>[]; rows?: T[]; getRowId?: (row: T, index: number) => string | number;
