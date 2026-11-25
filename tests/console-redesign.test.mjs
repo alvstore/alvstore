@@ -107,3 +107,14 @@ test("Tasks screen and useTaskBoard support Kanban lanes, Table toggle, MetricSt
   assert.match(tasksSrc, /label:\s*["']Activity["']/);
   assert.doesNotMatch(tasksSrc, /FormDialog/);
 });
+
+test("CalendarPage uses unified left filter rail, SideDrawer, pastel pill events, and preserves AgendaWidget", () => {
+  const calSrc = fs.readFileSync(path.join(root, "src/screens/CalendarPage.tsx"), "utf8");
+  assert.match(calSrc, /SideDrawer/);
+  assert.match(calSrc, /pastelPillColors/);
+  assert.match(calSrc, /DateCalendar/);
+  assert.match(calSrc, /AgendaWidget/);
+  assert.match(calSrc, /Event Filters/);
+  assert.match(calSrc, /Edit Event/);
+  assert.doesNotMatch(calSrc, /FormDialog/);
+});
