@@ -26,7 +26,7 @@ export const FONT = {
 export const TYPE = {
   hero: {
     fontFamily: FONT.display,
-    fontSize: "clamp(2.4rem, 4.8vw, 4.2rem)",
+    fontSize: "clamp(2.1rem, 3.85vw, 4.05rem)",
     lineHeight: 0.98,
     fontWeight: 480,
     fontStretch: "112%",

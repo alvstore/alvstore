@@ -51,8 +51,8 @@ export const CAMERA_KEYS: GalleryKey[] = [
  * keys. Same p beats, so the placard spans still line up.
  */
 export const CAMERA_KEYS_PORTRAIT: GalleryKey[] = [
-  { p: 0.0, pos: [0.4, 2.4, 12.5], look: [0.15, 1.5, -1.2], fov: 33 },
-  { p: 0.05, pos: [0.2, 2.4, 12.6], look: [0.2, 1.5, -1.2], fov: 33 },
+  { p: 0.0, pos: [0.2, 2.75, 14.8], look: [0.05, 1.35, -0.9], fov: 39 },
+  { p: 0.05, pos: [0.05, 2.7, 14.6], look: [0.1, 1.35, -0.9], fov: 38.5 },
   { p: 0.12, pos: [-0.9, 2.1, 11.6], look: [-3.2, 1.35, 0], fov: 30 },
   // tower framed (label 0.10 – 0.34), centred above the sheet
   { p: 0.22, pos: [-1.9, 1.9, 11.8], look: [-3.2, 1.32, 0], fov: 29 },
@@ -671,21 +671,49 @@ export function createGallery(canvas: HTMLCanvasElement, initial: { reduced: boo
 
   function placeCamera(p: number) {
     // The portrait key set is already composed for a narrow, tall stage; the
-    // landscape set needs a small step back in near-square viewports.
+    // landscape set adapts for compact aspect ratios and shifts the hero trio left
+    // whenever the headline occupies the right column (md+ or compact phone landscape).
     const portrait = state.aspect < 0.95;
     const { pos, look, fov } = sampleCamera(p, portrait ? CAMERA_KEYS_PORTRAIT : CAMERA_KEYS);
-    if (!portrait && state.aspect < 1.2) {
-      const k = 1.16;
-      pos.sub(look).multiplyScalar(k).add(look);
+    const heroBlend = 1 - smooth(clamp01((p - 0.04) / 0.08));
+    const rightColHero = state.width >= 900 || (!portrait && state.height <= 480 && state.width >= 600);
+
+    let effectiveFov = fov;
+    let xShiftFrac = 0;
+
+    if (portrait) {
+      if (state.aspect < 0.72 && heroBlend > 0) {
+        const pull = 1 + (0.72 / Math.max(0.42, state.aspect) - 1) * 0.5 * heroBlend;
+        pos.sub(look).multiplyScalar(pull).add(look);
+        effectiveFov += 8 * heroBlend * clamp01((0.72 - state.aspect) / 0.28);
+      }
+    } else {
+      if (state.aspect < 1.55) {
+        const baseScale = state.aspect < 1.2 ? 1.16 : 1 + (1.55 - state.aspect) * 0.2;
+        pos.sub(look).multiplyScalar(baseScale).add(look);
+      }
+      if (heroBlend > 0 && rightColHero) {
+        const heroPull = 1 + (state.aspect < 1.45 ? 0.14 : 0.08) * heroBlend;
+        pos.sub(look).multiplyScalar(heroPull).add(look);
+        xShiftFrac = (state.aspect < 1.4 ? 0.115 : 0.13) * heroBlend;
+      }
     }
+
     camera.position.copy(pos);
-    camera.fov = fov;
+    camera.fov = effectiveFov;
     camera.lookAt(look);
     camera.updateProjectionMatrix();
-    // Compose for the page, not the canvas: the placard owns the lower third,
-    // so lift the subject and leave the base of the frame to the label.
-    const lift = state.width < 760 ? 0.2 : 0.115;
-    camera.setViewOffset(state.width, state.height, 0, state.height * lift, state.width, state.height);
+    // Compose for the page, not the canvas: the placard owns the lower third on
+    // mobile/portrait, and on side-split hero frames we shift the trio leftward.
+    const lift = portrait ? 0.21 : state.height <= 480 ? 0.06 : state.aspect < 1.25 ? 0.14 : 0.115;
+    camera.setViewOffset(
+      state.width,
+      state.height,
+      state.width * xShiftFrac,
+      state.height * lift,
+      state.width,
+      state.height,
+    );
   }
 
   function applyScene(p: number) {

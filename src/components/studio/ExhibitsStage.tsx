@@ -138,13 +138,32 @@ export function ExhibitsStage() {
               display: "flex",
               alignItems: { xs: "flex-end", md: "center" },
               pt: { xs: 8, md: "calc(74px + 3svh)" },
-              pb: { xs: 9, md: 4 },
-              px: { xs: 2.5, sm: 4, lg: 6 },
+              pb: { xs: "64px", sm: "72px", md: 5 },
+              pl: { xs: 2.5, sm: 4, lg: 6 },
+              pr: { xs: 2.5, sm: 4, md: 12, lg: 13 },
               boxSizing: "border-box",
               pointerEvents: "auto",
+              "@media (min-width: 600px) and (max-height: 480px)": {
+                alignItems: "center",
+                pt: "58px",
+                pb: "48px",
+                pr: 4,
+              },
             }}
           >
-            <Box sx={{ ml: "auto", width: { xs: "100%", md: "48%", lg: "44%" }, maxWidth: { xs: "100%", md: 560, lg: 620 }, my: { md: "auto" } }}>
+            <Box
+              sx={{
+                ml: { xs: 0, md: "auto" },
+                width: { xs: "100%", md: "44%", lg: "41%", xl: "40%" },
+                maxWidth: { xs: "100%", sm: 580, md: 440, lg: 510, xl: 580 },
+                my: { md: "auto" },
+                "@media (min-width: 600px) and (max-height: 480px)": {
+                  ml: "auto",
+                  width: "48%",
+                  maxWidth: 380,
+                },
+              }}
+            >
               <Typography
                 component="h1"
                 sx={{
@@ -152,6 +171,9 @@ export function ExhibitsStage() {
                   color: STUDIO.graphite,
                   textWrap: "balance",
                   "& span": { display: "block" },
+                  "@media (min-width: 600px) and (max-height: 480px)": {
+                    fontSize: "clamp(1.65rem, 3.6vw, 2.35rem)",
+                  },
                 }}
               >
                 <Box component="span" sx={{ animation: `${rise} 900ms ${EASE} both`, animationDelay: "80ms" }}>
@@ -226,18 +248,24 @@ export function ExhibitsStage() {
               }}
               sx={{
                 position: "absolute",
-                left: { xs: 2.5, sm: 4, lg: 6 },
-                bottom: { xs: "5svh", md: "9svh" },
-                width: { xs: "calc(100% - 5rem)", sm: 360, md: 400 },
-                maxHeight: { xs: "46svh", md: "38svh" },
+                left: { xs: "20px", sm: "32px", lg: "48px" },
+                bottom: { xs: "62px", sm: "68px", md: "40px", lg: "48px" },
+                width: { xs: "calc(100% - 40px)", sm: 390, md: 420, lg: 440 },
+                maxHeight: { xs: "36svh", sm: "42svh", md: "54svh" },
                 overflowY: "auto",
                 overscrollBehavior: "contain",
                 pr: { md: 1 },
                 opacity: 0,
                 visibility: "hidden",
                 willChange: "opacity, transform",
-                pt: 2.5,
+                pt: { xs: 1.5, md: 2 },
                 borderTop: `1px solid ${STUDIO.hairStrong}`,
+                "@media (min-width: 600px) and (max-height: 480px)": {
+                  bottom: "48px",
+                  maxHeight: "calc(100svh - 115px)",
+                  width: 340,
+                  pt: 1,
+                },
               }}
             >
               <Box sx={{ display: "flex", alignItems: "baseline", gap: 1.5, mb: 1 }}>
@@ -278,30 +306,23 @@ export function ExhibitsStage() {
           <Box
             sx={{
               position: "absolute",
-              right: { xs: 2.5, sm: 4, lg: 6 },
-              // on a phone the label owns the lower band, so the rail turns
-              // horizontal and sits under the label's fact rows instead
+              right: { xs: "20px", sm: "32px", lg: "48px" },
+              // on phones & portrait tablets the label sits in the lower band,
+              // so the rail sits cleanly along the bottom edge below the placard
               top: { xs: "auto", md: "50%" },
-              bottom: { xs: "1.2svh", md: "auto" },
+              bottom: { xs: "14px", sm: "18px", md: "auto" },
               transform: { md: "translateY(-50%)" },
               display: "flex",
-              flexDirection: { xs: "row", md: "row" },
+              flexDirection: "row",
               alignItems: "center",
               gap: { xs: 1, md: 1.5 },
-              // the rail sometimes crosses a dark object; a soft plaster bed
-              // keeps the counter and markers legible without a card
               isolation: "isolate",
-              py: 1.5,
-              "&::before": {
-                content: '""',
-                position: "absolute",
-                inset: { xs: "-8px -10px", md: "-10px -12px" },
-                zIndex: -1,
-                background: `radial-gradient(closest-side, ${STUDIO.plaster} 55%, rgba(234,231,221,0))`,
-                // the halo is only needed where the rail crosses the 3D room,
-                // not in the quiet corner it sits in on a phone
-                display: { xs: "none", md: "block" },
-              },
+              px: { xs: 0, md: 1.1 },
+              py: { xs: 0.5, md: 1.5 },
+              borderRadius: { xs: 0, md: "999px" },
+              bgcolor: { xs: "transparent", md: "rgba(234,231,221,0.82)" },
+              backdropFilter: { xs: "none", md: "blur(8px)" },
+              border: { xs: "none", md: `1px solid ${STUDIO.hair}` },
             }}
           >
             <Box component="span" ref={counterRef} sx={{ ...TYPE.label, color: STUDIO.graphite, fontSize: "0.68rem", writingMode: { md: "vertical-rl" }, transform: { md: "rotate(180deg)" } }}>

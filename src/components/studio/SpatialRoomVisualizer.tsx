@@ -412,14 +412,15 @@ export function SpatialRoomVisualizer() {
           role="tablist"
           aria-label="Room audio configurations"
           sx={{
-            display: "inline-flex",
+            display: { xs: "grid", sm: "inline-flex" },
+            gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "none" },
+            gap: { xs: 0.5, sm: 0 },
             p: 0.5,
             bgcolor: "rgba(22,24,26,0.04)",
             border: `1px solid ${STUDIO.hair}`,
             borderRadius: "4px",
             position: "relative",
             width: { xs: "100%", sm: "auto" },
-            overflowX: "auto",
           }}
         >
           {ROOM_CONFIGS.map(tab => {
@@ -440,14 +441,14 @@ export function SpatialRoomVisualizer() {
                   cursor: "pointer",
                   position: "relative",
                   zIndex: 2,
-                  px: { xs: 1.75, md: 2.2 },
+                  px: { xs: 1.25, sm: 1.85, md: 2.2 },
                   py: 0.9,
                   borderRadius: "3px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   whiteSpace: "nowrap",
-                  flexGrow: { xs: 1, sm: "initial" },
+                  flexGrow: { xs: 0, sm: "initial" },
                   transition: `color 220ms ${EASE}`,
                   color: isActive ? STUDIO.chalk : STUDIO.graphite,
                   "&:focus-visible": { outline: `2px solid ${STUDIO.brass}`, outlineOffset: -1 },
@@ -532,7 +533,7 @@ export function SpatialRoomVisualizer() {
             }}
           >
             {/* Viewport Mode Switch: 3D Isometric vs 2D CAD Plan */}
-            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+            <Box sx={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: { xs: 0.75, sm: 1 } }}>
               <Box
                 sx={{
                   display: "inline-flex",
@@ -548,10 +549,11 @@ export function SpatialRoomVisualizer() {
                   startIcon={<ViewInAr sx={{ fontSize: "0.85rem !important" }} />}
                   sx={{
                     ...TYPE.label,
-                    fontSize: "0.62rem",
-                    px: 1.2,
-                    py: 0.4,
+                    fontSize: { xs: "0.58rem", sm: "0.62rem" },
+                    px: { xs: 1, sm: 1.2 },
+                    py: 0.45,
                     minWidth: "auto",
+                    whiteSpace: "nowrap",
                     color: viewMode === "isometric" ? "#111315" : "rgba(255,255,255,0.6)",
                     bgcolor: viewMode === "isometric" ? STUDIO.brass : "transparent",
                     borderRadius: "2px",
@@ -569,10 +571,11 @@ export function SpatialRoomVisualizer() {
                   startIcon={<GridOn sx={{ fontSize: "0.85rem !important" }} />}
                   sx={{
                     ...TYPE.label,
-                    fontSize: "0.62rem",
-                    px: 1.2,
-                    py: 0.4,
+                    fontSize: { xs: "0.58rem", sm: "0.62rem" },
+                    px: { xs: 1, sm: 1.2 },
+                    py: 0.45,
                     minWidth: "auto",
+                    whiteSpace: "nowrap",
                     color: viewMode === "plan" ? "#111315" : "rgba(255,255,255,0.6)",
                     bgcolor: viewMode === "plan" ? STUDIO.brass : "transparent",
                     borderRadius: "2px",
@@ -593,10 +596,11 @@ export function SpatialRoomVisualizer() {
                 startIcon={isSimulating ? <Pause sx={{ fontSize: "0.8rem !important" }} /> : <PlayArrow sx={{ fontSize: "0.8rem !important" }} />}
                 sx={{
                   ...TYPE.label,
-                  fontSize: "0.62rem",
-                  px: 1.2,
-                  py: 0.4,
+                  fontSize: { xs: "0.58rem", sm: "0.62rem" },
+                  px: { xs: 1, sm: 1.2 },
+                  py: 0.45,
                   minWidth: "auto",
+                  whiteSpace: "nowrap",
                   border: "1px solid rgba(226,186,122,0.3)",
                   bgcolor: isSimulating ? "rgba(156,123,73,0.18)" : "transparent",
                   color: isSimulating ? "#E2BA7A" : "rgba(255,255,255,0.5)",
