@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Box, Button, MenuItem, TextField, Typography } from "@mui/material";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { Alert, Box, Button, CircularProgress, MenuItem, TextField, Typography } from "@mui/material";
 import { ArrowOutward, ContentCopy, Check } from "@mui/icons-material";
 import { motion, useReducedMotion } from "framer-motion";
+import { supabase } from "@/integrations/supabase/client";
 import { STUDIO_INFO } from "./content";
 import {
   formatConsultationNote,
@@ -29,9 +30,9 @@ const WHATSAPP = `https://wa.me/919887601200`;
 const ROOM_TYPES = ["A private cinema", "A 4K laser projector setup", "A dedicated listening room", "Living-room surround audio", "After-sales service & calibration", "Something else"];
 
 /**
- * Enquiry as a written note, not a funnel. The form composes a complete
- * message and hands it to the visitor's mail app or WhatsApp, so nothing is
- * silently lost to a backend permission and the studio gets real detail.
+ * Consultation enquiry form wired to the backend CRM (`public-lead`) so every
+ * room specification and message lands directly in Leads with an admin alert,
+ * while preserving WhatsApp, email app, and copy fallbacks.
  */
 export function VisitSection() {
   const [name, setName] = useState("");
@@ -40,9 +41,13 @@ export function VisitSection() {
   const [city, setCity] = useState("");
   const [room, setRoom] = useState(ROOM_TYPES[0]);
   const [note, setNote] = useState("");
+  const [website, setWebsite] = useState("");
   const [loadedRoomHint, setLoadedRoomHint] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submittedState, setSubmittedState] = useState<{ leadId?: string; messageSnapshot: string } | null>(null);
 
   useEffect(() => {
     const onRoomSelect = (event: Event) => {
@@ -51,6 +56,8 @@ export function VisitSection() {
       const formatted = detail.formattedNote ?? formatConsultationNote(detail);
       setRoom(ROOM_TYPES[0]);
       setNote(prev => mergeConsultationNote(prev, formatted));
+      setSubmitError(null);
+      setSubmittedState(null);
       setLoadedRoomHint(
         `Loaded your ${detail.lengthFt} × ${detail.widthFt} ft · ${detail.configId} (${detail.screenIn}″) configuration into the message below.`,
       );
@@ -74,21 +81,57 @@ export function VisitSection() {
     return lines.join("\n");
   }, [name, phone, email, city, room, note]);
 
+  const activeMessage = name.trim() || note.trim() || !submittedState ? message : submittedState.messageSnapshot;
+
   const nameOk = name.trim().length > 1;
   const phoneOk = phone.replace(/\D/g, "").length >= 10;
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const valid = nameOk && phoneOk && emailOk;
 
-  const sendMail = () => {
+  const submitEnquiry = async () => {
     setTouched(true);
-    if (!valid) return;
+    setSubmitError(null);
+    if (!valid || submitting) return;
+
+    setSubmitting(true);
+    const snapshot = message;
+    const { data, error } = await supabase.functions.invoke("public-lead", {
+      body: {
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        city: city.trim(),
+        room,
+        note: note.trim(),
+        website,
+      },
+    });
+    setSubmitting(false);
+
+    if (error) {
+      setSubmitError(error.message || "Could not send your enquiry right now. Please reach out on WhatsApp or call us.");
+      return;
+    }
+
+    const payload = (data ?? {}) as { lead_id?: string };
+    setSubmittedState({ leadId: payload.lead_id, messageSnapshot: snapshot });
+    setLoadedRoomHint(null);
+    setTouched(false);
+    setName("");
+    setPhone("");
+    setEmail("");
+    setCity("");
+    setNote("");
+  };
+
+  const openMailApp = () => {
     const subject = encodeURIComponent(`Cinema consultation — ${room} — ${city.trim() || "India"}`);
-    window.location.href = `mailto:${STUDIO_INFO.email}?subject=${subject}&body=${encodeURIComponent(message)}`;
+    window.location.href = `mailto:${STUDIO_INFO.email}?subject=${subject}&body=${encodeURIComponent(activeMessage)}`;
   };
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(message);
+      await navigator.clipboard.writeText(activeMessage);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2200);
     } catch {
@@ -233,19 +276,62 @@ export function VisitSection() {
               noValidate
               onSubmit={event => {
                 event.preventDefault();
-                sendMail();
+                void submitEnquiry();
               }}
               aria-labelledby="visit-form-title"
-              sx={{ borderTop: `1px solid ${STUDIO.graphite}`, pt: 3 }}
+              sx={{ borderTop: `1px solid ${STUDIO.graphite}`, pt: 3, position: "relative" }}
             >
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 2, mb: loadedRoomHint ? 1.5 : 3 }}>
+            <Box
+              component="input"
+              type="text"
+              name="website"
+              value={website}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setWebsite(event.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              sx={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+            />
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 2, mb: loadedRoomHint || submittedState || submitError ? 1.5 : 3 }}>
               <Typography id="visit-form-title" component="h3" sx={{ ...TYPE.exhibit, fontSize: "1.16rem", color: STUDIO.graphite, fontStretch: "100%" }}>
                 Write to us
               </Typography>
               <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.62rem", whiteSpace: "nowrap" }}>
-                Opens your mail app
+                Direct to studio CRM
               </Typography>
             </Box>
+
+            {submittedState && (
+              <Alert
+                severity="success"
+                onClose={() => setSubmittedState(null)}
+                sx={{
+                  mb: 2.5,
+                  bgcolor: "rgba(31,78,66,0.08)",
+                  border: "1px solid rgba(31,78,66,0.3)",
+                  borderRadius: "2px",
+                  py: 0.6,
+                  "& .MuiAlert-message": { ...TYPE.placard, fontSize: "0.86rem", color: STUDIO.graphite },
+                }}
+              >
+                Enquiry saved with our acoustic desk — we&apos;ll reach out within one working day.
+              </Alert>
+            )}
+
+            {submitError && (
+              <Alert
+                severity="error"
+                onClose={() => setSubmitError(null)}
+                sx={{
+                  mb: 2.5,
+                  borderRadius: "2px",
+                  py: 0.5,
+                  "& .MuiAlert-message": { ...TYPE.placard, fontSize: "0.84rem" },
+                }}
+              >
+                {submitError}
+              </Alert>
+            )}
 
             {loadedRoomHint && (
               <Alert
@@ -344,25 +430,67 @@ export function VisitSection() {
               sx={[{ mt: 2.5 }, studioFieldSx]}
             />
 
-            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1.5, mt: 3 }}>
+            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1.25, mt: 3 }}>
               <Button
                 type="submit"
+                disabled={submitting}
                 variant="contained"
                 disableElevation
-                endIcon={<ArrowOutward sx={{ fontSize: "1rem !important" }} />}
+                endIcon={
+                  submitting ? (
+                    <CircularProgress size={14} color="inherit" />
+                  ) : (
+                    <ArrowOutward sx={{ fontSize: "1rem !important" }} />
+                  )
+                }
                 sx={{
                   ...TYPE.label,
                   bgcolor: STUDIO.graphite,
                   color: STUDIO.chalk,
                   borderRadius: "2px",
+                  minHeight: 38,
                   px: 3,
                   py: 1.25,
                   transition: `transform 200ms ${EASE}, background-color 200ms ${EASE}, box-shadow 200ms ${EASE}`,
                   "&:hover": { bgcolor: STUDIO.ink, transform: "translateY(-1px)", boxShadow: "0 4px 16px rgba(22,24,26,0.12)" },
                   "&:active": { transform: "scale(0.98)" },
+                  "&.Mui-disabled": { bgcolor: STUDIO.slate, color: STUDIO.chalk },
                 }}
               >
-                Send the note
+                {submitting ? "Sending enquiry…" : "Send enquiry"}
+              </Button>
+              <Button
+                type="button"
+                component="a"
+                href={`${WHATSAPP}?text=${encodeURIComponent(activeMessage)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outlined"
+                endIcon={<ArrowOutward sx={{ fontSize: "0.9rem !important" }} />}
+                sx={{
+                  ...TYPE.label,
+                  minHeight: 38,
+                  borderRadius: "2px",
+                  borderColor: STUDIO.hairStrong,
+                  color: STUDIO.verdigris,
+                  px: 2,
+                  "&:hover": { borderColor: STUDIO.verdigris, bgcolor: "rgba(31,78,66,0.04)" },
+                }}
+              >
+                WhatsApp note
+              </Button>
+              <Button
+                type="button"
+                onClick={openMailApp}
+                variant="text"
+                sx={{
+                  ...TYPE.label,
+                  minHeight: 38,
+                  color: STUDIO.slate,
+                  "&:hover": { bgcolor: "transparent", color: STUDIO.graphite },
+                }}
+              >
+                Email app
               </Button>
               <Button
                 type="button"
@@ -371,13 +499,14 @@ export function VisitSection() {
                 startIcon={copied ? <Check sx={{ fontSize: "0.95rem !important" }} /> : <ContentCopy sx={{ fontSize: "0.9rem !important" }} />}
                 sx={{
                   ...TYPE.label,
+                  minHeight: 38,
                   color: STUDIO.slate,
                   transition: `color 200ms ${EASE}, transform 200ms ${EASE}`,
                   "&:hover": { bgcolor: "transparent", color: STUDIO.graphite },
                   "&:active": { transform: "scale(0.98)" },
                 }}
               >
-                {copied ? "Copied" : "Copy the text"}
+                {copied ? "Copied" : "Copy text"}
               </Button>
             </Box>
             <Alert
@@ -385,8 +514,8 @@ export function VisitSection() {
               icon={false}
               sx={{ mt: 2.5, bgcolor: "transparent", border: `1px solid ${STUDIO.hair}`, borderRadius: "2px", py: 0.5, "& .MuiAlert-message": { ...TYPE.placard, fontSize: "0.84rem", color: STUDIO.slate } }}
             >
-              We answer notes within one working day. Nothing you write here is stored on this
-              site — it travels with you to your mail app.
+              Your note saves straight into our studio CRM and alerts our acoustic engineers — we answer
+              within one working day. You can also continue via WhatsApp or email anytime.
             </Alert>
           </Box>
         </Box>

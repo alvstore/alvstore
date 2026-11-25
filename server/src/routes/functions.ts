@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { prisma, pool } from "../db.js";
 import { env } from "../env.js";
 import { resolveHikvisionCredentials } from "../lib/hikvision-config.js";
+import { handlePublicLeadRequest } from "../lib/public-lead.js";
 import { isValidAppRole, replaceUserRole } from "../lib/user-roles.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 
@@ -78,6 +79,11 @@ async function manageStaff(req: Request, res: Response) {
   return fail(res, "Invalid action. Use 'create' or 'update'");
 }
 functionsRouter.post("/manage-staff", requireAuth, requireRole("admin"), asyncHandler(manageStaff));
+
+// ---------------------------------------------------------------------------
+// public-lead (anonymous website Write to us -> CRM lead + admin alert)
+// ---------------------------------------------------------------------------
+functionsRouter.post("/public-lead", asyncHandler((req, res) => handlePublicLeadRequest(req, res)));
 
 // ---------------------------------------------------------------------------
 // settings helper
