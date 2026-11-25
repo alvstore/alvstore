@@ -118,3 +118,17 @@ test("CalendarPage uses unified left filter rail, SideDrawer, pastel pill events
   assert.match(calSrc, /Edit Event/);
   assert.doesNotMatch(calSrc, /FormDialog/);
 });
+
+test("Dashboard uses Materialize bento row + MetricStrip + Recent invoices table while keeping all E2E landmarks", () => {
+  const dashSrc = fs.readFileSync(path.join(root, "src/screens/Dashboard.tsx"), "utf8");
+  assert.match(dashSrc, /MetricStrip/);
+  assert.match(dashSrc, /DataTable/);
+  assert.match(dashSrc, /pastelPillColors/);
+  assert.match(dashSrc, /WorkloadCalendar/);
+  assert.match(dashSrc, /AgendaWidget/);
+  assert.match(dashSrc, /ChecklistWidget/);
+  assert.match(dashSrc, /title="Sales activity"/);
+  assert.match(dashSrc, /title="Repair pipeline"/);
+  assert.match(dashSrc, /label="Repair completion"/);
+  assert.match(dashSrc, /aria-label="Refresh dashboard"/);
+});
