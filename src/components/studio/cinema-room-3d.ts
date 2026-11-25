@@ -442,42 +442,55 @@ export function createCinemaRoomScene(
     frontWall.receiveShadow = true;
     roomShellGroup.add(frontWall);
 
-    // 3. Left & Right Plaster Cutaway Sidewalls + Rear Wainscot Wall + Walnut Slat Diffusers
-    const wallThickness = 0.18;
-    [-w / 2 - wallThickness / 2, w / 2 + wallThickness / 2].forEach(wx => {
-      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, cutawayWallH, l + 0.2), mats.plasterWall);
-      sideWall.position.set(wx, cutawayWallH / 2, 0);
-      sideWall.castShadow = true;
-      sideWall.receiveShadow = true;
-      roomShellGroup.add(sideWall);
+    // 3. Asymmetric Architectural Cutaway Walls:
+    // Full height left sidewall (-X) with tall walnut acoustic slats & cove LEDs;
+    // low open wainscot curbs along near right (+X) and rear (+Z) edges so seating,
+    // risers, front R speaker, and dispersion cones remain completely unobstructed in 3D view.
+    const wallThickness = 0.16;
+    const leftSideWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, cutawayWallH, l + 0.2), mats.plasterWall);
+    leftSideWall.position.set(-w / 2 - wallThickness / 2, cutawayWallH / 2, 0);
+    leftSideWall.castShadow = true;
+    leftSideWall.receiveShadow = true;
+    roomShellGroup.add(leftSideWall);
 
-      // Warm ceiling soffit cove strip & floating beam
-      const soffit = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, l), mats.slatWood);
-      soffit.position.set(wx > 0 ? w / 2 - 0.12 : -w / 2 + 0.12, cutawayWallH - 0.08, 0);
-      roomShellGroup.add(soffit);
+    const leftSoffit = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, l), mats.slatWood);
+    leftSoffit.position.set(-w / 2 + 0.12, cutawayWallH - 0.08, 0);
+    roomShellGroup.add(leftSoffit);
 
-      const led = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, l - 0.5), mats.coveLed);
-      led.position.set(wx > 0 ? w / 2 - 0.2 : -w / 2 + 0.2, cutawayWallH - 0.12, 0);
-      roomShellGroup.add(led);
-    });
+    const leftLed = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, l - 0.5), mats.coveLed);
+    leftLed.position.set(-w / 2 + 0.2, cutawayWallH - 0.12, 0);
+    roomShellGroup.add(leftLed);
 
-    // Cutaway Rear Low Wall
-    const rearLowH = 1.65;
-    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(w + 0.24, rearLowH, wallThickness), mats.plasterWall);
-    rearWall.position.set(0, rearLowH / 2, l / 2 + wallThickness / 2);
+    const rightCurbH = 0.52;
+    const rightCurbWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, rightCurbH, l + 0.2), mats.plasterWall);
+    rightCurbWall.position.set(w / 2 + wallThickness / 2, rightCurbH / 2, 0);
+    rightCurbWall.castShadow = true;
+    rightCurbWall.receiveShadow = true;
+    roomShellGroup.add(rightCurbWall);
+
+    const rightCap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, l + 0.2), mats.slatWood);
+    rightCap.position.set(w / 2 + wallThickness / 2, rightCurbH + 0.025, 0);
+    roomShellGroup.add(rightCap);
+
+    // Cutaway Rear Low Wainscot Curb
+    const rearCurbH = 0.58;
+    const rearWall = new THREE.Mesh(new THREE.BoxGeometry(w + 0.24, rearCurbH, wallThickness), mats.plasterWall);
+    rearWall.position.set(0, rearCurbH / 2, l / 2 + wallThickness / 2);
     rearWall.receiveShadow = true;
     roomShellGroup.add(rearWall);
 
-    // Sculpted Walnut Acoustic Slats evenly distributed along side walls
+    const rearCap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.26, 0.05, 0.2), mats.slatWood);
+    rearCap.position.set(0, rearCurbH + 0.025, l / 2 + wallThickness / 2);
+    roomShellGroup.add(rearCap);
+
+    // Sculpted Walnut Acoustic Slats along the full-height left architectural wall
     const slatCount = Math.max(5, Math.floor((l - 1.2) / 0.52));
     for (let i = 0; i < slatCount; i++) {
       const z = -l / 2 + 0.8 + ((l - 1.6) * i) / Math.max(1, slatCount - 1);
-      [-w / 2 + 0.035, w / 2 - 0.035].forEach(sx => {
-        const slat = new THREE.Mesh(new RoundedBoxGeometry(0.055, cutawayWallH - 0.48, 0.075, 2, 0.01), mats.slatWood);
-        slat.position.set(sx, (cutawayWallH - 0.48) / 2 + 0.18, z);
-        slat.castShadow = true;
-        roomShellGroup.add(slat);
-      });
+      const slat = new THREE.Mesh(new RoundedBoxGeometry(0.055, cutawayWallH - 0.48, 0.075, 2, 0.01), mats.slatWood);
+      slat.position.set(-w / 2 + 0.035, (cutawayWallH - 0.48) / 2 + 0.18, z);
+      slat.castShadow = true;
+      roomShellGroup.add(slat);
     }
 
     // 4. Tiered Rear Seating Riser Platform (when 2 rows active)
@@ -557,6 +570,13 @@ export function createCinemaRoomScene(
         woofer = buildSubwoofer(group);
       } else if (node.role === "surround") {
         buildSurroundSpeaker(group);
+        if (node.id === "SR" || node.id === "SBL" || node.id === "SBR") {
+          // Grounded slim brushed-brass pedestal stanchion above low cutaway wainscot curb
+          const postH = Math.max(0.2, node.pos3d[1] - 0.22);
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, postH, 10), mats.brassTrim);
+          post.position.set(0, -postH / 2 - 0.22, -0.02);
+          group.add(post);
+        }
       } else if (node.role === "height") {
         buildCeilingAtmos(group);
       }
@@ -683,9 +703,9 @@ export function createCinemaRoomScene(
     }
     if (preset === "top") {
       return {
-        pos: new THREE.Vector3(0, Math.max(8.0, Math.max(w, l) * 1.18), 0.35),
-        target: new THREE.Vector3(0, 0, 0),
-        fov: 38,
+        pos: new THREE.Vector3(0, Math.max(9.2, Math.max(w, l) * 1.42), 0.22),
+        target: new THREE.Vector3(0, 0, -0.08),
+        fov: 44,
       };
     }
     return {
@@ -791,24 +811,25 @@ export function createCinemaRoomScene(
 
   function animate() {
     animId = requestAnimationFrame(animate);
-    const elapsed = clock.getElapsedTime();
+    const delta = Math.min(0.1, clock.getDelta());
+    const elapsed = clock.elapsedTime;
 
-    // 1. Animate Lights On <-> Cinema Dark Mode transition
+    // 1. Animate Lights On <-> Cinema Dark Mode transition (frame-rate independent)
     const desiredLit = targetLightsOn ? 1 : 0;
-    const litStep = isReducedMotion ? 1 : 0.075;
+    const litStep = isReducedMotion ? 1 : Math.min(1, delta * 5.2);
     litProgress += (desiredLit - litProgress) * litStep;
 
     scene.background = bgLit.clone().lerp(bgDark, 1 - litProgress);
-    hemiLight.intensity = 0.28 + litProgress * 1.1;
-    keyLight.intensity = 0.34 + litProgress * 1.25;
-    fillLight.intensity = 0.14 + litProgress * 0.42;
-    mats.coveLed.emissiveIntensity = 0.38 + litProgress * 1.05;
-    mats.stepLed.emissiveIntensity = 1.25 - litProgress * 0.4;
-    mats.screenSurface.emissiveIntensity = 0.28 + (1 - litProgress) * 0.68;
-    screenBounce.intensity = 0.7 + (1 - litProgress) * 1.75;
+    hemiLight.intensity = 0.08 + litProgress * 1.28;
+    keyLight.intensity = 0.12 + litProgress * 1.45;
+    fillLight.intensity = 0.03 + litProgress * 0.5;
+    mats.coveLed.emissiveIntensity = 0.22 + litProgress * 1.2;
+    mats.stepLed.emissiveIntensity = 1.45 - litProgress * 0.55;
+    mats.screenSurface.emissiveIntensity = 0.34 + (1 - litProgress) * 1.05;
+    screenBounce.intensity = 0.55 + (1 - litProgress) * 1.95;
 
     const beamPulse = soundConesEnabled && !isReducedMotion ? Math.sin(elapsed * 8) * 0.008 : 0;
-    mats.projectorBeam.opacity = 0.02 + (1 - litProgress) * 0.125 + beamPulse;
+    mats.projectorBeam.opacity = 0.02 + (1 - litProgress) * 0.14 + beamPulse;
 
     // 2. Smooth Camera Glide Across Presets + Drag Orbit
     const goal = computePresetPose(currentPreset);
@@ -833,7 +854,7 @@ export function createCinemaRoomScene(
       desiredTarget = new THREE.Vector3(yawLook, currentLayout.screenCenterY + pitchLook, currentLayout.frontZ);
     }
 
-    const camAlpha = isReducedMotion ? 1 : 0.085;
+    const camAlpha = isReducedMotion ? 1 : Math.min(1, delta * 6.5);
     curCamPos.lerp(desiredPos, camAlpha);
     curCamTarget.lerp(desiredTarget, camAlpha);
     curCamFov += (goal.fov - curCamFov) * camAlpha;

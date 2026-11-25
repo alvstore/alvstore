@@ -525,7 +525,7 @@ export function computeRoomLayout(inputs: RoomInputs): RoomLayout {
     { id: "L", role: "screen", pos: [-frontX, 0, frontZ + 0.34], rot: [0, Math.PI / 14, 0] },
     { id: "C", role: "screen", pos: [0, 0.24, frontZ + 0.34], rot: [0, 0, 0] },
     { id: "R", role: "screen", pos: [frontX, 0, frontZ + 0.34], rot: [0, -Math.PI / 14, 0] },
-    { id: "SUB1", role: "subwoofer", pos: [-(widthM / 2 - 0.46), 0, frontZ + 0.48], rot: [0, Math.PI / 7, 0] },
+    { id: "SUB1", role: "subwoofer", pos: [-(widthM / 2 - 0.46), 0, frontZ + 1.08], rot: [0, Math.PI / 7, 0] },
     { id: "SUB2", role: "subwoofer", pos: [widthM / 2 - 0.46, 0, rearZ - 0.55], rot: [0, -Math.PI * 0.85, 0] },
     { id: "SL", role: "surround", pos: [-surroundSideX, 1.25, surroundSideZ], rot: [0, Math.PI / 2, 0] },
     { id: "SR", role: "surround", pos: [surroundSideX, 1.25, surroundSideZ], rot: [0, -Math.PI / 2, 0] },
