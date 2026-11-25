@@ -596,6 +596,7 @@ export default function CalendarPage() {
               select
               size="small"
               fullWidth
+              slotProps={{ inputLabel: { shrink: true } }}
               value={formCategory}
               onChange={(event) => setFormCategory(event.target.value)}
             >

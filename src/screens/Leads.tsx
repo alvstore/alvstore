@@ -359,7 +359,7 @@ export default function Leads() {
             </Box>
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.expected_value} onChange={e => setForm(p => ({ ...p, expected_value: e.target.value }))} label={"Expected Value (\u20B9)"} size="small" fullWidth/></Box>
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="datetime-local" value={form.next_follow_up} onChange={e => setForm(p => ({ ...p, next_follow_up: e.target.value }))} label={"Next Follow-up"} size="small" fullWidth/></Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="datetime-local" value={form.next_follow_up} onChange={e => setForm(p => ({ ...p, next_follow_up: e.target.value }))} label={"Next Follow-up"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 

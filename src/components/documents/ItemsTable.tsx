@@ -116,7 +116,7 @@ export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTa
     return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
-        <TextField label={"Line Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "220px", height: "2rem", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add product"}</MenuItem>
+        <TextField label={"Line Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "220px", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add product"}</MenuItem>
             {products.map(p => (<MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>
                 {p.name} — ₹{p.selling_price}
               </MenuItem>))}
@@ -142,11 +142,11 @@ export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTa
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }, gap: "0.5rem" }}>
             <Box>
 
-              <TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} label={"Qty"} size="small" fullWidth slotProps={{ htmlInput: { min: "1" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem" }}/>
+              <TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} label={"Qty"} size="small" fullWidth slotProps={{ htmlInput: { min: "1" } }} sx={{ fontSize: "0.875rem", lineHeight: "1.25rem" }}/>
             </Box>
             <Box>
 
-              <TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} label={"Price"} size="small" fullWidth sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem" }}/>
+              <TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} label={"Price"} size="small" fullWidth sx={{ fontSize: "0.875rem", lineHeight: "1.25rem" }}/>
             </Box>
             <Box>
               <FormLabel sx={{ fontSize: "10px", textTransform: "uppercase", color: "hsl(var(--muted-foreground))" }}>Discount</FormLabel>

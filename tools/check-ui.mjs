@@ -58,6 +58,18 @@ export function auditUi() {
         }
         if (tag.startsWith("motion.")) report(file, node, "Wrap motion in Box component={motion.*}", source);
         const attributes = node.attributes.properties;
+        if (tag === "TextField") {
+          const typeAttr = attributes.find(a => ts.isJsxAttribute(a) && a.name.getText(source) === "type")?.initializer?.getText(source) ?? "";
+          const labelAttr = attributes.find(a => ts.isJsxAttribute(a) && a.name.getText(source) === "label");
+          const sxAttr = attributes.find(a => ts.isJsxAttribute(a) && a.name.getText(source) === "sx")?.initializer?.getText(source) ?? "";
+          const rawNode = node.getText(source);
+          if (labelAttr && /["'](date|datetime-local|time|month|week)["']/.test(typeAttr) && !/shrink\s*:\s*(?:true|Boolean\()|\bshrink\b/.test(rawNode)) {
+            report(file, node, "Labeled date/time TextField must set inputLabel shrink: true", source);
+          }
+          if (labelAttr && /\bheight\s*:/.test(sxAttr)) {
+            report(file, node, "Labeled TextField must not override outer FormControl height", source);
+          }
+        }
         const component = attributes.find(a => ts.isJsxAttribute(a) && a.name.getText(source) === "component");
         if (tag === "Stack" && component?.initializer?.getText(source).includes("motion.")) report(file, node, "Use Box, never Stack, as a motion host", source);
         for (const attribute of attributes) {

@@ -407,6 +407,7 @@ export function VisitSection() {
                   value={room}
                   onChange={event => setRoom(event.target.value)}
                   variant="standard"
+                  slotProps={{ inputLabel: { shrink: Boolean(room) } }}
                   sx={studioFieldSx}
                 >
                   {ROOM_TYPES.map(type => (

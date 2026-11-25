@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, ButtonBase, Card, CardContent, Divider, FormLabel, IconButton, MenuItem, Switch, TextField, Typography } from "@mui/material";
+import { Box, Button, ButtonBase, Card, CardContent, Divider, FormLabel, IconButton, InputAdornment, MenuItem, Switch, TextField, Typography } from "@mui/material";
 import { AnimatedPage, SearchToolbar, SideDrawer, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -238,10 +238,26 @@ export default function POS() {
       {/* Left: Product Panel */}
       <Box sx={{ flex: "1 1 0%", display: "flex", flexDirection: "column", minWidth: "0px" }}>
         <Box sx={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          <Box sx={{ position: "relative", flex: "1 1 0%" }}>
-            <Box component={Barcode} sx={{ position: "absolute", left: "0.75rem", top: "50%", "--alv-translate-y": "-50%", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))", height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))" }}/>
-            <TextField placeholder="Scan barcode..." value={barcodeInput} onChange={e => setBarcodeInput(e.target.value)} onKeyDown={handleBarcodeScan} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Scan barcode..." } }} inputRef={barcodeRef} sx={{ paddingLeft: "2.25rem" }}/>
-          </Box>
+          <TextField
+            placeholder="Scan barcode..."
+            value={barcodeInput}
+            onChange={e => setBarcodeInput(e.target.value)}
+            onKeyDown={handleBarcodeScan}
+            size="small"
+            fullWidth
+            inputRef={barcodeRef}
+            slotProps={{
+              htmlInput: { "aria-label": "Scan barcode..." },
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Box component={Barcode} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))" }}/>
+                  </InputAdornment>
+                ),
+              },
+            }}
+            sx={{ flex: "1 1 0%" }}
+          />
           <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search products..." sx={{ flex: "1 1 0%" }}/>
         </Box>
         <Box sx={{ flex: "1 1 0%", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent", "&::-webkit-scrollbar": { width: "5px", height: "5px" }, "&::-webkit-scrollbar-track": { background: "transparent" }, "&::-webkit-scrollbar-thumb": { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "99px" } }}>

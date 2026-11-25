@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, ButtonBase, Card, CardContent, Checkbox, FormLabel, IconButton, MenuItem, Switch, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { Box, Button, ButtonBase, Card, CardContent, Checkbox, FormLabel, IconButton, InputAdornment, MenuItem, Switch, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
 import { useState, useMemo, useRef, useCallback, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -896,10 +896,23 @@ export default function ApplePricing() {
               <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
                 <Box>
                   <FormLabel>Search & Select Product</FormLabel>
-                  <Box sx={{ position: "relative" }}>
-                    <Box component={Search} sx={{ position: "absolute", left: "0.75rem", top: "50%", "--alv-translate-y": "-50%", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))", height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))" }}/>
-                    <TextField placeholder="Type product name, part number, or category..." value={calcSearch} onChange={(e) => setCalcSearch(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Type product name, part number, or category..." } }} sx={{ paddingLeft: "2.25rem" }}/>
-                  </Box>
+                  <TextField
+                    placeholder="Type product name, part number, or category..."
+                    value={calcSearch}
+                    onChange={(e) => setCalcSearch(e.target.value)}
+                    size="small"
+                    fullWidth
+                    slotProps={{
+                      htmlInput: { "aria-label": "Type product name, part number, or category..." },
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Box component={Search} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))" }}/>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
                   {calcSearch.trim() && calcSearchResults.length > 0 && (<Box sx={{ marginTop: "0.25rem", borderWidth: "1px", borderRadius: "var(--radius)", maxHeight: "200px", overflowY: "auto", backgroundColor: "hsl(var(--background))", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" }}>
                       {calcSearchResults.map((p) => (<ButtonBase key={p.id} onClick={() => { setCalcProduct(p.id); setCalcSearch(p.description); setCalcSelectedOffers([]); setCalcCashDiscountEnabled(false); }} type="button" sx={mergeSx({ width: "100%", textAlign: "left", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", fontSize: "0.875rem", lineHeight: "1.25rem", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)" }, transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", display: "flex", justifyContent: "space-between", alignItems: "center" }, calcProduct === p.id ? { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)", borderLeftWidth: "2px", borderColor: "hsl(var(--primary))" } : {})}>
                           <Box>
@@ -966,7 +979,24 @@ export default function ApplePricing() {
                         </Box>)}
 
                       <Box><FormLabel>Your Selling Price</FormLabel>
-                        <Box sx={{ position: "relative" }}><Box component={IndianRupee} sx={{ position: "absolute", left: "0.75rem", top: "50%", "--alv-translate-y": "-50%", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))", height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))" }}/><TextField type="number" placeholder="Enter selling price" value={calcSellingPrice} onChange={(e) => setCalcSellingPrice(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Enter selling price" } }} sx={{ paddingLeft: "2.25rem" }}/></Box>
+                        <TextField
+                          type="number"
+                          placeholder="Enter selling price"
+                          value={calcSellingPrice}
+                          onChange={(e) => setCalcSellingPrice(e.target.value)}
+                          size="small"
+                          fullWidth
+                          slotProps={{
+                            htmlInput: { "aria-label": "Enter selling price" },
+                            input: {
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <Box component={IndianRupee} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))" }}/>
+                                </InputAdornment>
+                              ),
+                            },
+                          }}
+                        />
                       </Box>
                     </>);
         })()}
@@ -1049,7 +1079,7 @@ export default function ApplePricing() {
                     <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 768px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }, gap: "0.75rem" }}>
                       {SYSTEM_FIELDS.map((sf) => (<Box key={sf}>
 
-                          <TextField value={fieldMapping[sf] || ""} label={SYSTEM_FIELD_LABELS[sf]} select size="small" fullWidth onChange={event => ((v) => setFieldMapping({ ...fieldMapping, [sf]: v }))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ height: "2rem" }}><MenuItem value="" disabled>{"Select column"}</MenuItem>{importHeaders.map((h) => <MenuItem key={h} value={h}>{h}</MenuItem>)}</TextField>
+                          <TextField value={fieldMapping[sf] || ""} label={SYSTEM_FIELD_LABELS[sf]} select size="small" fullWidth onChange={event => ((v) => setFieldMapping({ ...fieldMapping, [sf]: v }))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select column"}</MenuItem>{importHeaders.map((h) => <MenuItem key={h} value={h}>{h}</MenuItem>)}</TextField>
                         </Box>))}
                     </Box>
                     <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
@@ -1156,8 +1186,8 @@ export default function ApplePricing() {
             <Box><TextField type="number" value={newOffer.discount_amount} onChange={(e) => setNewOffer({ ...newOffer, discount_amount: e.target.value })} label={"Discount Amount (\u20B9) *"} size="small" fullWidth/></Box>
             <Box><TextField value={newOffer.discount_description} onChange={(e) => setNewOffer({ ...newOffer, discount_description: e.target.value })} placeholder="e.g. 6/9 month EMI cashback" label={"Description"} size="small" fullWidth/></Box>
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
-              <Box><TextField type="date" value={newOffer.start_date} onChange={(e) => setNewOffer({ ...newOffer, start_date: e.target.value })} label={"Start Date"} size="small" fullWidth/></Box>
-              <Box><TextField type="date" value={newOffer.end_date} onChange={(e) => setNewOffer({ ...newOffer, end_date: e.target.value })} label={"End Date"} size="small" fullWidth/></Box>
+              <Box><TextField type="date" value={newOffer.start_date} onChange={(e) => setNewOffer({ ...newOffer, start_date: e.target.value })} label={"Start Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
+              <Box><TextField type="date" value={newOffer.end_date} onChange={(e) => setNewOffer({ ...newOffer, end_date: e.target.value })} label={"End Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
             </Box>
           </Box>
         </SideDrawer>

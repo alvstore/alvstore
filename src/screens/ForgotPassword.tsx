@@ -66,7 +66,7 @@ export default function ForgotPassword() {
           </Box>) : (<Box onSubmit={handleReset} component="form" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.25rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
 
-              <TextField id="email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required label={"Email"} size="small" fullWidth sx={{ height: "2.75rem" }}/>
+              <TextField id="email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required label={"Email"} size="small" fullWidth/>
             </Box>
             <Button type="submit" disabled={loading} variant="contained" sx={{ width: "100%", height: "2.75rem" }}>
               {loading ? <><Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>Sending...</> : "Send Reset Link"}

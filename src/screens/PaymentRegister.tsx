@@ -367,7 +367,7 @@ export default function PaymentRegister() {
                   <Typography component="h3" variant="h3" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basic Info</Typography>
                   <Box>
 
-                    <TextField type="date" value={form.transaction_date} onChange={e => setForm(f => ({ ...f, transaction_date: e.target.value }))} label={"Date"} size="small" fullWidth/>
+                    <TextField type="date" value={form.transaction_date} onChange={e => setForm(f => ({ ...f, transaction_date: e.target.value }))} label={"Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
                   </Box>
                   <Box>
 
@@ -489,7 +489,7 @@ export default function PaymentRegister() {
                     </Box>
                     <Box>
 
-                      <TextField type="date" value={form.settlement_date} onChange={e => setForm(f => ({ ...f, settlement_date: e.target.value }))} label={"Settlement Date"} size="small" fullWidth/>
+                      <TextField type="date" value={form.settlement_date} onChange={e => setForm(f => ({ ...f, settlement_date: e.target.value }))} label={"Settlement Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
                     </Box>
                     <Box>
 
@@ -519,11 +519,11 @@ export default function PaymentRegister() {
                     <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
                       <Box>
 
-                        <TextField type="date" value={form.cheque_deposit_date} onChange={e => setForm(f => ({ ...f, cheque_deposit_date: e.target.value }))} label={"Deposit Date"} size="small" fullWidth/>
+                        <TextField type="date" value={form.cheque_deposit_date} onChange={e => setForm(f => ({ ...f, cheque_deposit_date: e.target.value }))} label={"Deposit Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
                       </Box>
                       <Box>
 
-                        <TextField type="date" value={form.cheque_clearance_date} onChange={e => setForm(f => ({ ...f, cheque_clearance_date: e.target.value }))} label={"Clearance Date"} size="small" fullWidth/>
+                        <TextField type="date" value={form.cheque_clearance_date} onChange={e => setForm(f => ({ ...f, cheque_clearance_date: e.target.value }))} label={"Clearance Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
                       </Box>
                     </Box>
                   </Box>)}

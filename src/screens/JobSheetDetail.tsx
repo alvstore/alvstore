@@ -907,7 +907,7 @@ export default function JobSheetDetail() {
                     </Box>)}
                   <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                    <TextField type="number" value={warrantyDays} onChange={e => setWarrantyDays(e.target.value)} placeholder="e.g. 30, 90, 180" label={"Warranty Days"} size="small" fullWidth sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem" }}/>
+                    <TextField type="number" value={warrantyDays} onChange={e => setWarrantyDays(e.target.value)} placeholder="e.g. 30, 90, 180" label={"Warranty Days"} size="small" fullWidth sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}/>
                   </Box>
                   <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 

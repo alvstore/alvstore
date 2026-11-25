@@ -206,9 +206,9 @@ export default function PurchaseBills() {
 
                 <TextField value={form.supplier_id} label={"Supplier *"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, supplier_id: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select supplier"}</MenuItem>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</TextField>
               </Box>
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.bill_date} onChange={e => setForm(p => ({ ...p, bill_date: e.target.value }))} label={"Bill Date"} size="small" fullWidth/></Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.bill_date} onChange={e => setForm(p => ({ ...p, bill_date: e.target.value }))} label={"Bill Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
             </Box>
-            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))} label={"Due Date"} size="small" fullWidth/></Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))} label={"Due Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
 
             <Box>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
@@ -236,7 +236,7 @@ export default function PurchaseBills() {
                     <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.5rem" }}>
                       <Box><TextField placeholder="Comma separated" value={item.serial_numbers || ""} onChange={e => setItems(prev => { const u = [...prev]; u[idx] = { ...u[idx], serial_numbers: e.target.value }; return u; })} label={"Serial #s"} size="small" fullWidth/></Box>
                       <Box><TextField value={item.batch_number || ""} onChange={e => setItems(prev => { const u = [...prev]; u[idx] = { ...u[idx], batch_number: e.target.value }; return u; })} label={"Batch"} size="small" fullWidth/></Box>
-                      <Box><TextField type="date" value={item.expiry_date || ""} onChange={e => setItems(prev => { const u = [...prev]; u[idx] = { ...u[idx], expiry_date: e.target.value }; return u; })} label={"Expiry"} size="small" fullWidth/></Box>
+                      <Box><TextField type="date" value={item.expiry_date || ""} onChange={e => setItems(prev => { const u = [...prev]; u[idx] = { ...u[idx], expiry_date: e.target.value }; return u; })} label={"Expiry"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
                     </Box>
                   </Box>))}
               </Box>

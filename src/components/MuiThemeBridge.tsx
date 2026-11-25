@@ -73,6 +73,26 @@ export function MuiThemeBridge({ children }: { children: React.ReactNode }) {
         MuiMenu: { styleOverrides: { paper: ({ theme: t }) => ({ border: `1px solid ${t.palette.divider}`, borderRadius: 14, boxShadow: `0 10px 40px ${alpha(t.palette.common.black, dark ? .25 : .08)}` }), list: { padding: 5 } } },
         MuiMenuItem: { styleOverrides: { root: { borderRadius: 8, fontSize: 13, transition: `background-color ${transition}` } } },
         MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 10 }, notchedOutline: { transition: `border-color ${transition}, border-width ${transition}` } } },
+        MuiInputBase: { styleOverrides: { input: { colorScheme: dark ? "dark" : "light" } } },
+        MuiTextField: {
+          styleOverrides: {
+            root: {
+              "&:has(input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'], input[type='week'])": {
+                "& .MuiInputLabel-outlined:not(.MuiInputLabel-shrink)": {
+                  transform: "translate(14px, -9px) scale(0.75)",
+                  maxWidth: "calc(133% - 32px)",
+                },
+                "& .MuiInputLabel-standard:not(.MuiInputLabel-shrink)": {
+                  transform: "translate(0, -1.5px) scale(0.75)",
+                  transformOrigin: "top left",
+                },
+                "& .MuiOutlinedInput-notchedOutline legend": {
+                  maxWidth: "100%",
+                },
+              },
+            },
+          },
+        },
         MuiChip: { styleOverrides: { root: { fontWeight: 600, borderRadius: 8 } } },
         MuiSkeleton: { defaultProps: { animation: "wave" }, styleOverrides: { rounded: { borderRadius: 12 } } },
         MuiLinearProgress: { styleOverrides: { root: ({ theme: t, ownerState }) => ({ backgroundColor: alpha(t.palette[ownerState.color && ownerState.color !== "inherit" ? ownerState.color : "primary"].main, .1) }), bar: { transition: "transform .55s cubic-bezier(.22,1,.36,1)" } } },

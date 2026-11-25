@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, ButtonBase, FormLabel, TextField, Typography } from "@mui/material";
+import { Box, Button, FormLabel, IconButton, InputAdornment, TextField, Typography } from "@mui/material";
 import { AnimatedPage, toast } from "@/components/mui";
 import { useState } from "react";
 import { useNavigate } from "@/lib/router-compat";
@@ -63,12 +63,34 @@ export default function ResetPassword() {
         <Box onSubmit={handleUpdate} component="form" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.25rem" } }}>
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
             <FormLabel htmlFor="password">New Password</FormLabel>
-            <Box sx={{ position: "relative" }}>
-              <TextField id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required size="small" fullWidth slotProps={{ htmlInput: { minLength: 6, "aria-label": "••••••••" } }} sx={{ height: "2.75rem", paddingRight: "2.5rem" }}/>
-              <ButtonBase type="button" onClick={() => setShowPassword(!showPassword)} sx={{ position: "absolute", right: "0.75rem", top: "50%", "--alv-translate-y": "-50%", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" }, transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }}>
-                {showPassword ? <Box component={EyeOff} sx={{ height: "1rem", width: "1rem" }}/> : <Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/>}
-              </ButtonBase>
-            </Box>
+            <TextField
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              size="small"
+              fullWidth
+              slotProps={{
+                htmlInput: { minLength: 6, "aria-label": "••••••••" },
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        edge="end"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        onClick={() => setShowPassword(!showPassword)}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {showPassword ? <Box component={EyeOff} sx={{ height: "1rem", width: "1rem" }}/> : <Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/>}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
           </Box>
           <Button type="submit" disabled={loading} variant="contained" sx={{ width: "100%", height: "2.75rem" }}>
             {loading ? <><Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>Updating...</> : "Update Password"}

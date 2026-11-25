@@ -1405,11 +1405,11 @@ function HikvisionTab() {
                       <Box sx={{ display: "flex", alignItems: "flex-end", gap: "0.5rem" }}>
                         <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
 
-                          <TextField type="datetime-local" value={backfillStart} onChange={e => setBackfillStart(e.target.value)} label={"Start"} size="small" fullWidth sx={{ fontSize: "0.75rem", lineHeight: "1rem", height: "2rem", width: "12rem" }}/>
+                          <TextField type="datetime-local" value={backfillStart} onChange={e => setBackfillStart(e.target.value)} label={"Start"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} sx={{ fontSize: "0.75rem", lineHeight: "1rem", width: "12rem" }}/>
                         </Box>
                         <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
 
-                          <TextField type="datetime-local" value={backfillEnd} onChange={e => setBackfillEnd(e.target.value)} label={"End"} size="small" fullWidth sx={{ fontSize: "0.75rem", lineHeight: "1rem", height: "2rem", width: "12rem" }}/>
+                          <TextField type="datetime-local" value={backfillEnd} onChange={e => setBackfillEnd(e.target.value)} label={"End"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} sx={{ fontSize: "0.75rem", lineHeight: "1rem", width: "12rem" }}/>
                         </Box>
                         <Button disabled={!!syncingAction || !backfillStart || !backfillEnd} onClick={() => {
                 const start = new Date(backfillStart).toISOString();

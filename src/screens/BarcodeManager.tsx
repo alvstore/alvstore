@@ -149,7 +149,7 @@ export default function BarcodeManager() {
               <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.75rem" }}>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField value={format} label={"Format"} select size="small" fullWidth onChange={event => setFormat(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ height: "2.25rem" }}>
+                  <TextField value={format} label={"Format"} select size="small" fullWidth onChange={event => setFormat(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
                       <MenuItem value="CODE128">CODE128</MenuItem>
                       <MenuItem value="EAN13">EAN-13</MenuItem>
                       <MenuItem value="UPC">UPC</MenuItem>
@@ -157,7 +157,7 @@ export default function BarcodeManager() {
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField type="number" value={labelQty} onChange={e => setLabelQty(parseInt(e.target.value) || 1)} label={"Labels per Product"} size="small" fullWidth slotProps={{ htmlInput: { min: 1, max: 50 } }} sx={{ height: "2.25rem" }}/>
+                  <TextField type="number" value={labelQty} onChange={e => setLabelQty(parseInt(e.target.value) || 1)} label={"Labels per Product"} size="small" fullWidth slotProps={{ htmlInput: { min: 1, max: 50 } }}/>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "flex-end", gap: "0.5rem" }}>
                   <Button onClick={generateAndPreview} disabled={generating || selected.size === 0} variant="contained" sx={{ flex: "1 1 0%", height: "2.25rem" }}>

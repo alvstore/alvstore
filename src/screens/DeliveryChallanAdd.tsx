@@ -197,7 +197,7 @@ export default function DeliveryChallanAdd() {
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
-                  <TextField label={"Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "200px", height: "2.25rem", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add Item"}</MenuItem>{products.map(p => <MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{p.name} — ₹{p.selling_price}</MenuItem>)}</TextField>
+                  <TextField label={"Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "200px", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add Item"}</MenuItem>{products.map(p => <MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{p.name} — ₹{p.selling_price}</MenuItem>)}</TextField>
                 </Box>
 
                 {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>

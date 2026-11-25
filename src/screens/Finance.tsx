@@ -307,9 +307,9 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
               {f.label}
             </Button>))}
           {dateFilter === "custom" && (<>
-              <TextField type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "9rem", height: "2rem" }}/>
+              <TextField type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "9rem" }}/>
               <Box component="span" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>to</Box>
-              <TextField type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "9rem", height: "2rem" }}/>
+              <TextField type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "9rem" }}/>
             </>)}
         </Box>
       </Box>
@@ -410,7 +410,7 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
       >
 
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} label={"Date"} size="small" fullWidth/></Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} label={"Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} label={"Amount *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -504,7 +504,7 @@ function TransfersTab({ accounts, transactions, staffName, userId, onRefresh }: 
       >
 
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} label={"Date"} size="small" fullWidth/></Box>
+            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} label={"Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField value={form.from} label={"From Account *"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, from: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select"}</MenuItem>{accounts.filter(a => a.status === "active").map(a => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}</TextField>
@@ -837,7 +837,7 @@ function CashControlTab({ records, staffName, userId, onRefresh }: {
     }) => (<Box sx={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "0.5rem" }}>
       {DENOMINATIONS.map(d => (<Box key={d} sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.25rem" } }}>
 
-          <TextField type="number" value={denoms[d] || ""} onChange={e => onChange({ ...denoms, [d]: e.target.value })} placeholder="0" label={<>₹{d}</>} size="small" fullWidth slotProps={{ htmlInput: { min: "0" } }} sx={{ height: "2rem", fontSize: "0.75rem", lineHeight: "1rem", textAlign: "center" }}/>
+          <TextField type="number" value={denoms[d] || ""} onChange={e => onChange({ ...denoms, [d]: e.target.value })} placeholder="0" label={<>₹{d}</>} size="small" fullWidth slotProps={{ htmlInput: { min: "0" } }} sx={{ fontSize: "0.75rem", lineHeight: "1rem", textAlign: "center" }}/>
         </Box>))}
     </Box>);
     return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
@@ -887,7 +887,7 @@ function CashControlTab({ records, staffName, userId, onRefresh }: {
         {(["today", "week", "month", "custom"] as const).map(v => (<Button key={v} onClick={() => setDateRange(v)} variant={dateRange === v ? "contained" : "outlined"} size="small" sx={{ textTransform: "capitalize" }}>
             {v === "custom" ? "Custom" : v === "today" ? "Today" : v === "week" ? "7 Days" : "This Month"}
           </Button>))}
-        {dateRange === "custom" && (<TextField type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "auto", height: "2.25rem" }}/>)}
+        {dateRange === "custom" && (<TextField type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "auto" }}/>)}
       </Box>
 
       {/* History Table */}

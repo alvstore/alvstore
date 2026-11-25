@@ -209,7 +209,7 @@ export default function PurchaseOrders() {
 
                 <TextField value={form.supplier_id} label={"Supplier *"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, supplier_id: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select supplier"}</MenuItem>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</TextField>
               </Box>
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.expected_date} onChange={e => setForm(p => ({ ...p, expected_date: e.target.value }))} label={"Expected Date"} size="small" fullWidth/></Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.expected_date} onChange={e => setForm(p => ({ ...p, expected_date: e.target.value }))} label={"Expected Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
             </Box>
 
             <Box>

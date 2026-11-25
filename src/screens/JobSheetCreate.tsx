@@ -1,6 +1,6 @@
 "use client";
 
-import { Accordion, AccordionDetails, AccordionSummary, Box, Button, ButtonBase, Card, CardContent, Divider, FormLabel, IconButton, LinearProgress, MenuItem, Radio, RadioGroup, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { Accordion, AccordionDetails, AccordionSummary, Box, Button, ButtonBase, Card, CardContent, Divider, FormLabel, IconButton, InputAdornment, LinearProgress, MenuItem, Radio, RadioGroup, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { AnimatedPage, DataTable, PageHeader, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "@/lib/router-compat";
@@ -760,12 +760,32 @@ export default function JobSheetCreate() {
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
                   <FormLabel>Apple ID Password</FormLabel>
-                  <Box sx={{ position: "relative" }}>
-                    <TextField type={showApplePassword ? "text" : "password"} placeholder="••••••••" value={form.apple_id_password} onChange={e => updateField("apple_id_password", e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "••••••••" } }}/>
-                    <ButtonBase type="button" onClick={() => setShowApplePassword(p => !p)} sx={{ position: "absolute", right: "0.75rem", top: "50%", "--alv-translate-y": "-50%", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
-                      {showApplePassword ? <Box component={EyeOff} sx={{ height: "1rem", width: "1rem" }}/> : <Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/>}
-                    </ButtonBase>
-                  </Box>
+                  <TextField
+                    type={showApplePassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={form.apple_id_password}
+                    onChange={e => updateField("apple_id_password", e.target.value)}
+                    size="small"
+                    fullWidth
+                    slotProps={{
+                      htmlInput: { "aria-label": "••••••••" },
+                      input: {
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              size="small"
+                              edge="end"
+                              aria-label={showApplePassword ? "Hide password" : "Show password"}
+                              onClick={() => setShowApplePassword(p => !p)}
+                              onMouseDown={e => e.preventDefault()}
+                            >
+                              {showApplePassword ? <Box component={EyeOff} sx={{ height: "1rem", width: "1rem" }}/> : <Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/>}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -773,12 +793,32 @@ export default function JobSheetCreate() {
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
                   <FormLabel>Google Account Password</FormLabel>
-                  <Box sx={{ position: "relative" }}>
-                    <TextField type={showGooglePassword ? "text" : "password"} placeholder="••••••••" value={form.google_account_password} onChange={e => updateField("google_account_password", e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "••••••••" } }}/>
-                    <ButtonBase type="button" onClick={() => setShowGooglePassword(p => !p)} sx={{ position: "absolute", right: "0.75rem", top: "50%", "--alv-translate-y": "-50%", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
-                      {showGooglePassword ? <Box component={EyeOff} sx={{ height: "1rem", width: "1rem" }}/> : <Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/>}
-                    </ButtonBase>
-                  </Box>
+                  <TextField
+                    type={showGooglePassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={form.google_account_password}
+                    onChange={e => updateField("google_account_password", e.target.value)}
+                    size="small"
+                    fullWidth
+                    slotProps={{
+                      htmlInput: { "aria-label": "••••••••" },
+                      input: {
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              size="small"
+                              edge="end"
+                              aria-label={showGooglePassword ? "Hide password" : "Show password"}
+                              onClick={() => setShowGooglePassword(p => !p)}
+                              onMouseDown={e => e.preventDefault()}
+                            >
+                              {showGooglePassword ? <Box component={EyeOff} sx={{ height: "1rem", width: "1rem" }}/> : <Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/>}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
                 </Box>
               </Box>
               <Box sx={{ maxWidth: "24rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>

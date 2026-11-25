@@ -268,3 +268,35 @@ test("SideDrawer provides animated drawer choreography, reduced-motion support, 
   }
   assert.deepEqual(offenders, [], "zero files in src/ may reference FormDialog or MUI <Dialog>");
 });
+
+test("ProductAdd provides explicit category selector and + Add new category workflow", () => {
+  const src = fs.readFileSync(path.join(root, "src/screens/ProductAdd.tsx"), "utf8");
+  assert.match(src, /newCategoryName/);
+  assert.match(src, /handleAddCategory/);
+  assert.match(src, /label="Add New Category"/);
+  assert.match(src, /newCategoryName\.trim\(\) \|\| form\.category\.trim\(\)/);
+});
+
+test("MuiThemeBridge guards temporal labels globally and no TextField uses fake padding overlay icons", () => {
+  const bridge = fs.readFileSync(path.join(root, "src/components/MuiThemeBridge.tsx"), "utf8");
+  assert.match(bridge, /input\[type='date'\].*input\[type='datetime-local'\]/);
+  assert.match(bridge, /MuiInputLabel-outlined:not\(\.MuiInputLabel-shrink\)/);
+
+  const walk = (dir) => {
+    const out = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...walk(full));
+      else if (/\.(tsx|jsx)$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  };
+  const paddedOverlayOffenders = [];
+  for (const file of walk(path.join(root, "src"))) {
+    const src = fs.readFileSync(file, "utf8");
+    if (/<TextField[^>]*sx=\{[^}]*(?:paddingLeft:\s*["']2\.|paddingRight:\s*["']2\.)/.test(src)) {
+      paddedOverlayOffenders.push(path.relative(root, file));
+    }
+  }
+  assert.deepEqual(paddedOverlayOffenders, [], "use MUI InputAdornment instead of outer FormControl paddingLeft/paddingRight overlays");
+});

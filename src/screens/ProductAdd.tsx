@@ -1,12 +1,12 @@
 "use client";
 
-import { Box, Button, Card, CardContent, FormLabel, IconButton, MenuItem, Tab, TextField, Typography } from "@mui/material";
+import { Box, Button, Card, CardContent, FormHelperText, FormLabel, IconButton, MenuItem, Tab, TextField, Typography } from "@mui/material";
 import { AnimatedPage, PageHeader, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Save, X, Barcode, Upload, Link2, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, X, Barcode, Upload, Link2, Loader2, Plus } from "lucide-react";
 import JsBarcode from "jsbarcode";
 function generateBarcode(): string {
     const prefix = "200";
@@ -45,6 +45,7 @@ export default function ProductAdd() {
     const { user } = useAuth();
     const [form, setForm] = useState(emptyForm);
     const [categories, setCategories] = useState<string[]>([]);
+    const [newCategoryName, setNewCategoryName] = useState("");
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [imageUrlInput, setImageUrlInput] = useState("");
@@ -53,7 +54,7 @@ export default function ProductAdd() {
     useEffect(() => {
         supabase.from("products").select("category").then(({ data }) => {
             const cats = [...new Set((data || []).map(p => p.category).filter(Boolean))] as string[];
-            setCategories(cats);
+            setCategories((prev) => Array.from(new Set([...prev, ...cats])).sort((a, b) => a.localeCompare(b)));
         });
         if (id) {
             supabase.from("products").select("*").eq("id", id).single().then(({ data, error }) => {
@@ -61,6 +62,9 @@ export default function ProductAdd() {
                     toast.error("Product not found");
                     navigate("/inventory");
                     return;
+                }
+                if (data.category) {
+                    setCategories((prev) => prev.includes(data.category!) ? prev : [...prev, data.category!].sort((a, b) => a.localeCompare(b)));
                 }
                 setForm({
                     name: data.name, sku: data.sku || "", barcode: data.barcode || "",
@@ -114,15 +118,28 @@ export default function ProductAdd() {
         }
         setValidatingUrl(false);
     };
+    const handleAddCategory = () => {
+        const trimmed = newCategoryName.trim();
+        if (!trimmed) return;
+        const existing = categories.find((c) => c.toLowerCase() === trimmed.toLowerCase());
+        const resolved = existing || trimmed;
+        if (!existing) {
+            setCategories((prev) => [...prev, resolved].sort((a, b) => a.localeCompare(b)));
+        }
+        updateField("category", resolved);
+        setNewCategoryName("");
+        toast.success(existing ? `Selected "${resolved}"` : `Added category "${resolved}"`);
+    };
     const handleSave = async () => {
         if (!form.name.trim()) {
             toast.error("Product name is required");
             return;
         }
         setLoading(true);
+        const resolvedCategory = newCategoryName.trim() || form.category.trim() || null;
         const payload = {
             name: form.name, sku: form.sku || null, barcode: form.barcode || null,
-            description: form.description || null, category: form.category || null,
+            description: form.description || null, category: resolvedCategory,
             purchase_price: parseFloat(form.purchase_price) || 0,
             selling_price: parseFloat(form.selling_price) || 0,
             gst_percentage: parseFloat(form.gst_percentage) || 18,
@@ -246,12 +263,48 @@ export default function ProductAdd() {
           {/* Category */}
           <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" }}>
             <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "1rem" })}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "1rem", lineHeight: "1.5rem", fontWeight: "600" })}>Category</Typography></Box>
-            <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-              <TextField value={form.category} select size="small" fullWidth onChange={event => (v => updateField("category", v))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select category"}</MenuItem>{categories.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</TextField>
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
-
-                <TextField value={form.category} onChange={e => updateField("category", e.target.value)} placeholder="New category" label={"Or type a new category"} size="small" fullWidth/>
+            <CardContent sx={{ display: "grid", gap: 1.5 }}>
+              <TextField
+                value={categories.includes(form.category) ? form.category : ""}
+                label="Category"
+                select
+                size="small"
+                fullWidth
+                onChange={event => updateField("category", event.target.value)}
+                slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+              >
+                <MenuItem value="">{"None / Uncategorized"}</MenuItem>
+                {categories.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+              </TextField>
+              <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
+                <TextField
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCategory();
+                    }
+                  }}
+                  placeholder="e.g. Projectors, Speakers"
+                  label="Add New Category"
+                  size="small"
+                  fullWidth
+                />
+                <Button
+                  type="button"
+                  variant="outlined"
+                  onClick={handleAddCategory}
+                  disabled={!newCategoryName.trim()}
+                  sx={{ minHeight: 40, flexShrink: 0, whiteSpace: "nowrap" }}
+                >
+                  <Box component={Plus} sx={{ width: 15, height: 15, mr: 0.5 }} />
+                  Add
+                </Button>
               </Box>
+              <FormHelperText sx={{ m: 0 }}>
+                Select an existing category or add a new one to save with this product.
+              </FormHelperText>
             </CardContent>
           </Card>
 

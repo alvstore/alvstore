@@ -326,7 +326,7 @@ export default function Employees() {
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} label={"Designation"} size="small" fullWidth/></Box>
             </Box>
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.joining_date} onChange={e => setForm(p => ({ ...p, joining_date: e.target.value }))} label={"Joining Date"} size="small" fullWidth/></Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.joining_date} onChange={e => setForm(p => ({ ...p, joining_date: e.target.value }))} label={"Joining Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.salary} onChange={e => setForm(p => ({ ...p, salary: e.target.value }))} label={"Salary"} size="small" fullWidth/></Box>
             </Box>
 
