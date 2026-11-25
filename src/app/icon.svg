@@ -7,12 +7,28 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="124" fill="url(#alv-emerald)"/>
-  
-  <g transform="translate(252, 256) skewX(-5) translate(-256, -256)">
-    <path d="M98 176 H148 L194 336 H150 L138 292 H104 L92 336 H48 L98 176 Z M111 262 H131 L121 218 L111 262 Z" fill="#FFFFFF" fill-rule="evenodd"/>
-    <path d="M210 176 H252 V300 H304 V336 H210 V176 Z" fill="#FFFFFF"/>
-    <path d="M300 176 H346 L375 288 L404 176 H450 L398 336 H352 L300 176 Z" fill="#FFFFFF"/>
-    <circle cx="444" cy="316" r="21" fill="#A7F3D0"/>
-  </g>
-
+  <circle cx="242" cy="256" r="192" fill="#047857" opacity="0.5"/>
+  <path fill-rule="evenodd" d="
+  M 150 202
+  C 150 140, 198 110, 290 110
+  C 386 110, 428 144, 428 210
+  L 428 388
+  L 356 388
+  L 356 356
+  C 324 384, 282 396, 228 396
+  C 162 396, 124 360, 124 308
+  C 124 252, 166 226, 248 221
+  L 356 215
+  L 356 200
+  C 356 173, 328 162, 284 162
+  C 242 162, 220 174, 214 202
+  Z
+  M 196 304
+  C 196 281, 212 271, 250 269
+  L 356 264
+  L 356 298
+  C 356 327, 326 342, 260 342
+  C 214 342, 196 329, 196 304
+  Z
+" fill="#FFFFFF"/>
 </svg>

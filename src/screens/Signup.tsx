@@ -1,11 +1,11 @@
 "use client";
 
 import { Box, Button, ButtonBase, FormLabel, TextField, Typography } from "@mui/material";
-import { AnimatedPage, PageHeader, toast } from "@/components/mui";
+import { AnimatedPage, BrandMark, PageHeader, toast } from "@/components/mui";
 import { useState } from "react";
 import { Link } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
-import { Zap, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 export default function Signup() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -36,8 +36,8 @@ export default function Signup() {
       <Box sx={{ display: "none", "@media (min-width: 1024px)": { display: "flex", width: "50%" }, backgroundImage: "linear-gradient(to bottom right, var(--alv-gradient-stops))", "--alv-gradient-from": "hsl(var(--primary)) var(--alv-gradient-from-position)", "--alv-gradient-to": "hsl(var(--accent)) var(--alv-gradient-to-position)", "--alv-gradient-stops": "var(--alv-gradient-from), color-mix(in srgb, hsl(var(--primary)) 90%, transparent) var(--alv-gradient-via-position), var(--alv-gradient-to)", position: "relative", overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
         <Box sx={{ position: "absolute", inset: "0px", backgroundImage: "radial-gradient(circle at 30% 20%,color-mix(in srgb, hsl(var(--primary)) 30%, transparent),transparent 50%)" }}/>
         <Box sx={{ position: "relative", zIndex: "10", textAlign: "center", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" }, paddingLeft: "3rem", paddingRight: "3rem" }}>
-          <Box sx={{ height: "5rem", width: "5rem", borderRadius: "1rem", backgroundColor: "rgb(255 255 255 / 0.1)", "--alv-backdrop-blur": "blur(4px)", WebkitBackdropFilter: "var(--alv-backdrop-blur) var(--alv-backdrop-brightness) var(--alv-backdrop-contrast) var(--alv-backdrop-grayscale) var(--alv-backdrop-hue-rotate) var(--alv-backdrop-invert) var(--alv-backdrop-saturate) var(--alv-backdrop-sepia)", backdropFilter: "var(--alv-backdrop-blur) var(--alv-backdrop-brightness) var(--alv-backdrop-contrast) var(--alv-backdrop-grayscale) var(--alv-backdrop-hue-rotate) var(--alv-backdrop-invert) var(--alv-backdrop-saturate) var(--alv-backdrop-sepia)", borderWidth: "1px", borderColor: "rgb(255 255 255 / 0.2)", display: "flex", alignItems: "center", justifyContent: "center", marginLeft: "auto", marginRight: "auto" }}>
-            <Box component={Zap} sx={{ height: "2.5rem", width: "2.5rem", color: "rgb(255 255 255 / 1)" }}/>
+          <Box sx={{ display: "flex", justifyContent: "center" }}>
+            <BrandMark size={76} badgeColor="rgba(255,255,255,0.14)" foregroundColor="#FFFFFF" crescentColor="rgba(0,0,0,0.14)" />
           </Box>
           <PageHeader title={"ALVStore"} subtitle={"ERP 2026"}/>
           <Typography component="p" variant="body1" sx={{ color: "rgb(255 255 255 / 0.7)", fontSize: "0.875rem", lineHeight: "1.625", maxWidth: "20rem", marginLeft: "auto", marginRight: "auto" }}>
@@ -49,10 +49,8 @@ export default function Signup() {
       {/* Right form panel */}
       <Box sx={{ flex: "1 1 0%", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "hsl(var(--background))", paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
         <Box sx={{ width: "100%", maxWidth: "24rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "2rem" } }}>
-          <Box sx={{ "@media (min-width: 1024px)": { display: "none" }, textAlign: "center" }}>
-            <Box sx={{ height: "3.5rem", width: "3.5rem", borderRadius: "0.75rem", backgroundImage: "linear-gradient(to bottom right, var(--alv-gradient-stops))", "--alv-gradient-from": "hsl(var(--primary)) var(--alv-gradient-from-position)", "--alv-gradient-to": "hsl(var(--accent)) var(--alv-gradient-to-position)", "--alv-gradient-stops": "var(--alv-gradient-from), var(--alv-gradient-to)", display: "flex", alignItems: "center", justifyContent: "center", marginLeft: "auto", marginRight: "auto", marginBottom: "0.75rem" }}>
-              <Box component={Zap} sx={{ height: "1.75rem", width: "1.75rem", color: "rgb(255 255 255 / 1)" }}/>
-            </Box>
+          <Box sx={{ "@media (min-width: 1024px)": { display: "none" }, display: "flex", justifyContent: "center", marginBottom: "0.75rem" }}>
+            <BrandMark size={52} />
           </Box>
 
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>

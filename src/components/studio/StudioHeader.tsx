@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Box, Divider, Drawer, IconButton, Typography } from "@mui/material";
 import { Close, Menu } from "@mui/icons-material";
+import { BrandMark } from "@/components/mui";
 import { NAV, STUDIO_INFO } from "./content";
 import { EASE, STUDIO, TYPE, FONT } from "./tokens";
 
@@ -73,7 +74,8 @@ export function StudioHeader({ overStage = false }: { overStage?: boolean }) {
           color: overStage ? STUDIO.graphite : STUDIO.graphite,
         }}
       >
-        <Box component={Link} href="/" aria-label="ALVStore, home" sx={{ display: "flex", alignItems: "baseline", gap: 1.2, textDecoration: "none", color: STUDIO.graphite }}>
+        <Box component={Link} href="/" aria-label="ALVStore, home" sx={{ display: "flex", alignItems: "center", gap: 1.1, textDecoration: "none", color: STUDIO.graphite }}>
+          <BrandMark size={24} variant="circle" badgeColor={STUDIO.graphite} foregroundColor={STUDIO.plaster} crescentColor="rgba(255,255,255,0.08)" />
           <Typography component="span" sx={{ fontFamily: FONT.display, fontWeight: 700, fontStretch: "112%", fontSize: "1.18rem", letterSpacing: "-0.01em", lineHeight: 1 }}>
             ALVStore
           </Typography>

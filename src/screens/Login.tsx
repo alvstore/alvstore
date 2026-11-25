@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Alert, Box, Button, Chip, CircularProgress, IconButton, InputAdornment, Stack, TextField, Typography } from "@mui/material";
-import { Bolt, OpenInNew, Visibility, VisibilityOff } from "@mui/icons-material";
+import { OpenInNew, Visibility, VisibilityOff } from "@mui/icons-material";
 import { alpha } from "@mui/material/styles";
 import { Link, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
-import { AnimatedPage } from "@/components/mui";
+import { AnimatedPage, BrandMark } from "@/components/mui";
 import { signInFailure } from "@/lib/auth-errors";
 
 export default function Login() {
@@ -33,7 +33,7 @@ export default function Login() {
   return <AnimatedPage><Box sx={{ minHeight: "100dvh", display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" } }}>
     <Box sx={theme => ({ display: { xs: "none", lg: "grid" }, placeItems: "center", p: 8, color: theme.palette.primary.contrastText, background: `radial-gradient(circle at 25% 15%, ${alpha(theme.palette.secondary.light, 0.45)}, transparent 55%), linear-gradient(135deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})` })}>
       <Stack spacing={3} sx={{ alignItems: "center", maxWidth: 420, textAlign: "center" }}>
-        <Box sx={{ p: 2, borderRadius: 4, bgcolor: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)" }}><Bolt sx={{ fontSize: 48 }} /></Box>
+        <BrandMark size={76} badgeColor="rgba(255,255,255,.14)" foregroundColor="#FFFFFF" crescentColor="rgba(0,0,0,.14)" sx={{ border: "1px solid rgba(255,255,255,.2)" }} />
         <Box><Typography variant="h3" sx={{ fontWeight: 800 }}>ALVStore</Typography><Typography variant="overline" sx={{ letterSpacing: ".25em", opacity: .7 }}>ERP 2026</Typography></Box>
         <Typography sx={{ opacity: .8 }}>Complete business management — CRM, Repairs, POS, Finance, and Inventory in one unified platform.</Typography>
         <Stack direction="row" spacing={1}>{["CRM", "POS", "Repairs", "Finance"].map(label => <Chip key={label} label={label} sx={{ color: "inherit", bgcolor: "rgba(255,255,255,.12)" }} />)}</Stack>

@@ -10,7 +10,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { themeColor } from "@/lib/theme-color";
 import { isNavigationActive, navigationCategoryForPath, parseSidebarGroups, revealNavigationGroup, sidebarDimensions, sidebarIdentity, sidebarRoleLabel, sidebarTransition } from "@/lib/sidebar-state";
-import { LayoutDashboard, Users, ShoppingCart, Monitor, Package, Wrench, Clock, CreditCard, BarChart3, FileText, Settings, Home, Target, ClipboardList, Receipt, UserCog, Wallet, Shield, MessageCircle, CalendarDays, Zap, Truck, Building2, ShoppingBag, RotateCcw, Tag } from "lucide-react";
+import { LayoutDashboard, Users, ShoppingCart, Monitor, Package, Wrench, Clock, CreditCard, BarChart3, FileText, Settings, Home, Target, ClipboardList, Receipt, UserCog, Wallet, Shield, MessageCircle, CalendarDays, Truck, Building2, ShoppingBag, RotateCcw, Tag } from "lucide-react";
+import { BrandMark } from "@/components/mui";
 
 interface NavItem { title: string; url: string; icon: React.ComponentType<{ size?: number }>; }
 interface NavCategory { label: string; items: NavItem[]; }
@@ -178,7 +179,7 @@ function SidebarContent({ compact = false, mobile = false, expanded, onToggleCat
       <Tooltip title={compact ? "ALVStore workspace" : ""} placement="right">
         <Box component={Link} to={categories[0].items[0].url} aria-label="ALVStore workspace home" onClick={mobile ? onClose : undefined}
           sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0, color: "inherit", borderRadius: 2, "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 4 } }}>
-          <Box sx={{ display: "grid", placeItems: "center", width: 36, height: 36, flexShrink: 0, bgcolor: "primary.main", color: "primary.contrastText", borderRadius: "12px", boxShadow: `0 3px 10px ${alpha(theme.palette.primary.main, .18)}` }}><Zap size={20} strokeWidth={2.1} /></Box>
+          <BrandMark size={36} sx={{ boxShadow: `0 3px 10px ${alpha(theme.palette.primary.main, .18)}` }} />
           {!compact && <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.055em", lineHeight: 1.25 }}>ALVStore<Box component="span" sx={{ color: "primary.main" }}>.</Box></Typography>
             <Typography sx={{ fontSize: 9, fontWeight: 600, letterSpacing: ".13em", textTransform: "uppercase", color: muted, mt: .25 }}>Business, together</Typography>

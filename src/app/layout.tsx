@@ -66,6 +66,7 @@ const jsonLd = {
       "name": "ALVStore",
       "alternateName": "ALVStore Cinema Engineering",
       "url": "https://alvstore.com",
+      "logo": "https://alvstore.com/alvstore-logo.png",
       "description":
         "Bespoke private cinema design, native 4K laser projection, architectural spatial acoustics, and reference amplification.",
       "telephone": "+919887601200",
