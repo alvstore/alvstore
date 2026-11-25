@@ -25,8 +25,11 @@ export function AppHeader({ onMobileMenuToggle, mobileNavigationOpen, mobileMenu
   const [unreadCount, setUnreadCount] = useState(0);
   const [themeAnchor, setThemeAnchor] = useState<HTMLElement | null>(null);
   const [userAnchor, setUserAnchor] = useState<HTMLElement | null>(null);
-  const initials = user?.email?.slice(0, 2).toUpperCase() || "U";
-  const displayName = user?.email?.split("@")[0] || "User";
+  const rawAvatar = user?.user_metadata?.avatar_url;
+  const avatarUrl = typeof rawAvatar === "string" && rawAvatar.trim() ? rawAvatar.trim() : undefined;
+  const rawName = user?.user_metadata?.full_name;
+  const displayName = typeof rawName === "string" && rawName.trim() ? rawName.trim() : user?.email?.split("@")[0] || "User";
+  const initials = displayName.split(/\s+/).filter(Boolean).map(w => w[0]).join("").slice(0, 2).toUpperCase() || user?.email?.slice(0, 2).toUpperCase() || "U";
   const fetchUnread = useCallback(async () => {
     if (!user) return;
     const { count } = await supabase.from("notification_feed").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("read_at", null);
@@ -47,7 +50,7 @@ export function AppHeader({ onMobileMenuToggle, mobileNavigationOpen, mobileMenu
         <Tooltip title="Change theme"><IconButton aria-label="Change theme" aria-haspopup="menu" aria-expanded={!!themeAnchor} onClick={event => setThemeAnchor(event.currentTarget)}><PaletteOutlined fontSize="small" /></IconButton></Tooltip>
         <Tooltip title="Notifications"><IconButton aria-label={`Notifications, ${unreadCount} unread`} onClick={() => setDrawerOpen(true)}><Badge badgeContent={unreadCount} color="primary" max={9}><NotificationsOutlined fontSize="small" /></Badge></IconButton></Tooltip>
         <Tooltip title="Account"><IconButton aria-label="Open account menu" aria-haspopup="menu" aria-expanded={!!userAnchor} onClick={event => setUserAnchor(event.currentTarget)} sx={{ gap: 1, borderRadius: 2 }}>
-          <Avatar sx={{ height: 30, width: 30, bgcolor: "primary.main", color: "primary.contrastText", fontSize: 11 }}>{initials}</Avatar>
+          <Avatar src={avatarUrl} alt={displayName} sx={{ height: 30, width: 30, bgcolor: "primary.main", color: "primary.contrastText", fontSize: 11 }}>{initials}</Avatar>
           <Typography variant="body2" sx={{ display: { xs: "none", sm: "block" } }}>{displayName}</Typography>
         </IconButton></Tooltip>
       </Toolbar>

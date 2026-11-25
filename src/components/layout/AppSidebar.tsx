@@ -146,6 +146,9 @@ function SidebarContent({ compact = false, mobile = false, expanded, onToggleCat
   const [shortcut, setShortcut] = useState("Ctrl K");
   const categories = navigationFor(hasRole);
   const activeCategory = navigationCategoryForPath(categories, pathname);
+  const avatarUrl = typeof user?.user_metadata?.avatar_url === "string" && user.user_metadata.avatar_url.trim()
+    ? user.user_metadata.avatar_url.trim()
+    : undefined;
   const identity = sidebarIdentity(user?.user_metadata.full_name, user?.email);
   const role = sidebarRoleLabel(roles);
   const activeColor = theme.palette.mode === "dark" ? theme.palette.primary.light : theme.palette.primary.dark;
@@ -251,7 +254,7 @@ function SidebarContent({ compact = false, mobile = false, expanded, onToggleCat
       <Tooltip title={compact ? `${identity.name} · Profile and settings` : "Profile and settings"} placement={compact ? "right" : "top"}>
         <ButtonBase component={Link} to="/settings" aria-label="Profile and settings" onClick={mobile ? onClose : undefined}
           sx={{ display: "flex", width: "100%", minHeight: 48, gap: 1.1, p: compact ? 0 : 1, justifyContent: compact ? "center" : "flex-start", textAlign: "left", borderRadius: "13px", color: "inherit", bgcolor: compact ? "transparent" : "action.hover", "&:hover": { bgcolor: "action.selected" } }}>
-          <Avatar sx={{ width: compact ? 32 : 33, height: compact ? 32 : 33, fontSize: 11, fontWeight: 700, bgcolor: alpha(theme.palette.primary.main, .13), color: activeColor, borderRadius: "11px" }}>{identity.initials}</Avatar>
+          <Avatar src={avatarUrl} alt={identity.name} sx={{ width: compact ? 32 : 33, height: compact ? 32 : 33, fontSize: 11, fontWeight: 700, bgcolor: alpha(theme.palette.primary.main, .13), color: activeColor, borderRadius: "11px" }}>{identity.initials}</Avatar>
           {!compact && <><Box sx={{ flex: 1, minWidth: 0 }}><Typography noWrap sx={{ fontSize: 12, fontWeight: 650, lineHeight: 1.6 }}>{identity.name}</Typography><Typography noWrap sx={{ fontSize: 10, color: muted }}>{role}</Typography></Box><SettingsOutlined sx={{ fontSize: 16, color: muted }} /></>}
         </ButtonBase>
       </Tooltip>

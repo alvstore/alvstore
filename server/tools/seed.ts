@@ -18,8 +18,9 @@ try {
     const admin = existing ?? await tx.authUser.create({ data: {
       email, password_hash: await bcrypt.hash(password, 10), raw_user_meta_data: { full_name: fullName },
     } });
-    await tx.profiles.upsert({ where: { user_id: admin.id }, update: {}, create: { user_id: admin.id, full_name: fullName } });
+    await tx.profiles.upsert({ where: { user_id: admin.id }, update: { full_name: fullName }, create: { user_id: admin.id, full_name: fullName } });
     await tx.userRoles.upsert({ where: { user_id_role: { user_id: admin.id, role: "admin" } }, update: {}, create: { user_id: admin.id, role: "admin" } });
+    await tx.userRoles.deleteMany({ where: { user_id: admin.id, role: { not: "admin" } } });
     if (!await tx.businessSettings.findFirst()) await tx.businessSettings.create({ data: { company_name: "ALV Store" } });
 
     for (const [name, type] of DEFAULT_FINANCE_CATEGORIES) {

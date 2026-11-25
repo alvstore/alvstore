@@ -7,6 +7,7 @@ import { useParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Smartphone, User, CheckCircle, XCircle, ShieldCheck, Printer, Download, PenTool, } from "lucide-react";
 import { SignaturePad } from "@/components/documents/SignaturePad";
+import { computeRepairBillingSummary } from "@/lib/repair-billing";
 function fmt(n: number) {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
 }
@@ -14,6 +15,7 @@ export default function PublicDeliveryReport() {
     const { token } = useParams();
     const [job, setJob] = useState<any>(null);
     const [images, setImages] = useState<any[]>([]);
+    const [parts, setParts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [signatureName, setSignatureName] = useState("");
     const [signatureData, setSignatureData] = useState("");
@@ -32,8 +34,12 @@ export default function PublicDeliveryReport() {
                 return;
             }
             setJob(data);
-            const { data: imgs } = await supabase.from("job_sheet_images").select("*").eq("job_sheet_id", data.id).order("created_at");
-            setImages(imgs || []);
+            const [imgRes, partsRes] = await Promise.all([
+                supabase.from("job_sheet_images").select("*").eq("job_sheet_id", data.id).order("created_at"),
+                supabase.from("repair_parts").select("*").eq("job_sheet_id", data.id),
+            ]);
+            setImages(imgRes.data || []);
+            setParts(partsRes.data || []);
             setLoading(false);
         });
     }, [token]);
@@ -53,6 +59,20 @@ export default function PublicDeliveryReport() {
             toast.error("Failed to submit signature");
         }
         else {
+            await supabase.from("job_sheet_audit_log").insert({
+                job_sheet_id: job.id,
+                action: "customer_delivery_signed",
+                details: `Delivery signed and accepted by ${signatureName.trim()}`,
+                user_role: "customer",
+            });
+            await supabase.functions.invoke("notify-job-event", {
+                body: {
+                    job_id: job.id,
+                    public_token: token,
+                    event: "customer_delivery_signed",
+                    details: `Delivery confirmed & signed by ${signatureName.trim()}`,
+                },
+            }).catch(() => undefined);
             toast.success("Delivery approved! Thank you.");
             // Refresh
             const { data } = await supabase.from("job_sheets").select("*, customers(name, phone, email)").eq("id", job.id).single();
@@ -73,10 +93,17 @@ export default function PublicDeliveryReport() {
     const wStart = (job as any).warranty_start_date;
     const warrantyExpiry = wDays > 0 && wStart ? new Date(new Date(wStart).getTime() + wDays * 86400000) : null;
     const isDeliveryApproved = !!(job as any).delivery_approved_at;
+    const deliveryBilling = computeRepairBillingSummary({
+        serviceCharge: job.service_charge,
+        gstAmount: job.gst_amount,
+        totalAmount: job.total_amount,
+        gstMode: job.gst_mode,
+        repairParts: parts,
+    });
     return <AnimatedPage><Box sx={{ minHeight: "100vh", backgroundColor: "hsl(var(--background))" }}>
-      <Box sx={{ maxWidth: "48rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "2rem", paddingBottom: "2rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+      <Box data-print-area sx={{ maxWidth: "48rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "2rem", paddingBottom: "2rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
         {/* Header */}
-        <PageHeader title={"Delivery Report"} subtitle={job.job_number} actions={<>{isDeliveryApproved && (<StatusChip label={<><Box component={CheckCircle} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/> Delivery Approved</>} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }}/>)}</>}/>
+        <PageHeader title={"Delivery Report"} subtitle={job.job_number} actions={<Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>{isDeliveryApproved && (<StatusChip label={<><Box component={CheckCircle} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/> Delivery Approved</>} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }}/>)}<Button onClick={() => window.print()} variant="outlined" size="small" sx={{ "@media print": { display: "none" } }}><Box component={Download} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.35rem" }}/>Print / PDF</Button></Box>}/>
 
         {/* Job Details */}
         <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 768px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
@@ -104,7 +131,7 @@ export default function PublicDeliveryReport() {
           <CardContent sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
             <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Problem:</Box> {job.problem_description}</Typography>
             {job.repair_notes && <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Repair Notes:</Box> {(job as any).repair_notes}</Typography>}
-            <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Total Amount:</Box> <Box component="span" sx={{ fontWeight: "600" }}>{fmt(Number(job.total_amount) || 0)}</Box></Typography>
+            <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Total Amount:</Box> <Box component="span" sx={{ fontWeight: "600" }}>{fmt(deliveryBilling.grandTotal)}</Box></Typography>
           </CardContent>
         </Card>
 

@@ -3,6 +3,7 @@
 import { Box, Button, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { DataTable } from "@/components/mui";
 import { Trash2, Plus } from "lucide-react";
+import { DocumentItemAdder } from "./DocumentItemAdder";
 export interface DocumentItem {
     id?: string;
     product_id: string | null;
@@ -72,6 +73,24 @@ export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTa
         }));
     };
     const removeItem = (idx: number) => onItemsChange(items.filter((_, i) => i !== idx));
+    const addCustomItem = () => {
+        onItemsChange([
+            ...items,
+            {
+                product_id: null,
+                product_name: "Custom Item",
+                description: "",
+                hsn_code: "",
+                quantity: 1,
+                unit_price: 0,
+                discount_type: "percentage",
+                discount_value: 0,
+                gst_percentage: 18,
+                gst_enabled: true,
+                total: 0,
+            },
+        ]);
+    };
     if (readOnly) {
         return (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", overflow: "hidden" }}>
         <DataTable columnsCount={7}>
@@ -114,24 +133,38 @@ export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTa
       </Box>);
     }
     return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-
-        <TextField label={"Line Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "220px", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add product"}</MenuItem>
-            {products.map(p => (<MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>
-                {p.name} — ₹{p.selling_price}
-              </MenuItem>))}
-          </TextField>
-      </Box>
+      <DocumentItemAdder
+        products={products}
+        onSelectProduct={addItem}
+        onAddCustomItem={addCustomItem}
+        selectLabel="Line Items"
+        emptyPlaceholder="+ Add product"
+      />
 
       {items.length === 0 && (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "1.5rem", textAlign: "center" }}>
           <Box component={Plus} sx={{ height: "1.5rem", width: "1.5rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 50%, transparent)", marginBottom: "0.25rem" }}/>
-          <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>Add products to get started</Typography>
+          <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", marginBottom: "0.75rem" }}>Add catalog or custom items to get started</Typography>
+          <Button type="button" size="small" variant="outlined" onClick={addCustomItem} startIcon={<Box component={Plus} sx={{ width: 14, height: 14 }} />}>
+            Add Custom Item
+          </Button>
         </Box>)}
 
       {items.map((item, idx) => (<Box key={idx} sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "hsl(var(--card))", padding: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.625rem" } }}>
           <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem" }}>
             <Box sx={{ flex: "1 1 0%", minWidth: "0px" }}>
-              <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.product_name}</Typography>
+              {item.product_id ? (
+                <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.product_name}</Typography>
+              ) : (
+                <TextField
+                  placeholder="Item or service name *"
+                  value={item.product_name}
+                  onChange={e => updateItem(idx, { product_name: e.target.value })}
+                  size="small"
+                  fullWidth
+                  slotProps={{ htmlInput: { "aria-label": "Custom item name" } }}
+                  sx={{ fontSize: "0.875rem", fontWeight: 600 }}
+                />
+              )}
               <TextField placeholder="Description (optional)" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Description (optional)" } }} sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem", marginTop: "0.25rem" }}/>
             </Box>
             <IconButton onClick={() => removeItem(idx)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", flexShrink: "0", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}>

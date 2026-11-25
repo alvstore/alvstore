@@ -71,7 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       if (user) {
         token.sub = user.id;
         token.email = user.email;
@@ -82,6 +82,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.accessToken = (user as any).accessToken;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         token.userMetadata = (user as any).userMetadata ?? {};
+      }
+      if (trigger === "update" && session && typeof session === "object") {
+        const nextMeta = (session as { user_metadata?: Record<string, unknown> }).user_metadata;
+        if (nextMeta && typeof nextMeta === "object") {
+          token.userMetadata = { ...((token.userMetadata as Record<string, unknown> | undefined) ?? {}), ...nextMeta };
+          if (typeof nextMeta.full_name === "string" && nextMeta.full_name.trim()) {
+            token.name = nextMeta.full_name.trim();
+          }
+        }
       }
       return token;
     },

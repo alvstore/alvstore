@@ -55,6 +55,15 @@ export const metadata: Metadata = {
     description:
       "Engineered private cinemas, native 4K laser projection, and reference spatial acoustics nationwide.",
   },
+  icons: {
+    icon: [
+      { url: "/icon.svg?v=20261125", type: "image/svg+xml" },
+      { url: "/alvstore-mark.png?v=20261125", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.ico?v=20261125", sizes: "any" },
+    ],
+    shortcut: [{ url: "/favicon.ico?v=20261125", type: "image/x-icon" }],
+    apple: [{ url: "/apple-icon.png?v=20261125", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 const jsonLd = {

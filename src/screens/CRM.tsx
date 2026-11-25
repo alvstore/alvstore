@@ -39,6 +39,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { recordSystemAudit } from "@/lib/audit";
 import {
   Plus,
   Pencil,
@@ -233,16 +234,30 @@ export default function CRM() {
       if (error) {
         toast.error(error.message);
       } else {
+        await recordSystemAudit({
+          action: "customer_updated",
+          module: "crm",
+          entityType: "customer",
+          entityId: editId,
+          details: `Updated customer ${payload.name}`,
+        });
         toast.success("Customer profile updated");
         if (drawerCustomer && drawerCustomer.id === editId) {
           setDrawerCustomer((prev) => (prev ? { ...prev, ...payload } : null));
         }
       }
     } else {
-      const { error } = await supabase.from("customers").insert({ ...payload, created_by: user?.id } as any);
+      const { data: created, error } = await supabase.from("customers").insert({ ...payload, created_by: user?.id } as any).select("id").single();
       if (error) {
         toast.error(error.message);
       } else {
+        await recordSystemAudit({
+          action: "customer_created",
+          module: "crm",
+          entityType: "customer",
+          entityId: created?.id,
+          details: `Created customer ${payload.name}`,
+        });
         toast.success("Customer created successfully");
       }
     }
@@ -258,6 +273,13 @@ export default function CRM() {
     if (error) {
       toast.error(error.message);
     } else {
+      await recordSystemAudit({
+        action: "customer_deleted",
+        module: "crm",
+        entityType: "customer",
+        entityId: id,
+        details: "Deleted customer record",
+      });
       toast.success("Customer deleted");
       if (drawerCustomer?.id === id) {
         setDrawerCustomer(null);

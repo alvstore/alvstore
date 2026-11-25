@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { Check, X, Loader2, ClipboardList, Smartphone, User, IndianRupee } from "lucide-react";
+import { computeRepairBillingSummary } from "@/lib/repair-billing";
 const statusColors = {
     created: { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" },
     pending_approval: { backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", color: "hsl(var(--warning))" },
@@ -69,7 +70,16 @@ export default function PublicJobSheet() {
                 job_sheet_id: job.id,
                 action: status === "approved" ? "customer_approved" : "customer_rejected",
                 details: `Customer ${status} the repair`,
+                user_role: "customer",
             });
+            await supabase.functions.invoke("notify-job-event", {
+                body: {
+                    job_id: job.id,
+                    public_token: token,
+                    event: status === "approved" ? "customer_approved" : "customer_rejected",
+                    details: `Customer ${status} repair estimate on portal`,
+                },
+            }).catch(() => undefined);
             toast.success(`Repair ${status}`);
             setJob((prev: any) => ({ ...prev, approval_status: status, status: status === "approved" ? "approved" : "rejected" }));
         }
@@ -84,11 +94,18 @@ export default function PublicJobSheet() {
     const canRespond = job.status === "pending_approval" && !job.approval_status;
     // Billing calculations
     const serviceItems = (job.service_items as any[]) || [];
-    const serviceCharge = Number(job.service_charge) || 0;
-    const partsTotal = parts.reduce((s, p) => s + Number(p.total), 0);
-    const gstAmount = Number(job.gst_amount) || 0;
+    const billing = computeRepairBillingSummary({
+        serviceCharge: job.service_charge,
+        gstAmount: job.gst_amount,
+        totalAmount: job.total_amount,
+        gstMode: job.gst_mode,
+        repairParts: parts,
+    });
+    const serviceCharge = billing.serviceCharge;
+    const partsTotal = billing.partsSubtotal;
+    const gstAmount = billing.combinedGst;
     const discountVal = Number(job.discount_value) || 0;
-    const totalAmount = Number(job.total_amount) || 0;
+    const totalAmount = billing.grandTotal;
     const hasBilling = serviceCharge > 0 || serviceItems.length > 0 || partsTotal > 0;
     return <AnimatedPage><Box sx={{ minHeight: "100vh", backgroundColor: "hsl(var(--background))" }}>
       <Box data-print-area sx={{ maxWidth: "42rem", marginLeft: "auto", marginRight: "auto", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "2rem", paddingBottom: "2rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
@@ -183,7 +200,7 @@ export default function PublicJobSheet() {
                   </Box>)}
                 <Box sx={{ display: "flex", justifyContent: "space-between", fontWeight: "700", fontSize: "1rem", lineHeight: "1.5rem", paddingTop: "0.25rem" }}>
                   <Box component="span">Total</Box>
-                  <Box component="span">{fmt(totalAmount + partsTotal)}</Box>
+                  <Box component="span">{fmt(totalAmount)}</Box>
                 </Box>
               </Box>
             </CardContent>

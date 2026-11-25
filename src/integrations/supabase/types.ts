@@ -450,6 +450,7 @@ export type Database = {
       customers: {
         Row: {
           address: string | null
+          avatar_url: string | null
           city: string | null
           created_at: string
           created_by: string | null
@@ -470,6 +471,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          avatar_url?: string | null
           city?: string | null
           created_at?: string
           created_by?: string | null
@@ -490,6 +492,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          avatar_url?: string | null
           city?: string | null
           created_at?: string
           created_by?: string | null

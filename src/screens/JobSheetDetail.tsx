@@ -1,13 +1,15 @@
 "use client";
 
 import { Box, Button, Card, CardContent, Divider, IconButton, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, EmptyState, DataTable, SideDrawer, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, EmptyState, DataTable, SideDrawer, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Copy, Loader2, User, Smartphone, ClipboardCheck, History, Shield, Upload, CheckCircle, Circle, Clock, FileText, Wrench, Package, Eye, Truck, IndianRupee, ArrowRightLeft, Printer, Receipt, CreditCard, Plus, Download, Phone, Hash, Power, PowerOff, UserCheck, CalendarDays, ShieldCheck, Link, Camera, XCircle, CheckCircle2, } from "lucide-react";
+import { ArrowLeft, Copy, Loader2, User, Smartphone, ClipboardCheck, History, Shield, Upload, CheckCircle, Circle, Clock, FileText, Wrench, Package, Eye, Truck, IndianRupee, ArrowRightLeft, Printer, Receipt, CreditCard, Plus, Download, Phone, Hash, Power, PowerOff, UserCheck, CalendarDays, ShieldCheck, Link, Camera, XCircle, CheckCircle2, RotateCcw, Send, Trash2, } from "lucide-react";
 import { createNotification } from "@/lib/notifications";
+import { computeRepairBillingSummary } from "@/lib/repair-billing";
+import { recordSystemAudit } from "@/lib/audit";
 const JOB_STATUSES = [
     "created", "pending_approval", "approved", "rejected", "assigned",
     "in_progress", "waiting_parts", "repair_completed", "quality_check",
@@ -64,6 +66,8 @@ export default function JobSheetDetail() {
     const [auditLog, setAuditLog] = useState<any[]>([]);
     const [technicians, setTechnicians] = useState<any[]>([]);
     const [repairParts, setRepairParts] = useState<any[]>([]);
+    const [paidAmount, setPaidAmount] = useState<number>(0);
+    const [repairNotesDraft, setRepairNotesDraft] = useState("");
     const [loading, setLoading] = useState(true);
     const [creatorName, setCreatorName] = useState<string | null>(null);
     const [postChecklist, setPostChecklist] = useState<{
@@ -79,19 +83,22 @@ export default function JobSheetDetail() {
     const [partForm, setPartForm] = useState({ name: "", cost: "", gst_percentage: "18", quantity: "1" });
     const [generatingInvoice, setGeneratingInvoice] = useState(false);
     const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+    const [sendingNotification, setSendingNotification] = useState(false);
     const [warrantyDays, setWarrantyDays] = useState("");
     const [warrantyTerms, setWarrantyTerms] = useState("");
     const [savingWarranty, setSavingWarranty] = useState(false);
     const [uploadStage, setUploadStage] = useState<string>("before");
     const isAdminStaff = hasRole("admin") || hasRole("staff");
+    const canWorkRepair = isAdminStaff || hasRole("technician");
     const fetchAll = async () => {
         if (!id)
             return;
-        const [jobRes, imgRes, logRes, partsRes] = await Promise.all([
+        const [jobRes, imgRes, logRes, partsRes, payRes] = await Promise.all([
             supabase.from("job_sheets").select("*, customers(name, phone, email, gst_number, address)").eq("id", id).single(),
             supabase.from("job_sheet_images").select("*").eq("job_sheet_id", id).order("created_at"),
             supabase.from("job_sheet_audit_log").select("*").eq("job_sheet_id", id).order("created_at", { ascending: true }),
             supabase.from("repair_parts").select("*").eq("job_sheet_id", id).order("created_at"),
+            supabase.from("payments").select("amount").eq("job_sheet_id", id).eq("status", "completed"),
         ]);
         if (jobRes.error) {
             toast.error("Job sheet not found");
@@ -102,6 +109,8 @@ export default function JobSheetDetail() {
         setImages(imgRes.data || []);
         setAuditLog(logRes.data || []);
         setRepairParts((partsRes.data as any[]) || []);
+        setPaidAmount((payRes.data || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0));
+        setRepairNotesDraft((jobRes.data as any).repair_notes || "");
         setActualCost(jobRes.data.actual_cost?.toString() || "");
         setWarrantyDays((jobRes.data as any).warranty_days?.toString() || "");
         setWarrantyTerms((jobRes.data as any).warranty_terms || "");
@@ -125,29 +134,71 @@ export default function JobSheetDetail() {
         setLoading(false);
     };
     useEffect(() => { fetchAll(); }, [id]);
-    const triggerAutomation = async (eventType: string) => {
-        if (!job?.customers?.phone)
+    const notifyJobEvent = async (event: string, details?: string) => {
+        if (!id)
             return;
         try {
-            await supabase.functions.invoke("whatsapp-automation", {
-                body: {
-                    event_type: eventType,
-                    customer_phone: job.customers.phone,
-                    variables: {
-                        customer_name: job.customers.name || "",
-                        job_id: job.job_number || "",
-                        status: eventType.replace("job_", "").replace("_", " "),
-                        link: `${window.location.origin}/job/${job.public_token}`,
-                        amount: job.total_amount?.toString() || "0",
-                    },
-                },
+            await supabase.functions.invoke("notify-job-event", {
+                body: { job_id: id, event, details },
             });
         }
-        catch (e) {
-            console.log("Automation trigger skipped:", e);
+        catch {
+            // Non-blocking notification
+        }
+    };
+    const triggerAutomation = async (eventType: string) => {
+        if (!job)
+            return;
+        const billing = computeRepairBillingSummary({
+            serviceCharge: job.service_charge,
+            gstAmount: job.gst_amount,
+            totalAmount: job.total_amount,
+            gstMode: job.gst_mode,
+            repairParts,
+        });
+        const portalLink = `${window.location.origin}/job/public/${job.public_token}`;
+        const deliveryLink = `${window.location.origin}/delivery-report/${job.public_token}`;
+        let deliveredViaChannel = false;
+        if (job.customers?.phone) {
+            try {
+                const { data } = await supabase.functions.invoke("whatsapp-automation", {
+                    body: {
+                        event_type: eventType,
+                        customer_phone: job.customers.phone,
+                        variables: {
+                            customer_name: job.customers.name || "",
+                            job_id: job.job_number || "",
+                            status: eventType.replace("job_", "").replace(/_/g, " "),
+                            link: eventType === "job_delivered" || eventType === "job_ready" ? deliveryLink : portalLink,
+                            delivery_link: deliveryLink,
+                            amount: billing.grandTotal.toFixed(2),
+                        },
+                    },
+                });
+                deliveredViaChannel = Boolean(data?.success);
+            }
+            catch (e) {
+                console.log("Automation trigger skipped:", e);
+            }
+        }
+        if (!deliveredViaChannel && job.customers?.email) {
+            try {
+                const statusLabel = eventType.replace("job_", "").replace(/_/g, " ");
+                await supabase.functions.invoke("send-email", {
+                    body: {
+                        to: job.customers.email,
+                        subject: `ALVStore Repair Update (${job.job_number}): ${statusLabel}`,
+                        body: `<p>Hello ${job.customers.name || "Customer"},</p><p>Your repair job <strong>${job.job_number}</strong> is now <strong>${statusLabel}</strong>.</p><p>Estimated/Total Amount: <strong>${fmt(billing.grandTotal)}</strong></p><p>View status & portal: <a href="${portalLink}">${portalLink}</a></p>`,
+                    },
+                });
+            }
+            catch {
+                // Email fallback best-effort
+            }
         }
     };
     const STATUS_EVENT_MAP: Record<string, string> = {
+        pending_approval: "job_pending_approval",
         approved: "job_approved",
         in_progress: "job_in_progress",
         repair_completed: "job_ready",
@@ -155,15 +206,46 @@ export default function JobSheetDetail() {
         delivered: "job_delivered",
     };
     const updateStatus = async (newStatus: string) => {
+        if (!job || !id)
+            return;
+        const billing = computeRepairBillingSummary({
+            serviceCharge: job.service_charge,
+            gstAmount: job.gst_amount,
+            totalAmount: job.total_amount,
+            gstMode: job.gst_mode,
+            repairParts,
+        });
+        if (newStatus === "delivered" && billing.grandTotal > 0 && job.payment_status !== "paid") {
+            const balance = Math.max(0, billing.grandTotal - paidAmount);
+            const confirmed = await confirmAction(`Balance of ${fmt(balance)} is still unpaid on ${job.job_number}. Confirm handover anyway?`);
+            if (!confirmed)
+                return;
+        }
         const { error } = await supabase.from("job_sheets").update({ status: newStatus as any }).eq("id", id);
         if (error)
             toast.error(error.message);
         else {
             toast.success("Status updated");
-            // Trigger WhatsApp automation for key status changes
+            await supabase.from("job_sheet_audit_log").insert({
+                job_sheet_id: id,
+                action: `status_${newStatus}`,
+                details: `Status changed to ${newStatus.replace(/_/g, " ")}`,
+                user_id: user?.id,
+                user_role: hasRole("admin") ? "admin" : hasRole("technician") ? "technician" : "staff",
+            });
+            await recordSystemAudit({
+                action: `repair_status_${newStatus}`,
+                module: "repair",
+                entityType: "job_sheet",
+                entityId: id,
+                details: `${job.job_number} moved to ${newStatus.replace(/_/g, " ")}`,
+            });
+            if (newStatus === "waiting_parts") {
+                await notifyJobEvent("waiting_parts", `Parts needed for ${job.job_number}`);
+            }
             const eventType = STATUS_EVENT_MAP[newStatus];
             if (eventType)
-                triggerAutomation(eventType);
+                await triggerAutomation(eventType);
             fetchAll();
         }
     };
@@ -196,8 +278,15 @@ export default function JobSheetDetail() {
         if (error)
             toast.error(error.message);
         else {
-            await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id!, action: "post_repair_checklist_completed", details: "Post-repair quality checklist completed", user_id: user?.id });
-            toast.success("Quality check completed");
+            await supabase.from("job_sheet_audit_log").insert({
+                job_sheet_id: id!,
+                action: "post_repair_checklist_completed",
+                details: "Post-repair quality checklist submitted",
+                user_id: user?.id,
+                user_role: hasRole("admin") ? "admin" : hasRole("technician") ? "technician" : "staff",
+            });
+            await notifyJobEvent("qc_submitted", "Post-repair QC checklist ready for sign-off");
+            toast.success("Quality check submitted");
             fetchAll();
         }
     };
@@ -207,6 +296,7 @@ export default function JobSheetDetail() {
             toast.error(error.message);
         else {
             await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id!, action: "qc_approved", details: "Quality check approved — ready for invoice generation", user_id: user?.id });
+            await notifyJobEvent("qc_approved", "Quality check passed");
             toast.success("QC Approved");
             fetchAll();
         }
@@ -217,9 +307,34 @@ export default function JobSheetDetail() {
             toast.error(error.message);
         else {
             await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id!, action: "qc_failed", details: "Quality check failed — needs rework", user_id: user?.id });
+            await notifyJobEvent("qc_failed", "QC failed — rework required");
             toast.success("QC Failed — sent back for rework");
             fetchAll();
         }
+    };
+    const requestReapproval = async () => {
+        if (!id || !job)
+            return;
+        const { error } = await supabase.from("job_sheets").update({
+            approval_status: null,
+            approval_timestamp: null,
+            status: "pending_approval" as any,
+        } as any).eq("id", id);
+        if (error) {
+            toast.error(error.message);
+            return;
+        }
+        await supabase.from("job_sheet_audit_log").insert({
+            job_sheet_id: id,
+            action: "requote_requested",
+            details: "Revised estimate sent for customer re-approval",
+            user_id: user?.id,
+            user_role: hasRole("admin") ? "admin" : "staff",
+        });
+        await notifyJobEvent("requote_requested", "Supplemental re-quote sent to customer");
+        await triggerAutomation("job_pending_approval");
+        toast.success("Re-quote requested & portal re-opened");
+        fetchAll();
     };
     const copyPublicLink = () => {
         if (!job)
@@ -322,28 +437,43 @@ export default function JobSheetDetail() {
         }
         setGeneratingInvoice(true);
         try {
-            const serviceCharge = Number(job.service_charge) || 0;
-            const gstAmount = Number(job.gst_amount) || 0;
-            const totalAmount = Number(job.total_amount) || 0;
-            const partsTotal = repairParts.reduce((s, p) => s + Number(p.total), 0);
+            const billing = computeRepairBillingSummary({
+                serviceCharge: job.service_charge,
+                gstAmount: job.gst_amount,
+                totalAmount: job.total_amount,
+                gstMode: job.gst_mode,
+                repairParts,
+            });
+            const initialPaymentStatus =
+                paidAmount >= billing.grandTotal && billing.grandTotal > 0
+                    ? "paid"
+                    : paidAmount > 0
+                        ? "partial"
+                        : "unpaid";
             const invoiceData: any = {
                 customer_id: job.customer_id, job_sheet_id: job.id,
                 gst_inclusive: job.gst_mode === "inclusive",
                 discount_type: job.discount_type === "none" ? "percentage" : job.discount_type,
                 discount_value: job.discount_type === "none" ? 0 : Number(job.discount_value) || 0,
-                subtotal: serviceCharge + partsTotal, gst_amount: gstAmount,
-                total: totalAmount + partsTotal, status: "draft", payment_status: "unpaid", created_by: user?.id,
+                subtotal: billing.serviceCharge + billing.partsSubtotal,
+                gst_amount: billing.combinedGst,
+                total: billing.grandTotal,
+                paid_amount: paidAmount,
+                status: "draft",
+                payment_status: initialPaymentStatus,
+                created_by: user?.id,
             };
             const { data: invoice, error: invErr } = await supabase.from("invoices").insert(invoiceData).select().single();
             if (invErr)
                 throw invErr;
-            const items: any[] = [{ invoice_id: invoice.id, product_name: `Service Charge - ${job.device_type}`, unit_price: serviceCharge, quantity: 1, gst_percentage: Number(job.gst_percentage) || 18, total: serviceCharge }];
+            const items: any[] = [{ invoice_id: invoice.id, product_name: `Service Charge - ${job.device_type}`, unit_price: billing.serviceCharge, quantity: 1, gst_percentage: job.gst_mode === "none" ? 0 : Number(job.gst_percentage) || 18, total: billing.serviceCharge }];
             for (const part of repairParts) {
-                items.push({ invoice_id: invoice.id, product_name: part.name, unit_price: Number(part.cost), quantity: part.quantity, gst_percentage: Number(part.gst_percentage) || 18, total: Number(part.total) });
+                items.push({ invoice_id: invoice.id, product_name: part.name, unit_price: Number(part.cost), quantity: part.quantity, gst_percentage: job.gst_mode === "none" ? 0 : Number(part.gst_percentage) || 18, total: Number(part.total) });
             }
             await supabase.from("invoice_items").insert(items);
-            await supabase.from("job_sheets").update({ invoice_id: invoice.id, status: "invoice_generated" as any }).eq("id", id);
-            await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "invoice_generated", details: `Invoice ${invoice.invoice_number} generated`, user_id: user?.id });
+            await supabase.from("job_sheets").update({ invoice_id: invoice.id, payment_status: initialPaymentStatus as any, status: "invoice_generated" as any }).eq("id", id);
+            await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "invoice_generated", details: `Invoice ${invoice.invoice_number} generated (${fmt(billing.grandTotal)})`, user_id: user?.id });
+            await notifyJobEvent("invoice_generated", `Invoice ${invoice.invoice_number} generated`);
             toast.success(`Invoice ${invoice.invoice_number} generated`);
             fetchAll();
         }
@@ -366,16 +496,26 @@ export default function JobSheetDetail() {
             await supabase.from("payments").insert({ customer_id: job.customer_id, job_sheet_id: id, amount, payment_method: paymentForm.method as any, type: "invoice" as any, status: "completed" as any, notes: paymentForm.notes || `Payment for ${job.job_number}`, created_by: user?.id });
             const { data: allPayments } = await supabase.from("payments").select("amount").eq("job_sheet_id", id).eq("status", "completed");
             const totalPaid = (allPayments || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
-            const total = Number(job.total_amount) || 0;
-            const newStatus = totalPaid >= total ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+            const billing = computeRepairBillingSummary({
+                serviceCharge: job.service_charge,
+                gstAmount: job.gst_amount,
+                totalAmount: job.total_amount,
+                gstMode: job.gst_mode,
+                repairParts,
+            });
+            const newStatus = totalPaid >= billing.grandTotal && billing.grandTotal > 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
             await supabase.from("job_sheets").update({ payment_status: newStatus } as any).eq("id", id);
             if (job.invoice_id) {
-                const currentPaid = Number(job.paid_amount) || 0;
-                const newPaid = currentPaid + amount;
-                const invPayStatus = newPaid >= total ? "paid" : "partial";
-                await supabase.from("invoices").update({ paid_amount: newPaid, payment_status: invPayStatus } as any).eq("id", job.invoice_id);
+                await supabase.from("invoices").update({ paid_amount: totalPaid, payment_status: newStatus } as any).eq("id", job.invoice_id);
             }
             await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "payment_received", details: `Payment of ₹${amount} received via ${paymentForm.method}`, user_id: user?.id });
+            await recordSystemAudit({
+                action: "repair_payment_recorded",
+                module: "finance",
+                entityType: "job_sheet",
+                entityId: id,
+                details: `₹${amount} recorded on ${job.job_number} (${newStatus})`,
+            });
             toast.success("Payment recorded");
             setPaymentSheetOpen(false);
             fetchAll();
@@ -406,10 +546,58 @@ export default function JobSheetDetail() {
         }
         const newPartsTotal = repairParts.reduce((s, p) => s + Number(p.total), 0) + total;
         await supabase.from("job_sheets").update({ parts_total: newPartsTotal } as any).eq("id", id);
+        await supabase.from("job_sheet_audit_log").insert({
+            job_sheet_id: id,
+            action: "part_added",
+            details: `${partForm.name.trim()} ×${qty} (${fmt(total)})`,
+            user_id: user?.id,
+            user_role: hasRole("admin") ? "admin" : hasRole("technician") ? "technician" : "staff",
+        });
         toast.success("Part added");
         setPartForm({ name: "", cost: "", gst_percentage: "18", quantity: "1" });
         setPartsSheetOpen(false);
         fetchAll();
+    };
+    const deletePart = async (part: any) => {
+        if (!id)
+            return;
+        const { error } = await supabase.from("repair_parts").delete().eq("id", part.id);
+        if (error) {
+            toast.error(error.message);
+            return;
+        }
+        const remainingTotal = repairParts.filter(p => p.id !== part.id).reduce((s, p) => s + Number(p.total), 0);
+        await supabase.from("job_sheets").update({ parts_total: remainingTotal } as any).eq("id", id);
+        await supabase.from("job_sheet_audit_log").insert({
+            job_sheet_id: id,
+            action: "part_removed",
+            details: `Removed part ${part.name}`,
+            user_id: user?.id,
+        });
+        toast.success("Part removed");
+        fetchAll();
+    };
+    const saveRepairNotes = async () => {
+        if (!id || !job)
+            return;
+        if (repairNotesDraft === (job.repair_notes || ""))
+            return;
+        const { error } = await supabase.from("job_sheets").update({ repair_notes: repairNotesDraft } as any).eq("id", id);
+        if (error) {
+            toast.error(error.message);
+            return;
+        }
+        toast.success("Notes saved");
+        fetchAll();
+    };
+    const sendCustomerUpdate = async () => {
+        if (!job)
+            return;
+        setSendingNotification(true);
+        const mappedEvent = STATUS_EVENT_MAP[job.status] || "job_pending_approval";
+        await triggerAutomation(mappedEvent);
+        toast.success("Customer update dispatched");
+        setSendingNotification(false);
     };
     const sendPaymentLink = async () => {
         if (!job)
@@ -463,12 +651,21 @@ export default function JobSheetDetail() {
     const techName = technicians.find(t => t.id === job.assigned_technician_id)?.name;
     const currentStatusIndex = TIMELINE_STEPS.findIndex(s => s.key === job.status);
     const isRejected = job.status === "rejected";
-    const serviceCharge = Number(job.service_charge) || 0;
-    const partsTotal = repairParts.reduce((s, p) => s + Number(p.total), 0);
+    const billing = computeRepairBillingSummary({
+        serviceCharge: job.service_charge,
+        gstAmount: job.gst_amount,
+        totalAmount: job.total_amount,
+        gstMode: job.gst_mode,
+        repairParts,
+    });
+    const serviceCharge = billing.serviceCharge;
+    const partsTotal = billing.partsSubtotal;
     const discountVal = Number(job.discount_value) || 0;
     const discount = job.discount_type === "percentage" ? (serviceCharge * discountVal) / 100 : job.discount_type === "fixed" ? discountVal : 0;
-    const gstAmount = Number(job.gst_amount) || 0;
-    const totalAmount = Number(job.total_amount) || 0;
+    const gstAmount = billing.combinedGst;
+    const totalAmount = billing.serviceTotal;
+    const grandTotal = billing.grandTotal;
+    const balanceDue = Math.max(0, grandTotal - paidAmount);
     const powerOnItem = preChecklist.find((c: any) => c.item === "Device turns ON");
     const devicePowerOn = powerOnItem?.value === "yes";
     const devicePowerOff = powerOnItem?.value === "no";
@@ -524,7 +721,7 @@ export default function JobSheetDetail() {
         </CardContent></Card>
         <Card><CardContent sx={{ padding: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <Box sx={{ height: "2.5rem", width: "2.5rem", borderRadius: "0.75rem", backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" }}><Box component={IndianRupee} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--success))" }}/></Box>
-          <Box><Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Total</Typography><Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}>{fmt(totalAmount + partsTotal)}</Typography></Box>
+          <Box><Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Total</Typography><Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}>{fmt(grandTotal)}</Typography></Box>
         </CardContent></Card>
         <Card><CardContent sx={{ padding: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <Box sx={mergeSx({ height: "2.5rem", width: "2.5rem", borderRadius: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center" }, techName ? { backgroundColor: "color-mix(in srgb, hsl(var(--info)) 10%, transparent)" } : { backgroundColor: "hsl(var(--muted))" })}>
@@ -539,7 +736,7 @@ export default function JobSheetDetail() {
         {/* Left column - Tabbed content */}
         <Box data-print-area sx={{ flex: "1 1 0%", minWidth: "0px" }}>
           <TabView defaultValue="overview" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-            <TabBar sx={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", width: "100%" }}>
+            <TabBar sx={{ width: "100%" }}>
               <Tab value="overview" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Overview</Box>} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}/>
               <Tab value="checklist" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Checklist</Box>} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}/>
               <Tab value="repair" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Repair</Box>} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}/>
@@ -587,7 +784,9 @@ export default function JobSheetDetail() {
                   {discount > 0 && <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--destructive))" }}><Box component="span">Discount ({job.discount_type === "percentage" ? `${discountVal}%` : "Fixed"})</Box><Box component="span">-{fmt(discount)}</Box></Box>}
                   {job.gst_mode !== "none" && gstAmount > 0 && <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>GST ({job.gst_percentage}% {job.gst_mode})</Box><Box component="span">{fmt(gstAmount)}</Box></Box>}
                   <Divider />
-                  <Box sx={{ display: "flex", justifyContent: "space-between", fontWeight: "700", fontSize: "1rem", lineHeight: "1.5rem" }}><Box component="span">Grand Total</Box><Box component="span" sx={{ color: "hsl(var(--primary))" }}>{fmt(totalAmount + partsTotal)}</Box></Box>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", fontWeight: "700", fontSize: "1rem", lineHeight: "1.5rem" }}><Box component="span">Grand Total</Box><Box component="span" sx={{ color: "hsl(var(--primary))" }}>{fmt(grandTotal)}</Box></Box>
+                  {paidAmount > 0 && <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--success))" }}><Box component="span">Paid</Box><Box component="span">-{fmt(paidAmount)}</Box></Box>}
+                  {balanceDue > 0 && <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Balance Due</Box><Box component="span" sx={{ color: "hsl(var(--warning))" }}>{fmt(balanceDue)}</Box></Box>}
                 </CardContent>
               </Card>
             </TabPanel>
@@ -617,7 +816,7 @@ export default function JobSheetDetail() {
               </Card>
 
               {/* Post-Repair Checklist */}
-              {(job.status === "repair_completed" || job.status === "qc_failed") && isAdminStaff && (<Card>
+              {(job.status === "repair_completed" || job.status === "qc_failed") && canWorkRepair && (<Card>
                   <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "0.875rem", lineHeight: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Shield} sx={{ height: "1rem", width: "1rem" }}/> Post-Repair Quality Check</Typography></Box>
                   <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
                     {postChecklist.map((item, idx) => (<Box key={idx} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
@@ -683,17 +882,11 @@ export default function JobSheetDetail() {
                   {job.staff_notes && <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))", fontWeight: "500" }}>Staff Notes:</Box> {job.staff_notes}</Typography>}
                 </CardContent>
               </Card>
-              {isAdminStaff && (<Card>
+              {canWorkRepair && (<Card>
                   <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "0.875rem", lineHeight: "1.25rem" })}>Update Repair Notes</Typography></Box>
                   <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-                    <TextField placeholder="Add diagnosis or repair notes..." defaultValue={job.repair_notes || ""} onBlur={async (e) => {
-            const val = e.target.value;
-            if (val !== (job.repair_notes || "")) {
-                await supabase.from("job_sheets").update({ repair_notes: val } as any).eq("id", id);
-                toast.success("Notes saved");
-                fetchAll();
-            }
-        }} size="small" fullWidth multiline slotProps={{ htmlInput: { "aria-label": "Add diagnosis or repair notes..." } }}/>
+                    <TextField placeholder="Add diagnosis or repair notes..." value={repairNotesDraft} onChange={e => setRepairNotesDraft(e.target.value)} onBlur={saveRepairNotes} size="small" fullWidth multiline rows={3} slotProps={{ htmlInput: { "aria-label": "Add diagnosis or repair notes..." } }}/>
+                    <Button onClick={saveRepairNotes} variant="outlined" size="small">Save Notes</Button>
                   </CardContent>
                 </Card>)}
             </TabPanel>
@@ -702,21 +895,35 @@ export default function JobSheetDetail() {
             <TabPanel value="parts" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
               <Card>
                 <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}>
-                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
                     <Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "0.875rem", lineHeight: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Package} sx={{ height: "1rem", width: "1rem" }}/> Parts Used</Typography>
-                    {isAdminStaff && <Button onClick={() => setPartsSheetOpen(true)} variant="outlined" size="small"><Box component={Plus} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/> Add Part</Button>}
+                    {canWorkRepair && (
+                      <Box sx={{ display: "flex", gap: 1 }}>
+                        {job.status !== "waiting_parts" && ["assigned", "in_progress", "qc_failed"].includes(job.status) && (
+                          <Button onClick={() => updateStatus("waiting_parts")} variant="outlined" size="small" color="warning">Mark Waiting Parts</Button>
+                        )}
+                        <Button onClick={() => setPartsSheetOpen(true)} variant="outlined" size="small"><Box component={Plus} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/> Add Part</Button>
+                      </Box>
+                    )}
                   </Box>
                 </Box>
                 <CardContent>
                   {repairParts.length === 0 ? (<Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>No parts added yet.</Typography>) : (<Box sx={{ borderWidth: "1px", borderRadius: "var(--radius)", overflow: "hidden" }}>
-                      <DataTable columnsCount={4} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
-                        <TableHead><TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}><TableCell sx={{ textAlign: "left", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Part</TableCell><TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Cost</TableCell><TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Qty</TableCell><TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Total</TableCell></TableRow></TableHead>
+                      <DataTable columnsCount={isAdminStaff ? 5 : 4} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                        <TableHead><TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}><TableCell sx={{ textAlign: "left", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Part</TableCell><TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Cost</TableCell><TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Qty</TableCell><TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Total</TableCell>{isAdminStaff && <TableCell sx={{ width: "2.5rem" }} />}</TableRow></TableHead>
                         <TableBody>
                           {repairParts.map(p => (<TableRow key={p.id} sx={{ borderTopWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
                               <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem" }}>{p.name}</TableCell>
                               <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", textAlign: "right" }}>{fmt(Number(p.cost))}</TableCell>
                               <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", textAlign: "right" }}>{p.quantity}</TableCell>
                               <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", textAlign: "right" }}>{fmt(Number(p.total))}</TableCell>
+                              {isAdminStaff && (
+                                <TableCell sx={{ padding: "0.25rem", textAlign: "right" }}>
+                                  <IconButton onClick={() => deletePart(p)} size="small" aria-label={`Remove ${p.name}`} sx={{ color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}>
+                                    <Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }} />
+                                  </IconButton>
+                                </TableCell>
+                              )}
                             </TableRow>))}
                         </TableBody>
                       </DataTable>
@@ -729,7 +936,7 @@ export default function JobSheetDetail() {
             {/* Photos Tab */}
             <TabPanel value="photos" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
               {/* Upload Section */}
-              {isAdminStaff && (<Card>
+              {canWorkRepair && (<Card>
                   <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "0.875rem", lineHeight: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Camera} sx={{ height: "1rem", width: "1rem" }}/> Upload Photos</Typography></Box>
                   <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
@@ -820,11 +1027,17 @@ export default function JobSheetDetail() {
                 {job.invoice_id && (<Button onClick={() => navigate(`/invoices/${job.invoice_id}`)} variant="outlined" size="small" sx={{ width: "100%", justifyContent: "flex-start" }}>
                     <Box component={FileText} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.5rem" }}/> View Invoice
                   </Button>)}
-                {isAdminStaff && (<Button onClick={() => { setPaymentForm({ amount: "", method: "cash", notes: "" }); setPaymentSheetOpen(true); }} variant="outlined" size="small" sx={{ width: "100%", justifyContent: "flex-start" }}>
+                {isAdminStaff && (<Button onClick={() => { setPaymentForm({ amount: balanceDue > 0 ? balanceDue.toFixed(2) : "", method: "cash", notes: "" }); setPaymentSheetOpen(true); }} variant="outlined" size="small" sx={{ width: "100%", justifyContent: "flex-start" }}>
                     <Box component={CreditCard} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.5rem" }}/> Add Payment
                   </Button>)}
                 {isAdminStaff && (<Button onClick={sendPaymentLink} disabled={sendingPaymentLink} variant="outlined" size="small" sx={{ width: "100%", justifyContent: "flex-start" }}>
                     <Box component={Link} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.5rem" }}/> {sendingPaymentLink ? "Sending..." : "Send Payment Link"}
+                  </Button>)}
+                {isAdminStaff && (<Button onClick={sendCustomerUpdate} disabled={sendingNotification} variant="outlined" size="small" sx={{ width: "100%", justifyContent: "flex-start" }}>
+                    <Box component={Send} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.5rem" }}/> {sendingNotification ? "Sending..." : "Notify Customer"}
+                  </Button>)}
+                {isAdminStaff && !["delivered", "rejected"].includes(job.status) && (<Button onClick={requestReapproval} variant="outlined" size="small" sx={{ width: "100%", justifyContent: "flex-start" }}>
+                    <Box component={RotateCcw} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.5rem" }}/> Send Re-Quote Approval
                   </Button>)}
                 <Button onClick={handlePrint} variant="outlined" size="small" sx={{ width: "100%", justifyContent: "flex-start" }}>
                   <Box component={Printer} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.5rem" }}/> Print / PDF

@@ -1632,3 +1632,118 @@ functionsRouter.post("/hikvision-webhook", asyncHandler(async (req, res) => {
     return fail(res, "Internal error", 500);
   }
 }));
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ---------------------------------------------------------------------------
+// record-audit — authenticated system audit logger usable by admin/staff/tech
+// ---------------------------------------------------------------------------
+functionsRouter.post("/record-audit", requireAuth, asyncHandler(async (req, res) => {
+  try {
+    const { action, module, entity_type, entity_id, details, staff_name, user_role } = req.body ?? {};
+    if (!action || typeof action !== "string") return fail(res, "action is required");
+
+    let resolvedStaff = typeof staff_name === "string" && staff_name.trim() ? staff_name.trim() : null;
+    if (!resolvedStaff && req.user?.id) {
+      const p = await pool.query("SELECT full_name FROM public.profiles WHERE user_id = $1::uuid LIMIT 1", [req.user.id]);
+      resolvedStaff = p.rows[0]?.full_name || req.user.email || null;
+    }
+
+    const cleanEntityId = typeof entity_id === "string" && UUID_RE.test(entity_id) ? entity_id : null;
+    const resolvedDetails =
+      cleanEntityId || !entity_id
+        ? (details ?? null)
+        : [String(entity_id), details].filter(Boolean).join(" — ");
+
+    await pool.query(
+      `INSERT INTO public.system_audit_log (user_id, user_role, staff_name, action, module, entity_type, entity_id, details)
+       VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, $8)`,
+      [
+        req.user?.id ?? null,
+        user_role ?? req.user?.roles?.[0] ?? null,
+        resolvedStaff,
+        action.trim(),
+        module || "system",
+        entity_type ?? null,
+        cleanEntityId,
+        resolvedDetails,
+      ]
+    );
+    return ok(res, { success: true });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// notify-job-event — notifies admins/creator/technician for repair lifecycle
+// events (supports authenticated staff OR public customer actions with token)
+// ---------------------------------------------------------------------------
+functionsRouter.post("/notify-job-event", asyncHandler(async (req, res) => {
+  try {
+    const { job_id, public_token, event, details } = req.body ?? {};
+    if (!job_id || typeof job_id !== "string" || !UUID_RE.test(job_id)) {
+      return fail(res, "Valid job_id is required");
+    }
+    if (!event || typeof event !== "string") {
+      return fail(res, "event is required");
+    }
+
+    const jobRes = await pool.query(
+      `SELECT j.id, j.job_number, j.public_token, j.created_by, j.assigned_technician_id,
+              c.name AS customer_name, e.user_id AS tech_user_id
+       FROM public.job_sheets j
+       LEFT JOIN public.customers c ON c.id = j.customer_id
+       LEFT JOIN public.employees e ON e.id = j.assigned_technician_id
+       WHERE j.id = $1::uuid
+       LIMIT 1`,
+      [job_id]
+    );
+    const job = jobRes.rows[0];
+    if (!job) return fail(res, "Job sheet not found", 404);
+
+    if (!req.user) {
+      if (!public_token || String(public_token) !== String(job.public_token)) {
+        return fail(res, "Unauthorized", 401);
+      }
+    }
+
+    const adminRes = await pool.query("SELECT user_id FROM public.user_roles WHERE role = 'admin'");
+    const recipients = new Set<string>(adminRes.rows.map((r: { user_id: string }) => r.user_id));
+    if (job.created_by) recipients.add(job.created_by);
+    if (job.tech_user_id) recipients.add(job.tech_user_id);
+
+    const customerLabel = job.customer_name || "Customer";
+    const eventTitleMap: Record<string, string> = {
+      customer_approved: `Estimate Approved — ${job.job_number}`,
+      customer_rejected: `Estimate Declined — ${job.job_number}`,
+      customer_delivery_signed: `Delivery Signed — ${job.job_number}`,
+      requote_requested: `Re-Quote Sent — ${job.job_number}`,
+      qc_submitted: `QC Ready for Review — ${job.job_number}`,
+      qc_approved: `QC Approved — ${job.job_number}`,
+      qc_failed: `QC Rework Needed — ${job.job_number}`,
+      waiting_parts: `Parts Requested — ${job.job_number}`,
+      invoice_generated: `Repair Invoice Generated — ${job.job_number}`,
+    };
+    const title = eventTitleMap[event] || `Repair Update — ${job.job_number}`;
+    const message = details ? `${customerLabel}: ${details}` : `${job.job_number} (${customerLabel}) — ${event.replace(/_/g, " ")}`;
+    const link = `/repairs/${job.id}`;
+
+    for (const userId of recipients) {
+      await pool.query(
+        `INSERT INTO public.notifications (user_id, title, message, type, link) VALUES ($1::uuid, $2, $3, 'repair', $4)`,
+        [userId, title, message, link]
+      );
+      await pool.query(
+        `INSERT INTO public.notification_feed (user_id, type, title, body, metadata) VALUES ($1::uuid, 'repair', $2, $3, $4::jsonb)`,
+        [userId, title, message, JSON.stringify({ link, job_id: job.id, event })]
+      );
+    }
+
+    return ok(res, { success: true, notified: recipients.size });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));

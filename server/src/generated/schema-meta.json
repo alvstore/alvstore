@@ -847,6 +847,12 @@
           "hasDefault": false
         },
         {
+          "name": "avatar_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
           "name": "shipping_address",
           "udt": "text",
           "nullable": true,

@@ -51,11 +51,27 @@ export function AvatarUpload({ currentUrl, name, folder, entityId, onUploaded, s
                 fileRef.current.value = "";
         }
     };
-    return (<Box onClick={() => !uploading && fileRef.current?.click()} data-ui-group sx={{ position: "relative", cursor: "pointer" }}>
+    return (<Box
+      role="button"
+      tabIndex={0}
+      aria-label={`Upload avatar for ${name || "user"}`}
+      onClick={() => !uploading && fileRef.current?.click()}
+      onKeyDown={e => {
+        if ((e.key === "Enter" || e.key === " ") && !uploading) {
+          e.preventDefault();
+          fileRef.current?.click();
+        }
+      }}
+      data-ui-group
+      sx={{ position: "relative", display: "inline-flex", cursor: "pointer", borderRadius: "9999px" }}
+    >
       <Box ref={fileRef} type="file" accept="image/*" onChange={handleUpload} component="input" sx={{ display: "none" }}/>
       <Avatar src={currentUrl ?? undefined} alt={name} sx={mergeSx(mergeSx(sizes[size], { borderWidth: "2px", borderColor: "hsl(var(--border))" }), { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))", fontWeight: "600", fontSize: "0.875rem", lineHeight: "1.25rem" })}>{initials}</Avatar>
-      <Box sx={{ position: "absolute", inset: "0px", borderRadius: "9999px", backgroundColor: "color-mix(in srgb, hsl(var(--foreground)) 50%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", opacity: "0", "[data-ui-group]:hover &": { opacity: "1" }, transitionProperty: "opacity", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }}>
+      <Box sx={{ position: "absolute", inset: "0px", borderRadius: "9999px", backgroundColor: "color-mix(in srgb, hsl(var(--foreground)) 48%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", opacity: uploading ? "1" : "0", "[data-ui-group]:hover &, [data-ui-group]:focus-visible &": { opacity: "1" }, transitionProperty: "opacity", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }}>
         {uploading ? <Box component={Loader2} sx={mergeSx(iconSizes[size], { color: "hsl(var(--background))", animation: "spin 1s linear infinite" })}/> : <Box component={Camera} sx={mergeSx(iconSizes[size], { color: "hsl(var(--background))" })}/>}
+      </Box>
+      <Box aria-hidden="true" sx={{ position: "absolute", right: "-2px", bottom: "-2px", height: "1.35rem", width: "1.35rem", borderRadius: "9999px", backgroundColor: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))", borderWidth: "2px", borderColor: "hsl(var(--background))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgb(0 0 0 / 0.18)" }}>
+        {uploading ? <Box component={Loader2} sx={{ height: "0.7rem", width: "0.7rem", animation: "spin 1s linear infinite" }}/> : <Box component={Camera} sx={{ height: "0.7rem", width: "0.7rem" }}/>}
       </Box>
     </Box>);
 }

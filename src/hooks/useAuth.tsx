@@ -26,12 +26,13 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
+  refreshUserMetadata: (metadata: Record<string, unknown>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: nextSession, status } = useSession();
+  const { data: nextSession, status, update } = useSession();
   const loading = status === "loading";
 
   // keep the backend client's token in sync (also covers first paint)
@@ -61,8 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasRole = (role: AppRole) => roles.includes(role);
 
+  const refreshUserMetadata = async (metadata: Record<string, unknown>) => {
+    await update({ user_metadata: metadata });
+  };
+
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, roles, loading, signOut, hasRole }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, roles, loading, signOut, hasRole, refreshUserMetadata }}>
       {children}
     </AuthContext.Provider>
   );

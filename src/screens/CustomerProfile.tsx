@@ -8,6 +8,7 @@ import { useParams, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { ArrowLeft, Mail, Phone, MapPin, Building2, User, FileText, Receipt, CreditCard, Wrench, Plus, Star } from "lucide-react";
+import { AvatarUpload } from "@/components/AvatarUpload";
 import { parseCustomerMetadata } from "@/components/customers/CustomerQuickDialog";
 export default function CustomerProfile() {
     const { id } = useParams<{
@@ -48,7 +49,6 @@ export default function CustomerProfile() {
     if (!customer) {
         return <AnimatedPage><Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "16rem" }}><Typography component="p" variant="body1" sx={{ color: "hsl(var(--muted-foreground))" }}>Customer not found</Typography></Box></AnimatedPage>;
     }
-    const initials = customer.name?.split(" ").filter(Boolean).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase() || "CU";
     const totalPurchases = invoices.filter((i: any) => i.payment_status === "paid").reduce((s: number, i: any) => s + (i.total || 0), 0);
     const meta = parseCustomerMetadata(customer.notes, customer.gst_number);
 
@@ -91,7 +91,23 @@ export default function CustomerProfile() {
         <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" } }}>
           <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
             <CardContent sx={{ padding: "1.5rem", textAlign: "center", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-              <Avatar sx={mergeSx({ height: "5rem", width: "5rem", marginLeft: "auto", marginRight: "auto" }, { backgroundColor: meta.isVIP ? "color-mix(in srgb, hsl(var(--warning)) 15%, transparent)" : "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: meta.isVIP ? "hsl(var(--warning))" : "hsl(var(--primary))", fontSize: "1.5rem", lineHeight: "2rem", fontWeight: "700" })}>{initials}</Avatar>
+              <Box sx={{ display: "flex", justifyContent: "center" }}>
+                <AvatarUpload
+                  currentUrl={customer.avatar_url}
+                  name={customer.name || "Customer"}
+                  folder="customers"
+                  entityId={customer.id}
+                  size="lg"
+                  onUploaded={async (url) => {
+                    const { error } = await supabase.from("customers").update({ avatar_url: url }).eq("id", customer.id);
+                    if (error) {
+                      toast.error(error.message || "Failed to save customer photo");
+                      return;
+                    }
+                    setCustomer((prev: any) => (prev ? { ...prev, avatar_url: url } : prev));
+                  }}
+                />
+              </Box>
               <Box>
                 <Typography component="h2" variant="h2" sx={{ fontSize: "1.125rem", lineHeight: "1.75rem", fontWeight: "700", color: "hsl(var(--foreground))" }}>{customer.name}</Typography>
                 <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 0.75, mt: 0.5 }}>

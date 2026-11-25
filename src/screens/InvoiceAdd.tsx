@@ -13,8 +13,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { ArrowLeft, Send, Eye, Save, Trash2, Plus, UserPlus } from "lucide-react";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
+import { DocumentItemAdder } from "@/components/documents/DocumentItemAdder";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
 import { CustomerQuickDialog, type CustomerData } from "@/components/customers/CustomerQuickDialog";
+import { recordSystemAudit } from "@/lib/audit";
 interface Product {
     id: string;
     name: string;
@@ -144,6 +146,16 @@ export default function InvoiceAdd() {
         };
         setItems([...items, newItem]);
     };
+    const addCustomItem = () => {
+        setItems([...items, {
+                product_id: null, product_name: "Custom Service / Item",
+                description: "", hsn_code: "",
+                quantity: 1, unit_price: 0,
+                discount_type: "percentage", discount_value: 0,
+                gst_percentage: 18, gst_enabled: true,
+                total: 0,
+            }]);
+    };
     const updateItem = (idx: number, updates: Partial<DocumentItem>) => {
         setItems(items.map((item, i) => {
             if (i !== idx)
@@ -183,6 +195,13 @@ export default function InvoiceAdd() {
                 discount_type: i.discount_type, discount_value: i.discount_value,
             }));
             await supabase.from("invoice_items").insert(invItems);
+            await recordSystemAudit({
+                action: "invoice_updated",
+                module: "sales",
+                entityType: "invoice",
+                entityId: editId,
+                details: `Updated invoice (${items.length} items, ₹${totals.grandTotal.toFixed(2)})`,
+            });
             setSaving(false);
             toast.success("Invoice updated");
             navigate(`/invoices/${editId}`);
@@ -206,6 +225,15 @@ export default function InvoiceAdd() {
                 discount_type: i.discount_type, discount_value: i.discount_value,
             }));
             const { error: iErr } = await supabase.from("invoice_items").insert(invItems);
+            if (!iErr) {
+                await recordSystemAudit({
+                    action: "invoice_created",
+                    module: "sales",
+                    entityType: "invoice",
+                    entityId: inv.id,
+                    details: `Created invoice ${inv.invoice_number} (${items.length} items, ₹${totals.grandTotal.toFixed(2)})`,
+                });
+            }
             setSaving(false);
             if (iErr)
                 toast.error(iErr.message);
@@ -452,16 +480,20 @@ export default function InvoiceAdd() {
 
               {/* Items Table - Materialize style */}
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-
-                  <TextField label={"Line Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "200px", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add Item"}</MenuItem>
-                      {products.map(p => (<MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{p.name} — ₹{p.selling_price}</MenuItem>))}
-                    </TextField>
-                </Box>
+                <DocumentItemAdder
+                  products={products}
+                  onSelectProduct={addItem}
+                  onAddCustomItem={addCustomItem}
+                  selectLabel="Line Items"
+                  emptyPlaceholder="+ Add Item"
+                />
 
                 {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>
                     <Box component={Plus} sx={{ height: "2rem", width: "2rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 40%, transparent)", marginBottom: "0.5rem" }}/>
-                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>Add items to your invoice</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", marginBottom: "0.75rem" }}>Add catalog or custom items to your invoice</Typography>
+                    <Button type="button" variant="outlined" size="small" onClick={addCustomItem} startIcon={<Box component={Plus} sx={{ width: 14, height: 14 }} />}>
+                      Add Custom Item
+                    </Button>
                   </Box>) : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", overflow: "hidden" }}>
                     <DataTable columnsCount={5} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
                       <TableHead>
@@ -476,7 +508,11 @@ export default function InvoiceAdd() {
                       <TableBody>
                         {items.map((item, idx) => (<TableRow key={idx} sx={{ borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "&:last-child": { borderWidth: "0px" } }}>
                             <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{item.product_name}</Typography>
+                              {item.product_id ? (
+                                <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{item.product_name}</Typography>
+                              ) : (
+                                <TextField placeholder="Item name *" value={item.product_name} onChange={e => updateItem(idx, { product_name: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Custom item name" } }} sx={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: "0.25rem" }}/>
+                              )}
                               <TextField placeholder="Description" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Description" } }} sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem", marginTop: "0.25rem", borderWidth: "0px", paddingLeft: "0px", paddingRight: "0px", backgroundColor: "transparent", "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", "&:focus-visible": { "--alv-ring-offset-shadow": "var(--alv-ring-inset) 0 0 0 var(--alv-ring-offset-width) var(--alv-ring-offset-color)", "--alv-ring-shadow": "var(--alv-ring-inset) 0 0 0 calc(0px + var(--alv-ring-offset-width)) var(--alv-ring-color)", boxShadow: "var(--alv-ring-offset-shadow), var(--alv-ring-shadow), var(--alv-shadow, 0 0 #0000)" } }}/>
                             </TableCell>
                             <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>

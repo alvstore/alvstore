@@ -529,8 +529,8 @@ function RepairsReport({ start, end }: { start: string; end: string }) {
   useEffect(() => {
     setLoading(true);
     supabase
-      .from("repair_tickets")
-      .select("ticket_number,status,priority,device_type,device_brand,created_at")
+      .from("job_sheets")
+      .select("job_number,status,priority,device_type,device_brand,device_model,total_amount,payment_status,created_at")
       .gte("created_at", start)
       .lte("created_at", end + "T23:59:59")
       .order("created_at", { ascending: false })
@@ -540,8 +540,8 @@ function RepairsReport({ start, end }: { start: string; end: string }) {
       });
   }, [start, end]);
 
-  const completed = data.filter(d => ["completed", "delivered", "closed"].includes(d.status)).length;
-  const inProgress = data.filter(d => ["in_progress", "assigned", "diagnosing"].includes(d.status)).length;
+  const completed = data.filter(d => ["repair_completed", "invoice_generated", "delivered"].includes(d.status)).length;
+  const inProgress = data.filter(d => ["approved", "assigned", "in_progress", "waiting_parts", "quality_check"].includes(d.status)).length;
   const urgent = data.filter(d => d.priority === "urgent" || d.priority === "high").length;
 
   const statusDistribution = useMemo(() => {
@@ -555,11 +555,11 @@ function RepairsReport({ start, end }: { start: string; end: string }) {
 
   const exportCSV = () => {
     const csv =
-      "Ticket,Status,Priority,Device,Date\n" +
+      "Job Sheet,Status,Priority,Device,Amount,Payment,Date\n" +
       data
         .map(
           d =>
-            `${d.ticket_number},${d.status},${d.priority},"${d.device_brand || ""} ${d.device_type || ""}",${d.created_at}`
+            `"${(d.job_number || "").replace(/"/g, "\"\"")}","${d.status || ""}","${d.priority || ""}","${[d.device_brand, d.device_model || d.device_type].filter(Boolean).join(" ").replace(/"/g, "\"\"")}",${Number(d.total_amount) || 0},"${d.payment_status || ""}","${d.created_at}"`
         )
         .join("\n");
     downloadCSV(csv, `repairs-report-${start}-to-${end}.csv`);
@@ -569,7 +569,7 @@ function RepairsReport({ start, end }: { start: string; end: string }) {
     <Box sx={{ display: "grid", gap: 2.5, pt: 1 }}>
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
         <StatCard
-          label="Total Tickets"
+          label="Total Jobs"
           value={data.length}
           accent="primary"
           loading={loading}
@@ -596,18 +596,18 @@ function RepairsReport({ start, end }: { start: string; end: string }) {
 
       {statusDistribution.length > 0 && (
         <DistributionWidget
-          title="Repair ticket distribution"
-          subtitle="Breakdown of tickets by resolution status."
+          title="Repair job distribution"
+          subtitle="Breakdown of job sheets by workflow status."
           items={statusDistribution}
           loading={loading}
-          formatter={val => `${val} tickets`}
+          formatter={val => `${val} jobs`}
         />
       )}
 
       <Card sx={{ borderRadius: "18px" }}>
         <Box sx={{ p: 2, pb: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            Repair Ticket Records ({data.length})
+            Repair Job Sheet Records ({data.length})
           </Typography>
           <Button
             onClick={exportCSV}
@@ -619,26 +619,30 @@ function RepairsReport({ start, end }: { start: string; end: string }) {
           </Button>
         </Box>
         <CardContent sx={{ p: 0 }}>
-          <DataTable columnsCount={5} empty={data.length === 0} emptyMessage="No repair tickets in selected period">
+          <DataTable columnsCount={6} empty={data.length === 0} emptyMessage="No repair job sheets in selected period">
             <TableHead>
               <TableRow>
-                <TableCell>Ticket #</TableCell>
+                <TableCell>Job #</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Priority</TableCell>
                 <TableCell>Device</TableCell>
+                <TableCell>Amount</TableCell>
                 <TableCell>Date</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {data.map(d => (
-                <TableRow key={d.ticket_number}>
-                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{d.ticket_number}</TableCell>
+              {data.map((d, idx) => (
+                <TableRow key={d.job_number || idx}>
+                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{d.job_number}</TableCell>
                   <TableCell sx={{ textTransform: "capitalize", fontSize: 12 }}>
-                    {d.status?.replace("_", " ")}
+                    {d.status?.replace(/_/g, " ")}
                   </TableCell>
                   <TableCell sx={{ textTransform: "capitalize", fontSize: 12 }}>{d.priority}</TableCell>
                   <TableCell sx={{ fontSize: 12 }}>
-                    {d.device_brand} {d.device_type}
+                    {[d.device_brand, d.device_model || d.device_type].filter(Boolean).join(" ") || "—"}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12, fontWeight: 600 }}>
+                    {money(Number(d.total_amount) || 0)}
                   </TableCell>
                   <TableCell sx={{ fontSize: 12, color: "text.secondary" }}>
                     {format(new Date(d.created_at), "dd MMM yyyy")}

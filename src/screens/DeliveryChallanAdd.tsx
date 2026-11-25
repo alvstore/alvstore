@@ -7,6 +7,8 @@ import { useNavigate, useParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { ArrowLeft, Send, Trash2, Plus, Truck, Car } from "lucide-react";
+import { DocumentItemAdder } from "@/components/documents/DocumentItemAdder";
+import { recordSystemAudit } from "@/lib/audit";
 interface Product {
     id: string;
     name: string;
@@ -88,6 +90,12 @@ export default function DeliveryChallanAdd() {
                 unit_price: price, total: price, hsn_code: "", gst_percentage: gstPct, gst_amount: gstAmt,
             }]);
     };
+    const addCustomItem = () => {
+        setItems([...items, {
+                product_id: null, product_name: "Custom Item", quantity: 1,
+                unit_price: 0, total: 0, hsn_code: "", gst_percentage: 18, gst_amount: 0,
+            }]);
+    };
     const recalcItem = (item: ChallanItem): ChallanItem => {
         const base = item.quantity * item.unit_price;
         const gstAmt = gstInclusive
@@ -126,6 +134,13 @@ export default function DeliveryChallanAdd() {
                     quantity: i.quantity, unit_price: i.unit_price, total: i.total,
                     hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
                 })));
+                await recordSystemAudit({
+                    action: "challan_updated",
+                    module: "sales",
+                    entityType: "delivery_challan",
+                    entityId: editId,
+                    details: `Updated delivery challan (${items.length} items, ₹${grandTotal.toFixed(2)})`,
+                });
                 toast.success("Challan updated");
                 navigate(`/challans/${editId}`);
             }
@@ -140,6 +155,13 @@ export default function DeliveryChallanAdd() {
                     quantity: i.quantity, unit_price: i.unit_price, total: i.total,
                     hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
                 })));
+                await recordSystemAudit({
+                    action: "challan_created",
+                    module: "sales",
+                    entityType: "delivery_challan",
+                    entityId: ch.id,
+                    details: `Created challan ${ch.challan_number} (${items.length} items, ₹${grandTotal.toFixed(2)})`,
+                });
                 toast.success("Challan created — " + ch.challan_number);
                 navigate(`/challans/${ch.id}`);
             }
@@ -195,14 +217,20 @@ export default function DeliveryChallanAdd() {
 
               {/* Items */}
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-
-                  <TextField label={"Items"} select size="small" fullWidth value="" onChange={event => addItem(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ width: "200px", fontSize: "0.75rem", lineHeight: "1rem" }}><MenuItem value="" disabled>{"+ Add Item"}</MenuItem>{products.map(p => <MenuItem key={p.id} value={p.id} sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{p.name} — ₹{p.selling_price}</MenuItem>)}</TextField>
-                </Box>
+                <DocumentItemAdder
+                  products={products}
+                  onSelectProduct={addItem}
+                  onAddCustomItem={addCustomItem}
+                  selectLabel="Items"
+                  emptyPlaceholder="+ Add Item"
+                />
 
                 {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>
                     <Box component={Plus} sx={{ height: "2rem", width: "2rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 40%, transparent)", marginBottom: "0.5rem" }}/>
-                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>Add items to the delivery challan</Typography>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", marginBottom: "0.75rem" }}>Add catalog or custom items to the delivery challan</Typography>
+                    <Button type="button" variant="outlined" size="small" onClick={addCustomItem} startIcon={<Box component={Plus} sx={{ width: 14, height: 14 }} />}>
+                      Add Custom Item
+                    </Button>
                   </Box>) : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", overflow: "hidden" }}>
                     <DataTable columnsCount={7} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
                       <TableHead><TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderBottomWidth: "1px" }}>
@@ -216,7 +244,13 @@ export default function DeliveryChallanAdd() {
                       </TableRow></TableHead>
                       <TableBody>
                         {items.map((item, idx) => (<TableRow key={idx} sx={{ borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "&:last-child": { borderWidth: "0px" } }}>
-                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", fontWeight: "500" }}>{item.product_name}</TableCell>
+                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", fontWeight: "500" }}>
+                              {item.product_id ? (
+                                item.product_name
+                              ) : (
+                                <TextField placeholder="Item name *" value={item.product_name} onChange={e => updateItem(idx, { product_name: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Custom item name" } }} sx={{ fontSize: "0.875rem", fontWeight: 500 }}/>
+                              )}
+                            </TableCell>
                             <TableCell sx={{ paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField value={item.hsn_code} onChange={e => updateItem(idx, { hsn_code: e.target.value })} placeholder="HSN" size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "HSN" } }} sx={{ height: "2rem", fontSize: "0.75rem", lineHeight: "1rem" }}/></TableCell>
                             <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>
                             <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { min: "1", "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>

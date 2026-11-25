@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { primaryUserRole, type AppRole } from "@/lib/sidebar-state";
+import { AvatarUpload } from "@/components/AvatarUpload";
 import { User, Shield, Building2, Receipt, Mail, MessageSquare, Phone, Camera, FileText, Save, Loader2, Plus, Pencil, Trash2, File, Clock, Cloud, TestTube, RefreshCw, CreditCard, Globe, Copy, CheckCircle2, Wrench, Code, Eye, EyeOff } from "lucide-react";
 interface Profile {
     id: string;
@@ -87,9 +88,10 @@ export default function Settings() {
 }
 // ─── Profile Tab ────────────────────────────────────────────────
 function ProfileTab() {
-    const { user } = useAuth();
+    const { user, refreshUserMetadata } = useAuth();
     const [fullName, setFullName] = useState("");
     const [phone, setPhone] = useState("");
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -100,18 +102,47 @@ function ProfileTab() {
             if (data) {
                 setFullName(data.full_name || "");
                 setPhone(data.phone || "");
+                setAvatarUrl(data.avatar_url || null);
             }
         });
     }, [user]);
+    const handleAvatarUploaded = async (url: string) => {
+        setAvatarUrl(url);
+        if (!user)
+            return;
+        const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("user_id", user.id);
+        if (error) {
+            toast.error(error.message);
+            return;
+        }
+        await refreshUserMetadata({ full_name: fullName || undefined, avatar_url: url });
+    };
+    const removeAvatar = async () => {
+        if (!user)
+            return;
+        setSaving(true);
+        const { error } = await supabase.from("profiles").update({ avatar_url: null }).eq("user_id", user.id);
+        if (error) {
+            toast.error(error.message);
+        }
+        else {
+            setAvatarUrl(null);
+            await refreshUserMetadata({ full_name: fullName || undefined, avatar_url: null });
+            toast.success("Profile photo removed");
+        }
+        setSaving(false);
+    };
     const saveProfile = async () => {
         if (!user)
             return;
         setSaving(true);
-        const { error } = await supabase.from("profiles").update({ full_name: fullName, phone }).eq("user_id", user.id);
+        const { error } = await supabase.from("profiles").update({ full_name: fullName, phone, avatar_url: avatarUrl }).eq("user_id", user.id);
         if (error)
             toast.error(error.message);
-        else
+        else {
+            await refreshUserMetadata({ full_name: fullName, avatar_url: avatarUrl });
             toast.success("Profile updated");
+        }
         setSaving(false);
     };
     const changePassword = async () => {
@@ -136,8 +167,27 @@ function ProfileTab() {
     };
     return (<Box sx={{ display: "grid", gap: "1.5rem", maxWidth: "42rem" }}>
       <Card>
-        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Profile Information</Typography><Typography variant="body2" color="text.secondary">Update your personal details</Typography></Box>
+        <Box sx={{ padding: "1.5rem", paddingBottom: "0.75rem" }}><Typography variant="h6" component="h3" sx={{ fontSize: "1rem", fontWeight: 650 }}>Profile Information</Typography><Typography variant="body2" color="text.secondary">Update your photo and personal details</Typography></Box>
         <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: "1rem", pb: "0.5rem" }}>
+            <AvatarUpload
+              currentUrl={avatarUrl}
+              name={fullName || user?.email || "User"}
+              folder="profiles"
+              entityId={user?.id}
+              size="lg"
+              onUploaded={handleAvatarUploaded}
+            />
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{fullName || user?.email?.split("@")[0] || "Account Photo"}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>Click the avatar to upload a JPG, PNG, or WebP photo (max 5MB)</Typography>
+              {avatarUrl && (
+                <Button onClick={removeAvatar} disabled={saving} size="small" variant="text" color="error" sx={{ px: 0, minWidth: 0, mt: 0.25 }}>
+                  Remove photo
+                </Button>
+              )}
+            </Box>
+          </Box>
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={user?.email || ""} disabled label={"Email"} size="small" fullWidth/></Box>
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={fullName} onChange={e => setFullName(e.target.value)} label={"Full Name"} size="small" fullWidth/></Box>
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={phone} onChange={e => setPhone(e.target.value)} label={"Phone"} size="small" fullWidth/></Box>
