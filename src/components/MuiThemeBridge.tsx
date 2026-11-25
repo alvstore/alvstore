@@ -42,7 +42,19 @@ export function MuiThemeBridge({ children }: { children: React.ReactNode }) {
       },
       components: {
         MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
-        MuiCard: { styleOverrides: { root: ({ theme: t }) => ({ backgroundImage: "none", backgroundColor: t.palette.background.paper, border: `1px solid ${t.palette.divider}`, borderRadius: 18, boxShadow: "none" }) } },
+        MuiCard: {
+          styleOverrides: {
+            root: ({ theme: t }) => ({
+              backgroundImage: "none",
+              backgroundColor: t.palette.background.paper,
+              border: `1px solid ${t.palette.divider}`,
+              borderRadius: 16,
+              boxShadow: dark
+                ? "0 4px 18px rgba(0, 0, 0, 0.28)"
+                : "0 2px 10px rgba(34, 48, 62, 0.06)",
+            }),
+          },
+        },
         MuiButtonBase: { styleOverrides: { root: ({ theme: t }) => ({ "&.Mui-focusVisible": { outline: `2px solid ${t.palette.primary.main}`, outlineOffset: 2 } }) } },
         MuiButton: {
           defaultProps: { disableElevation: true },
