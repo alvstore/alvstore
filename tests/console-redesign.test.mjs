@@ -63,3 +63,31 @@ test("SideDrawer and MetricStrip are exported cleanly and SideDrawer enforces mo
   assert.match(drawerSrc, /if\s*\(\s*!busy\s*\)\s*onClose\(\)/);
   assert.match(stripSrc, /CountUp/);
 });
+
+test("summarizeInvoices and filterInvoices handle partial payments, cancelled exclusions, and client-side search", async () => {
+  const { summarizeInvoices, filterInvoices } = await importTs("src/lib/invoice-metrics.ts");
+  const sample = [
+    { id: "1", invoice_number: "INV-001", customer_id: "c1", total: 1000, paid_amount: 1000, payment_status: "paid", status: "paid", customers: { name: "Aarav Mehta", email: "aarav@x.in" } },
+    { id: "2", invoice_number: "INV-002", customer_id: "c1", total: 2000, paid_amount: 500, payment_status: "partial", status: "sent", customers: { name: "Aarav Mehta", email: "aarav@x.in" } },
+    { id: "3", invoice_number: "INV-003", customer_id: "c2", total: 1500, paid_amount: 0, payment_status: "unpaid", status: "draft", customers: { name: "Riya Kapoor", email: "riya@y.in" } },
+    { id: "4", invoice_number: "INV-004", customer_id: "c3", total: 5000, paid_amount: 0, payment_status: "unpaid", status: "cancelled", customers: { name: "Void Co", email: null } },
+  ];
+
+  const stats = summarizeInvoices(sample);
+  assert.equal(stats.uniqueClients, 3);
+  assert.equal(stats.totalCount, 4);
+  assert.equal(stats.paidCount, 1);
+  assert.equal(stats.unpaidCount, 2);
+  assert.equal(stats.paidRevenue, 1500);
+  assert.equal(stats.unpaidBalance, 3000);
+  assert.equal(stats.totalBilled, 4500);
+
+  assert.equal(filterInvoices(sample, "all", "riya").length, 1);
+  assert.equal(filterInvoices(sample, "sent", "inv-002").length, 1);
+  assert.equal(filterInvoices(sample, "paid", "riya").length, 0);
+
+  const invoicesSrc = fs.readFileSync(path.join(root, "src/screens/Invoices.tsx"), "utf8");
+  assert.match(invoicesSrc, /MetricStrip/);
+  assert.match(invoicesSrc, /SideDrawer/);
+  assert.doesNotMatch(invoicesSrc, /FormDialog/);
+});
