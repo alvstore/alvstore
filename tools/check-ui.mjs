@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const requiredKit = ["AnimatedPage", "PageHeader", "StatCard", "DataTable", "FormDialog", "ConfirmDialog", "SearchToolbar", "StatusChip", "EmptyState"];
+export const requiredKit = ["AnimatedPage", "PageHeader", "StatCard", "DataTable", "SideDrawer", "ConfirmDialog", "SearchToolbar", "StatusChip", "EmptyState"];
 export function filesIn(directory, suffix = /\.[jt]sx?$/) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const file = path.join(directory, entry.name);
@@ -35,7 +35,16 @@ export function auditUi() {
     const usedKit = new Set();
     function scan(node) {
       if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-        if (/components\/ui(?:\/|$)|^@radix-ui\/|tailwind|^sonner$/.test(node.moduleSpecifier.text)) report(file, node, "Legacy UI import", source);
+        const mod = node.moduleSpecifier.text;
+        if (/components\/ui(?:\/|$)|^@radix-ui\/|tailwind|^sonner$/.test(mod)) report(file, node, "Legacy UI import", source);
+        if (/FormDialog|^@mui\/material\/Dialog/.test(mod)) report(file, node, "Legacy Dialog import; use SideDrawer", source);
+        if ((mod === "@mui/material" || mod === "@/components/mui") && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+          for (const spec of node.importClause.namedBindings.elements) {
+            if (/^(?:FormDialog|Dialog|DialogTitle|DialogContent|DialogContentText|DialogActions)$/.test(spec.name.text)) {
+              report(file, spec, `Banned modal Dialog import (${spec.name.text}); use SideDrawer`, source);
+            }
+          }
+        }
       }
       if (ts.isExpressionStatement(node) && ts.isStringLiteral(node.expression) && node.expression.text === "use client") {
         if (++clientDirectives > 1 || source.statements[0] !== node) report(file, node, '"use client" must occur once, before imports', source);
@@ -44,6 +53,9 @@ export function auditUi() {
         const tag = node.tagName.getText(source);
         if (tag === "AnimatedPage") hasPage = true;
         if (requiredKit.includes(tag)) usedKit.add(tag);
+        if (/^(?:FormDialog|Dialog|DialogTitle|DialogContent|DialogContentText|DialogActions)$/.test(tag)) {
+          report(file, node, `Use SideDrawer instead of modal ${tag}`, source);
+        }
         if (tag.startsWith("motion.")) report(file, node, "Wrap motion in Box component={motion.*}", source);
         const attributes = node.attributes.properties;
         const component = attributes.find(a => ts.isJsxAttribute(a) && a.name.getText(source) === "component");

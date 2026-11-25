@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, FormLabel, IconButton, Radio, RadioGroup, Skeleton, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, DatePicker, FormDialog, PageHeader, StatCard, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, DatePicker, PageHeader, SideDrawer, StatCard, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
@@ -251,10 +251,28 @@ export default function FollowUps() {
       </TabView>
 
       {/* Follow-Up Recording Sheet */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"Record Follow-Up"} paperSx={{ width: "100%", "@media (min-width: 640px)": { maxWidth: "32rem" }, overflowY: "auto" }}>
+      <SideDrawer
+        open={sheetOpen}
+        busy={saving}
+        onClose={() => setSheetOpen(false)}
+        title={"Record Follow-Up"}
+        width={500}
+        footer={
+          selectedEntity ? (
+            <>
+              <Button variant="outlined" onClick={() => setSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>
+                Cancel
+              </Button>
+              <Button onClick={saveFollowUp} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>
+                {saving ? "Saving..." : "Save Follow-Up"}
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
 
 
-          {selectedEntity && (<Box sx={{ marginTop: "1.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+          {selectedEntity && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
               {/* Entity info header */}
               <Box sx={{ padding: "1rem", borderRadius: "0.75rem", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderWidth: "1px", borderColor: "hsl(var(--border))" }}>
                 <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>{selectedEntity.customer}</Typography>
@@ -288,11 +306,6 @@ export default function FollowUps() {
                 <DatePicker selected={nextDate} onSelect={setNextDate} disabled={(date) => date < new Date()}/>
               </Box>
 
-              {/* Save */}
-              <Button onClick={saveFollowUp} disabled={saving} variant="contained" sx={{ width: "100%", borderRadius: "0.75rem" }}>
-                {saving ? "Saving..." : "Save Follow-Up"}
-              </Button>
-
               {/* History Timeline */}
               {historyLoading ? (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}><Skeleton sx={{ height: "4rem", width: "100%", borderRadius: "0.75rem" }}/><Skeleton sx={{ height: "4rem", width: "100%", borderRadius: "0.75rem" }}/></Box>) : history.length > 0 && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
                   <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--foreground))" }}>Previous Follow-Ups</Typography>
@@ -319,6 +332,6 @@ export default function FollowUps() {
                   </Box>
                 </Box>)}
             </Box>)}
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

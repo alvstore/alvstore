@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Card, CardContent, Divider, IconButton, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, EmptyState, DataTable, FormDialog, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, EmptyState, DataTable, SideDrawer, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
@@ -954,41 +954,71 @@ export default function JobSheetDetail() {
       </Box>
 
       {/* Payment Sheet */}
-      <FormDialog open={paymentSheetOpen} onClose={() => setPaymentSheetOpen(false)} title={"Record Payment"}>
+      <SideDrawer
+        open={paymentSheetOpen}
+        onClose={() => setPaymentSheetOpen(false)}
+        title={"Record Payment"}
+        width={420}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setPaymentSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={addPayment} variant="contained" sx={{ minHeight: 36 }}>Record Payment</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={paymentForm.amount} onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))} label={"Amount (\u20B9)"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
               <TextField value={paymentForm.method} label={"Payment Method"} select size="small" fullWidth onChange={event => (v => setPaymentForm(p => ({ ...p, method: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="cash">Cash</MenuItem><MenuItem value="upi">UPI</MenuItem><MenuItem value="card">Card</MenuItem><MenuItem value="online">Online</MenuItem></TextField>
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={paymentForm.notes} onChange={e => setPaymentForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes" label={"Notes"} size="small" fullWidth/></Box>
-            <Button onClick={addPayment} variant="contained" sx={{ width: "100%" }}>Record Payment</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Parts Sheet */}
-      <FormDialog open={partsSheetOpen} onClose={() => setPartsSheetOpen(false)} title={"Add Part"}>
+      <SideDrawer
+        open={partsSheetOpen}
+        onClose={() => setPartsSheetOpen(false)}
+        title={"Add Part"}
+        width={420}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setPartsSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={addPart} variant="contained" sx={{ minHeight: 36 }}>Add Part</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={partForm.name} onChange={e => setPartForm(p => ({ ...p, name: e.target.value }))} label={"Part Name"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={partForm.cost} onChange={e => setPartForm(p => ({ ...p, cost: e.target.value }))} label={"Cost (\u20B9)"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={partForm.gst_percentage} onChange={e => setPartForm(p => ({ ...p, gst_percentage: e.target.value }))} label={"GST %"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={partForm.quantity} onChange={e => setPartForm(p => ({ ...p, quantity: e.target.value }))} label={"Quantity"} size="small" fullWidth/></Box>
-            <Button onClick={addPart} variant="contained" sx={{ width: "100%" }}>Add Part</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Technician Payment Sheet */}
-      <FormDialog open={techPaySheetOpen} onClose={() => setTechPaySheetOpen(false)} title={"Record Technician Payment"}>
+      <SideDrawer
+        open={techPaySheetOpen}
+        onClose={() => setTechPaySheetOpen(false)}
+        title={"Record Technician Payment"}
+        width={420}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setTechPaySheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={recordTechnicianPayment} variant="contained" sx={{ minHeight: 36 }}>Record Payment</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={techPayForm.amount} onChange={e => setTechPayForm(p => ({ ...p, amount: e.target.value }))} label={"Amount (\u20B9)"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
               <TextField value={techPayForm.method} label={"Payment Method"} select size="small" fullWidth onChange={event => (v => setTechPayForm(p => ({ ...p, method: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="cash">Cash</MenuItem><MenuItem value="upi">UPI</MenuItem><MenuItem value="bank">Bank Transfer</MenuItem></TextField>
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={techPayForm.notes} onChange={e => setTechPayForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes" label={"Notes"} size="small" fullWidth/></Box>
-            <Button onClick={recordTechnicianPayment} variant="contained" sx={{ width: "100%" }}>Record Payment</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

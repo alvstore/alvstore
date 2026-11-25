@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar, Box, Button, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -272,9 +272,25 @@ export default function Employees() {
         </Box>)}
 
       {/* Add/Edit Sheet */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editId ? "Edit Employee" : "Add Employee"} description={editId ? "Update employee details" : "Create a new employee with optional login account"} paperSx={{ overflowY: "auto", "@media (min-width: 640px)": { maxWidth: "32rem" } }}>
+      <SideDrawer
+        open={sheetOpen}
+        busy={saving}
+        onClose={() => setSheetOpen(false)}
+        title={editId ? "Edit Employee" : "Add Employee"}
+        description={editId ? "Update employee details" : "Create a new employee with optional login account"}
+        width={520}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>
+              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
+              {editId ? "Update Employee" : "Create Employee"}
+            </Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: "1rem" }}>
               <AvatarUpload currentUrl={editId ? employees.find(e => e.id === editId)?.avatar_url : undefined} name={form.name} folder="employees" entityId={editId || undefined} onUploaded={async (url) => {
         if (editId) {
@@ -334,18 +350,29 @@ export default function Employees() {
 
                 <TextField type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder={editId ? "Leave blank to keep" : "Min 6 chars"} label={<>Password {!editId && form.createLogin ? "*" : "(optional)"}</>} size="small" fullWidth/>
               </Box>)}
-
-            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
-              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
-              {editId ? "Update Employee" : "Create Employee"}
-            </Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Link Account Sheet */}
-      <FormDialog open={linkSheetOpen} onClose={() => setLinkSheetOpen(false)} title={"Link Login Account"} description={"Create a login account for this employee so they can access Chat, Tasks, and other features."} paperSx={{ "@media (min-width: 640px)": { maxWidth: "28rem" } }}>
+      <SideDrawer
+        open={linkSheetOpen}
+        busy={saving}
+        onClose={() => setLinkSheetOpen(false)}
+        title={"Link Login Account"}
+        description={"Create a login account for this employee so they can access Chat, Tasks, and other features."}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setLinkSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleLinkAccount} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>
+              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
+              Link Account
+            </Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField type="email" value={linkForm.email} onChange={e => setLinkForm(p => ({ ...p, email: e.target.value }))} label={"Email *"} size="small" fullWidth/>
@@ -354,11 +381,7 @@ export default function Employees() {
 
               <TextField type="password" value={linkForm.password} onChange={e => setLinkForm(p => ({ ...p, password: e.target.value }))} placeholder="Min 6 characters" label={"Password *"} size="small" fullWidth/>
             </Box>
-            <Button onClick={handleLinkAccount} disabled={saving} variant="contained" sx={{ width: "100%" }}>
-              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
-              Link Account
-            </Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

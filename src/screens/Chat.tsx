@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar, Box, Button, ButtonBase, Card, IconButton, MenuItem, Tab, TextField, Typography } from "@mui/material";
-import { AnimatedPage, FormDialog, PageHeader, SearchToolbar, StatusChip, TabBar, TabView, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, PageHeader, SearchToolbar, SideDrawer, StatusChip, TabBar, TabView, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -495,9 +495,9 @@ export default function Chat() {
       </Card>
 
       {/* New Conversation Sheet */}
-      <FormDialog open={newSheetOpen} onClose={() => setNewSheetOpen(false)} title={"New Conversation"} description={"Start an internal or WhatsApp chat"}>
+      <SideDrawer open={newSheetOpen} onClose={() => setNewSheetOpen(false)} title={"New Conversation"} description={"Start an internal or WhatsApp chat"} width={460}>
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <TabView value={newChatType} onChange={v => setNewChatType(v as any)}>
               <TabBar sx={{ width: "100%" }}>
                 <Tab value="internal" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={MessageCircle} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>Internal</Box>} sx={{ flex: "1 1 0%" }}/>
@@ -560,6 +560,6 @@ export default function Chat() {
                 </Button>
               </>)}
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

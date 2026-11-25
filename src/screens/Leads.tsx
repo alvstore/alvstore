@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Card, CardContent, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -323,9 +323,21 @@ export default function Leads() {
       </TabView>
 
       {/* Lead Detail Sheet */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editId ? "Lead Details" : "New Lead"} description={editId ? "Edit details and track activities" : "Enter lead details"} paperSx={{ overflowY: "auto", "@media (min-width: 640px)": { maxWidth: "32rem" } }}>
+      <SideDrawer
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={editId ? "Lead Details" : "New Lead"}
+        description={editId ? "Edit details and track activities" : "Enter lead details"}
+        width={520}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} variant="contained" sx={{ minHeight: 36 }}>{editId ? "Update Lead" : "Create Lead"}</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} label={"Name *"} size="small" fullWidth/></Box>
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} label={"Phone"} size="small" fullWidth/></Box>
@@ -356,7 +368,6 @@ export default function Leads() {
                 </TextField>
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={3} label={"Notes"} size="small" fullWidth multiline/></Box>
-            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>{editId ? "Update Lead" : "Create Lead"}</Button>
 
             {/* Activity Timeline */}
             {editId && detailLead && (<Box sx={{ marginTop: "1.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
@@ -400,6 +411,6 @@ export default function Leads() {
                 </Box>
               </Box>)}
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

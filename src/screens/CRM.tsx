@@ -26,10 +26,10 @@ import {
   AnimatedPage,
   DataTable,
   DistributionWidget,
-  FormDialog,
   PageHeader,
   SearchToolbar,
   SegmentedControl,
+  SideDrawer,
   StatCard,
   StatusChip,
   confirmAction,
@@ -251,7 +251,7 @@ export default function CRM() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!(await confirmAction("Are you sure you want to delete this customer? This cannot be undone."))) {
+    if (!(await confirmAction("Delete this customer? This cannot be undone."))) {
       return;
     }
     const { error } = await supabase.from("customers").delete().eq("id", id);
@@ -1001,15 +1001,25 @@ export default function CRM() {
           )}
         </Drawer>
 
-        {/* Customer Add / Edit Modal */}
-        <FormDialog
+        {/* Customer Add / Edit SideDrawer */}
+        <SideDrawer
           open={sheetOpen}
           onClose={() => setSheetOpen(false)}
           title={editId ? "Edit Customer Profile" : "Create New Customer"}
           description={editId ? "Update contact information, billing metadata, and commercial terms" : "Add a new customer or business account to your directory"}
-          paperSx={{ maxWidth: 640, overflowY: "auto" }}
+          width={620}
+          footer={
+            <>
+              <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 38 }}>
+                Cancel
+              </Button>
+              <Button variant="contained" onClick={handleSave} sx={{ minHeight: 38 }}>
+                {editId ? "Update Customer" : "Create Customer"}
+              </Button>
+            </>
+          }
         >
-          <Box sx={{ display: "grid", gap: 2.5, mt: 1 }}>
+          <Box sx={{ display: "grid", gap: 2.5 }}>
             {/* Classification & VIP Switch */}
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
               <SegmentedControl
@@ -1247,18 +1257,8 @@ export default function CRM() {
                 slotProps={{ inputLabel: { shrink: true } }}
               />
             </Box>
-
-            {/* Modal Actions */}
-            <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1.5, mt: 1 }}>
-              <Button variant="outlined" onClick={() => setSheetOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="contained" onClick={handleSave}>
-                {editId ? "Update Customer" : "Create Customer"}
-              </Button>
-            </Box>
           </Box>
-        </FormDialog>
+        </SideDrawer>
       </Box>
     </AnimatedPage>
   );

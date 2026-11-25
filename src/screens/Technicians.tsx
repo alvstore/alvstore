@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar, Box, Button, IconButton, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -228,9 +228,22 @@ export default function Technicians() {
         </Box>)}
 
       {/* Add/Edit Technician Sheet */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editId ? "Edit Technician" : "Add Technician"} description={"Manage technician details and login"} paperSx={{ overflowY: "auto", "@media (min-width: 640px)": { maxWidth: "32rem" } }}>
+      <SideDrawer
+        open={sheetOpen}
+        busy={saving}
+        onClose={() => setSheetOpen(false)}
+        title={editId ? "Edit Technician" : "Add Technician"}
+        description={"Manage technician details and login"}
+        width={520}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>{saving ? "Saving..." : editId ? "Update" : "Create Technician"}</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: "1rem" }}>
               <AvatarUpload currentUrl={editId ? technicians.find(t => t.id === editId)?.avatar_url : undefined} name={form.name} folder="technicians" entityId={editId || undefined} onUploaded={async (url) => {
         if (editId) {
@@ -255,14 +268,13 @@ export default function Technicians() {
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="Min 6 characters" label={"Password *"} size="small" fullWidth/></Box>
               </>)}
-            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>{saving ? "Saving..." : editId ? "Update" : "Create Technician"}</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
-      {/* Payment Ledger Dialog */}
-      <FormDialog open={ledgerOpen} onClose={() => setLedgerOpen(false)} title={<>
+      {/* Payment Ledger Drawer */}
+      <SideDrawer open={ledgerOpen} onClose={() => setLedgerOpen(false)} width={760} title={<>
               <Box component={BookOpen} sx={{ height: "1.25rem", width: "1.25rem" }}/> Payment Ledger — {ledgerTech?.name}
-            </>} paperSx={{ maxWidth: "48rem", maxHeight: "85vh", overflowY: "auto" }}>
+            </>}>
 
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.75rem" }}>
@@ -294,12 +306,24 @@ export default function Technicians() {
                   </TableRow>))}</TableBody>
             </DataTable>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Add Payment Record Sheet */}
-      <FormDialog open={paymentSheetOpen} onClose={() => setPaymentSheetOpen(false)} title={"Add Payment Record"} description={<>Record a technician payment for {ledgerTech?.name}</>} paperSx={{ "@media (min-width: 640px)": { maxWidth: "28rem" } }}>
+      <SideDrawer
+        open={paymentSheetOpen}
+        onClose={() => setPaymentSheetOpen(false)}
+        title={"Add Payment Record"}
+        description={<>Record a technician payment for {ledgerTech?.name}</>}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setPaymentSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={addPaymentRecord} variant="contained" sx={{ minHeight: 36 }}>Add Payment Record</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             {techJobSheets.length > 0 && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
                 <TextField value={paymentForm.job_sheet_id} label={"Link to Job Sheet (optional)"} select size="small" fullWidth onChange={event => (v => {
@@ -317,8 +341,7 @@ export default function Technicians() {
                 </TextField>
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={paymentForm.notes} onChange={e => setPaymentForm(p => ({ ...p, notes: e.target.value }))} rows={2} label={"Notes"} size="small" fullWidth multiline/></Box>
-            <Button onClick={addPaymentRecord} variant="contained" sx={{ width: "100%" }}>Add Payment Record</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

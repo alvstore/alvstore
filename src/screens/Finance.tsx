@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert, Box, Button, Card, CardContent, FormLabel, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, TabBar, TabPanel, TabView, TrendChart, DistributionWidget, mergeSx, toast, type StatAccent } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, TabBar, TabPanel, TabView, TrendChart, DistributionWidget, mergeSx, toast, type StatAccent } from "@/components/mui";
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -376,20 +376,40 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
         </DataTable>
       </Box>
 
-      {/* Receipt Dialog */}
-      <FormDialog open={receiptOpen} onClose={() => setReceiptOpen(false)} title={"Receipt Slip"} paperSx={{ "@media (min-width: 640px)": { maxWidth: "28rem" }, "@media print": { maxWidth: "100%", "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" } }}>
-
-          {receiptTx && (<ReceiptSlip transaction={receiptTx} accounts={accounts} categories={categories}/>)}
-          <Box sx={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", "@media print": { display: "none" } }}>
-            <Button onClick={() => window.print()} variant="outlined" size="small">
+      {/* Receipt Drawer */}
+      <SideDrawer
+        open={receiptOpen}
+        onClose={() => setReceiptOpen(false)}
+        title={"Receipt Slip"}
+        width={460}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setReceiptOpen(false)} sx={{ minHeight: 36 }}>Close</Button>
+            <Button onClick={() => window.print()} variant="contained" size="small" sx={{ minHeight: 36 }}>
               <Box component={Download} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.375rem" }}/>Print / PDF
             </Button>
-          </Box>
-        </FormDialog>
+          </>
+        }
+        paperSx={{ "@media print": { maxWidth: "100%", "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "none" } }}
+      >
+          {receiptTx && (<ReceiptSlip transaction={receiptTx} accounts={accounts} categories={categories}/>)}
+        </SideDrawer>
 
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={<>Add {type === "income" ? "Income" : "Expense"}</>} description={<>Staff: {staffName}</>}>
+      <SideDrawer
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={<>Add {type === "income" ? "Income" : "Expense"}</>}
+        description={<>Staff: {staffName}</>}
+        width={460}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} variant="contained" sx={{ minHeight: 36 }}>Save</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} label={"Date"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} label={"Amount *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
@@ -412,9 +432,8 @@ function TransactionTab({ type, transactions, accounts, categories, staffName, u
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.reference} onChange={e => setForm(p => ({ ...p, reference: e.target.value }))} placeholder="Invoice / Job Sheet #" label={"Reference"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={2} label={"Description"} size="small" fullWidth multiline/></Box>
-            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>Save</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box>);
 }
 // ─── Transfers Tab ────────────────────────────
@@ -470,9 +489,21 @@ function TransfersTab({ accounts, transactions, staffName, userId, onRefresh }: 
               </TableRow>))}</TableBody>
         </DataTable>
       </Box>
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"New Transfer"} description={"Move funds between accounts"}>
+      <SideDrawer
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={"New Transfer"}
+        description={"Move funds between accounts"}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} variant="contained" sx={{ minHeight: 36 }}>Transfer</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} label={"Date"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -484,9 +515,8 @@ function TransfersTab({ accounts, transactions, staffName, userId, onRefresh }: 
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} label={"Amount *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={2} label={"Description"} size="small" fullWidth multiline/></Box>
-            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>Transfer</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box>);
 }
 // ─── Accounts Tab ─────────────────────────────
@@ -526,9 +556,21 @@ function AccountsTab({ accounts, userId, onRefresh }: {
         {accounts.map(a => (<StatCard label={a.name} caption={[a.bank_name, a.account_number].filter(Boolean).join(" • ") || a.type} value={a.current_balance} formatter={amount => "\u20B9" + amount.toLocaleString()} key={a.id}/>))}
         {accounts.length === 0 && <Typography component="p" variant="body1" sx={{ gridColumn: "1 / -1", textAlign: "center", color: "hsl(var(--muted-foreground))", paddingTop: "2rem", paddingBottom: "2rem" }}>No accounts yet. Create one to start tracking.</Typography>}
       </Box>
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"Add Account"} description={"Create a new financial account"}>
+      <SideDrawer
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={"Add Account"}
+        description={"Create a new financial account"}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} variant="contained" sx={{ minHeight: 36 }}>Create Account</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} label={"Account Name *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -539,9 +581,8 @@ function AccountsTab({ accounts, userId, onRefresh }: {
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.account_number} onChange={e => setForm(p => ({ ...p, account_number: e.target.value }))} label={"Account Number"} size="small" fullWidth/></Box>
             </>}
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.opening_balance} onChange={e => setForm(p => ({ ...p, opening_balance: e.target.value }))} label={"Opening Balance"} size="small" fullWidth/></Box>
-            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>Create Account</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box>);
 }
 // ─── Categories Tab ───────────────────────────
@@ -890,9 +931,21 @@ function CashControlTab({ records, staffName, userId, onRefresh }: {
       </Box>
 
       {/* Open Day Sheet */}
-      <FormDialog open={openSheetOpen} onClose={() => setOpenSheetOpen(false)} title={<>Open Day — {format(new Date(), "dd MMM yyyy")}</>} description={"Enter opening cash or count denominations"} paperSx={{ overflowY: "auto" }}>
+      <SideDrawer
+        open={openSheetOpen}
+        onClose={() => setOpenSheetOpen(false)}
+        title={<>Open Day — {format(new Date(), "dd MMM yyyy")}</>}
+        description={"Enter opening cash or count denominations"}
+        width={480}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setOpenSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleOpenDay} variant="contained" sx={{ minHeight: 36 }}>Open Day</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField type="number" value={openingCash} onChange={e => setOpeningCash(e.target.value)} placeholder="Or use denominations below" label={"Opening Cash Amount"} size="small" fullWidth/>
@@ -902,16 +955,27 @@ function CashControlTab({ records, staffName, userId, onRefresh }: {
               <DenomGrid denoms={openDenoms} onChange={setOpenDenoms}/>
               {denomTotal(openDenoms) > 0 && (<Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", textAlign: "right" }}>Denomination Total: ₹{denomTotal(openDenoms).toLocaleString()}</Typography>)}
             </Box>
-            <Button onClick={handleOpenDay} variant="contained" sx={{ width: "100%" }}>Open Day</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Close Day Sheet */}
-      <FormDialog open={closeSheetOpen} onClose={() => setCloseSheetOpen(false)} title={"Close Day"} description={<>
+      <SideDrawer
+        open={closeSheetOpen}
+        onClose={() => setCloseSheetOpen(false)}
+        title={"Close Day"}
+        description={<>
               Expected: ₹{todayRecord ? ((todayRecord.opening_cash || 0) + (todayRecord.manual_income || 0) + (todayRecord.pos_total || 0) - (todayRecord.manual_expense || 0)).toLocaleString() : "0"}
-            </>} paperSx={{ overflowY: "auto" }}>
+            </>}
+        width={480}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setCloseSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleCloseDay} variant="contained" sx={{ minHeight: 36 }}>Close Day</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField type="number" value={closingCash} onChange={e => setClosingCash(e.target.value)} placeholder="Or use denominations below" label={"Actual Closing Cash"} size="small" fullWidth/>
@@ -929,35 +993,56 @@ function CashControlTab({ records, staffName, userId, onRefresh }: {
             return Math.abs(cc - exp) > 100 ? "(required — variance > ₹100)" : "(optional)";
         })()}</>} size="small" fullWidth multiline/>
             </Box>
-            <Button onClick={handleCloseDay} variant="contained" sx={{ width: "100%" }}>Close Day</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Manual Income Sheet */}
-      <FormDialog open={incomeSheetOpen} onClose={() => setIncomeSheetOpen(false)} title={"Record Manual Income"} description={"Link to invoice, job sheet, quotation, or other"}>
+      <SideDrawer
+        open={incomeSheetOpen}
+        onClose={() => setIncomeSheetOpen(false)}
+        title={"Record Manual Income"}
+        description={"Link to invoice, job sheet, quotation, or other"}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setIncomeSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={() => addManualEntry("income")} variant="contained" sx={{ minHeight: 36 }}>Record Income</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={manualIncome} onChange={e => setManualIncome(e.target.value)} label={"Amount *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField value={incomeRef} onChange={e => setIncomeRef(e.target.value)} placeholder="INV-00001 / JOB-2026-00001 / QT-00001" label={"Reference (Invoice/Job Sheet/Quote #)"} size="small" fullWidth/>
             </Box>
-            <Button onClick={() => addManualEntry("income")} variant="contained" sx={{ width: "100%" }}>Record Income</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Manual Expense Sheet */}
-      <FormDialog open={expenseSheetOpen} onClose={() => setExpenseSheetOpen(false)} title={"Record Manual Expense"} description={"Link to repair, invoice, or other reference"}>
+      <SideDrawer
+        open={expenseSheetOpen}
+        onClose={() => setExpenseSheetOpen(false)}
+        title={"Record Manual Expense"}
+        description={"Link to repair, invoice, or other reference"}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setExpenseSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={() => addManualEntry("expense")} variant="contained" sx={{ minHeight: 36 }}>Record Expense</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={manualExpense} onChange={e => setManualExpense(e.target.value)} label={"Amount *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField value={expenseRef} onChange={e => setExpenseRef(e.target.value)} placeholder="JOB-2026-00001 / Parts purchase / Other" label={"Reference (Repair/Invoice/Other)"} size="small" fullWidth/>
             </Box>
-            <Button onClick={() => addManualEntry("expense")} variant="contained" sx={{ width: "100%" }}>Record Expense</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box>);
 }
 // ─── Audit Log Tab ────────────────────────────

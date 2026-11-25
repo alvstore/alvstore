@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, ButtonBase, Card, CardContent, Checkbox, Divider, FormLabel, IconButton, InputAdornment, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, StatusChip, TabBar, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SideDrawer, StatusChip, TabBar, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -1704,9 +1704,21 @@ function TemplatesTab() {
             })}
         </Box>)}
 
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editId ? "Edit Template" : "New Template"} description={"Create reusable message templates with variables"} paperSx={{ overflowY: "auto" }}>
+      <SideDrawer
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={editId ? "Edit Template" : "New Template"}
+        description={"Create reusable message templates with variables"}
+        width={520}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} variant="contained" sx={{ minHeight: 36 }}>{editId ? "Update" : "Create"} Template</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} label={"Name *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -1729,9 +1741,8 @@ function TemplatesTab() {
                 {variablesList.map(v => <Button key={v} onClick={() => insertVariable(v)} variant="outlined" size="small" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>{v}</Button>)}
               </Box>
             </Box>
-            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>{editId ? "Update" : "Create"} Template</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box>);
 }
 // ─── Service Categories Tab ─────────────────────────────────────

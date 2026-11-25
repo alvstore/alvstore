@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, ButtonBase, Card, CardContent, Checkbox, FormLabel, IconButton, MenuItem, Switch, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
 import { useState, useMemo, useRef, useCallback, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -515,7 +515,7 @@ export default function ApplePricing() {
           <Button onClick={exportCSV} variant="outlined" size="small">
             <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> Export CSV
           </Button>
-          <FormDialog title={"Delete All Products?"} trigger={<Button variant="outlined" size="small" sx={{ color: "hsl(var(--destructive))", "&:hover": { color: "hsl(var(--destructive))" } }}>
+          <SideDrawer width={420} title={"Delete All Products?"} trigger={<Button variant="outlined" size="small" sx={{ color: "hsl(var(--destructive))", "&:hover": { color: "hsl(var(--destructive))" } }}>
                 <Box component={Trash2} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> Delete All
               </Button>}>
 
@@ -531,7 +531,7 @@ export default function ApplePricing() {
         toast.success("All products marked inactive");
     }} variant="contained" color="error">Delete All</Button>
               </Box>
-            </FormDialog>
+            </SideDrawer>
         </Box></>}/>
 
       {/* KPI Cards */}
@@ -685,7 +685,29 @@ export default function ApplePricing() {
         <TabPanel value="rules" sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
           <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <Typography component="h2" variant="h2" sx={{ fontSize: "1.125rem", lineHeight: "1.75rem", fontWeight: "600" }}>Category-wise Pricing Rules</Typography>
-            <FormDialog open={showRuleDialog} onClose={() => setShowRuleDialog(false)} onOpen={() => setShowRuleDialog(true)} title={"Add Pricing Rule"} trigger={<Button variant="contained" size="small"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> Add Rule</Button>}>
+            <SideDrawer
+              open={showRuleDialog}
+              onClose={() => setShowRuleDialog(false)}
+              onOpen={() => setShowRuleDialog(true)}
+              title={"Add Pricing Rule"}
+              width={480}
+              trigger={<Button variant="contained" size="small"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> Add Rule</Button>}
+              footer={
+                <>
+                  <Button variant="outlined" onClick={() => setShowRuleDialog(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+                  <Button onClick={() => {
+        if (!newRule.category || !newRule.discount_percentage) {
+            toast.error("Fill required fields");
+            return;
+        }
+        addRuleMutation.mutate({
+            category: newRule.category, discount_percentage: parseFloat(newRule.discount_percentage), rule_name: newRule.rule_name,
+            cash_discount_type: newRule.cash_discount_type, cash_discount_value: parseFloat(newRule.cash_discount_value) || 0, cash_discount_mode: newRule.cash_discount_mode,
+        });
+    }} variant="contained" sx={{ minHeight: 36 }}>Save Rule</Button>
+                </>
+              }
+            >
 
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
                   <Box>
@@ -716,18 +738,8 @@ export default function ApplePricing() {
                     </Box>
                     <Box sx={{ marginTop: "0.5rem" }}><TextField type="number" placeholder="e.g. 0.5" value={newRule.cash_discount_value} onChange={(e) => setNewRule({ ...newRule, cash_discount_value: e.target.value })} label={"Value"} size="small" fullWidth/></Box>
                   </Box>
-                  <Button onClick={() => {
-        if (!newRule.category || !newRule.discount_percentage) {
-            toast.error("Fill required fields");
-            return;
-        }
-        addRuleMutation.mutate({
-            category: newRule.category, discount_percentage: parseFloat(newRule.discount_percentage), rule_name: newRule.rule_name,
-            cash_discount_type: newRule.cash_discount_type, cash_discount_value: parseFloat(newRule.cash_discount_value) || 0, cash_discount_mode: newRule.cash_discount_mode,
-        });
-    }} variant="contained" sx={{ width: "100%" }}>Save Rule</Button>
                 </Box>
-              </FormDialog>
+              </SideDrawer>
           </Box>
 
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 768px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
@@ -760,7 +772,7 @@ export default function ApplePricing() {
               <Button onClick={() => { setEditingOffer(null); setNewOffer({ offer_type: "", bank_name: "", applicable_category: "", applicable_product: "", discount_amount: "", discount_description: "", start_date: "", end_date: "" }); setShowOfferDialog(true); }} variant="contained" size="small">
                 <Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> Add Offer
               </Button>
-              <FormDialog title={"Delete All Offers?"} trigger={<Button variant="outlined" size="small" sx={{ color: "hsl(var(--destructive))", "&:hover": { color: "hsl(var(--destructive))" } }}>
+              <SideDrawer width={420} title={"Delete All Offers?"} trigger={<Button variant="outlined" size="small" sx={{ color: "hsl(var(--destructive))", "&:hover": { color: "hsl(var(--destructive))" } }}>
                     <Box component={Trash2} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> Delete All Offers
                   </Button>}>
 
@@ -776,7 +788,7 @@ export default function ApplePricing() {
         toast.success("All offers deleted");
     }} variant="contained" color="error">Delete All</Button>
                   </Box>
-                </FormDialog>
+                </SideDrawer>
             </Box>
           </Box>
 
@@ -1077,8 +1089,28 @@ export default function ApplePricing() {
         </TabPanel>
       </TabView>
 
-      {/* ADD PRODUCT DIALOG */}
-      <FormDialog open={showProductDialog} onClose={() => setShowProductDialog(false)} title={"Add Product"}>
+      {/* ADD PRODUCT DRAWER */}
+      <SideDrawer
+        open={showProductDialog}
+        onClose={() => setShowProductDialog(false)}
+        title={"Add Product"}
+        width={480}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setShowProductDialog(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={() => {
+        if (!newProduct.part_number || !newProduct.description || !newProduct.category || !newProduct.mrp) {
+            toast.error("Fill required fields");
+            return;
+        }
+        addProductMutation.mutate({
+            part_number: newProduct.part_number, description: newProduct.description, category: newProduct.category,
+            mrp: parseFloat(newProduct.mrp), alp_ex_vat: parseFloat(newProduct.alp_ex_vat) || 0, gst_percentage: parseFloat(newProduct.gst_percentage) || 18,
+        });
+    }} variant="contained" sx={{ minHeight: 36 }}>Save Product</Button>
+          </>
+        }
+      >
 
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
             <Box><TextField value={newProduct.part_number} onChange={(e) => setNewProduct({ ...newProduct, part_number: e.target.value })} placeholder="e.g. MYE73HN/A" label={"Part Number *"} size="small" fullWidth/></Box>
@@ -1092,22 +1124,23 @@ export default function ApplePricing() {
               <Box><TextField type="number" value={newProduct.alp_ex_vat} onChange={(e) => setNewProduct({ ...newProduct, alp_ex_vat: e.target.value })} label={"ALP Ex VAT"} size="small" fullWidth/></Box>
               <Box><TextField type="number" value={newProduct.gst_percentage} onChange={(e) => setNewProduct({ ...newProduct, gst_percentage: e.target.value })} label={"GST %"} size="small" fullWidth/></Box>
             </Box>
-            <Button onClick={() => {
-        if (!newProduct.part_number || !newProduct.description || !newProduct.category || !newProduct.mrp) {
-            toast.error("Fill required fields");
-            return;
-        }
-        addProductMutation.mutate({
-            part_number: newProduct.part_number, description: newProduct.description, category: newProduct.category,
-            mrp: parseFloat(newProduct.mrp), alp_ex_vat: parseFloat(newProduct.alp_ex_vat) || 0, gst_percentage: parseFloat(newProduct.gst_percentage) || 18,
-        });
-    }} variant="contained" sx={{ width: "100%" }}>Save Product</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
-      {/* ADD/EDIT OFFER DIALOG */}
-      <FormDialog open={showOfferDialog} onClose={() => ((open) => { setShowOfferDialog(open); if (!open)
-        setEditingOffer(null); })(false)} title={editingOffer ? "Edit Offer" : "Add Offer"}>
+      {/* ADD/EDIT OFFER DRAWER */}
+      <SideDrawer
+        open={showOfferDialog}
+        onClose={() => ((open) => { setShowOfferDialog(open); if (!open)
+        setEditingOffer(null); })(false)}
+        title={editingOffer ? "Edit Offer" : "Add Offer"}
+        width={480}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => { setShowOfferDialog(false); setEditingOffer(null); }} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSaveOffer} variant="contained" sx={{ minHeight: 36 }}>{editingOffer ? "Update Offer" : "Save Offer"}</Button>
+          </>
+        }
+      >
 
           <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
             <Box>
@@ -1126,8 +1159,7 @@ export default function ApplePricing() {
               <Box><TextField type="date" value={newOffer.start_date} onChange={(e) => setNewOffer({ ...newOffer, start_date: e.target.value })} label={"Start Date"} size="small" fullWidth/></Box>
               <Box><TextField type="date" value={newOffer.end_date} onChange={(e) => setNewOffer({ ...newOffer, end_date: e.target.value })} label={"End Date"} size="small" fullWidth/></Box>
             </Box>
-            <Button onClick={handleSaveOffer} variant="contained" sx={{ width: "100%" }}>{editingOffer ? "Update Offer" : "Save Offer"}</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

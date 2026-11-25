@@ -2,7 +2,7 @@
 
 import { Box, Button, Card, CardContent, IconButton, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { AnimatedPage, DataTable, DistributionWidget, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, DistributionWidget, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, TabBar, TabPanel, TabView, confirmAction, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
@@ -301,17 +301,30 @@ export default function Inventory() {
       </TabView>
 
       {/* Barcode View/Print Sheet */}
-      <FormDialog open={barcodeSheetOpen} onClose={() => setBarcodeSheetOpen(false)} title={"Product Barcode"} description={barcodeProduct?.name} paperSx={{ "@media (min-width: 640px)": { maxWidth: "28rem" } }}>
+      <SideDrawer
+        open={barcodeSheetOpen}
+        onClose={() => setBarcodeSheetOpen(false)}
+        title={"Product Barcode"}
+        description={barcodeProduct?.name}
+        width={440}
+        footer={
+          barcodeProduct?.barcode ? (
+            <>
+              <Button variant="outlined" onClick={() => setBarcodeSheetOpen(false)} sx={{ minHeight: 36 }}>Close</Button>
+              <Button onClick={() => printBarcode(barcodeProduct.barcode!, barcodeProduct.name, barcodeProduct.selling_price)} variant="contained" sx={{ minHeight: 36 }}>
+                <Box component={Printer} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Print Barcode Label
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             {barcodeProduct?.barcode && (<>
                 <BarcodePreview value={barcodeProduct.barcode} productName={barcodeProduct.name}/>
                 <Typography component="p" variant="body1" sx={{ textAlign: "center", fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>₹{barcodeProduct.selling_price}</Typography>
-                <Button onClick={() => printBarcode(barcodeProduct.barcode!, barcodeProduct.name, barcodeProduct.selling_price)} variant="contained" sx={{ width: "100%" }}>
-                  <Box component={Printer} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Print Barcode Label
-                </Button>
               </>)}
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

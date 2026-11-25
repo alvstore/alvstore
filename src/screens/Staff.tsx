@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Card, CardContent, IconButton, MenuItem, TextField, Typography } from "@mui/material";
-import { AnimatedPage, FormDialog, PageHeader, SearchToolbar, StatusChip, toast } from "@/components/mui";
+import { AnimatedPage, PageHeader, SearchToolbar, SideDrawer, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -148,9 +148,25 @@ export default function Staff() {
         </Box>)}
 
       {/* Add/Edit Staff Sheet */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editUserId ? "Edit Staff Member" : "Add New Staff Member"} description={editUserId ? "Update staff details and role" : "Create a new user account with role assignment"} paperSx={{ overflowY: "auto" }}>
+      <SideDrawer
+        open={sheetOpen}
+        busy={saving}
+        onClose={() => setSheetOpen(false)}
+        title={editUserId ? "Edit Staff Member" : "Add New Staff Member"}
+        description={editUserId ? "Update staff details and role" : "Create a new user account with role assignment"}
+        width={480}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>
+              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
+              {editUserId ? "Update Staff" : "Create Staff"}
+            </Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} placeholder="John Doe" label={"Full Name *"} size="small" fullWidth/>
@@ -175,11 +191,7 @@ export default function Staff() {
 
               <TextField type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder={editUserId ? "Leave blank to keep current" : "Min 6 characters"} label={editUserId ? "New Password (leave blank to keep current)" : "Password *"} size="small" fullWidth/>
             </Box>
-            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
-              {saving && <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/>}
-              {editUserId ? "Update Staff" : "Create Staff"}
-            </Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

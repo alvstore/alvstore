@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Card, CardContent, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -343,9 +343,25 @@ export default function PaymentRegister() {
           <Button onClick={exportCSV} variant="outlined" size="small">
             <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> Export
           </Button>
-          <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} onOpen={() => setSheetOpen(true)} title={editId ? "Edit Entry" : "New Register Entry"} trigger={<Button onClick={openNew} variant="contained" size="small"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> New Entry</Button>} paperSx={{ width: "100%", "@media (min-width: 640px)": { maxWidth: "32rem" }, overflowY: "auto" }}>
+          <SideDrawer
+            open={sheetOpen}
+            busy={saving}
+            onClose={() => setSheetOpen(false)}
+            onOpen={() => setSheetOpen(true)}
+            title={editId ? "Edit Entry" : "New Register Entry"}
+            trigger={<Button onClick={openNew} variant="contained" size="small"><Box component={Plus} sx={{ height: "1rem", width: "1rem", marginRight: "0.25rem" }}/> New Entry</Button>}
+            width={520}
+            footer={
+              <>
+                <Button variant="outlined" onClick={() => setSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>Cancel</Button>
+                <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>
+                  {saving ? "Saving..." : editId ? "Update Entry" : "Create Entry"}
+                </Button>
+              </>
+            }
+          >
 
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" }, marginTop: "1.5rem" }}>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
                 {/* Basic Info */}
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
                   <Typography component="h3" variant="h3" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basic Info</Typography>
@@ -538,12 +554,8 @@ export default function PaymentRegister() {
                     </Box>
                   </Box>
                 </Box>
-
-                <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
-                  {saving ? "Saving..." : editId ? "Update Entry" : "Create Entry"}
-                </Button>
               </Box>
-            </FormDialog>
+            </SideDrawer>
         </Box></>}/>
 
       {/* KPI Cards */}

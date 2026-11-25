@@ -2,7 +2,6 @@ export { AnimatedPage } from "./AnimatedPage";
 export { PageHeader } from "./PageHeader";
 export { StatCard, CountUp, type StatAccent } from "./StatCard";
 export { DataTable, type DataColumn } from "./DataTable";
-export { FormDialog } from "./FormDialog";
 export { SideDrawer, type SideDrawerProps, type SideDrawerTab } from "./SideDrawer";
 export { MetricStrip, type MetricStripItem } from "./MetricStrip";
 export { ConfirmDialog, ConfirmDialogHost, confirmAction } from "./ConfirmDialog";

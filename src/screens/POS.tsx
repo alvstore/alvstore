@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, ButtonBase, Card, CardContent, Divider, FormLabel, IconButton, MenuItem, Switch, TextField, Typography } from "@mui/material";
-import { AnimatedPage, FormDialog, SearchToolbar, StatusChip, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, SearchToolbar, SideDrawer, StatusChip, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -335,18 +335,18 @@ export default function POS() {
         </CardContent>
       </Card>
 
-      {/* Receipt Dialog */}
-      <FormDialog open={receiptOpen} onClose={() => setReceiptOpen(false)} title={"Sale Complete"} actions={<>
-            <Button onClick={printReceipt} variant="outlined" sx={{ flex: "1 1 0%" }}>
+      {/* Receipt Drawer */}
+      <SideDrawer open={receiptOpen} onClose={() => setReceiptOpen(false)} title={"Sale Complete"} width={400} footer={<>
+            <Button onClick={printReceipt} variant="outlined" sx={{ flex: "1 1 0%", minHeight: 36 }}>
               <Box component={Printer} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>Print
             </Button>
-            <Button onClick={sendWhatsAppReceipt} variant="outlined" sx={{ flex: "1 1 0%" }}>
+            <Button onClick={sendWhatsAppReceipt} variant="outlined" sx={{ flex: "1 1 0%", minHeight: 36 }}>
               <Box component={Phone} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>WhatsApp
             </Button>
-            <Button onClick={sendEmailReceipt} variant="outlined" sx={{ flex: "1 1 0%" }}>
+            <Button onClick={sendEmailReceipt} variant="outlined" sx={{ flex: "1 1 0%", minHeight: 36 }}>
               <Box component={Mail} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/>Email
             </Button>
-          </>} paperSx={{ maxWidth: "24rem" }}>
+          </>}>
 
           {lastSale && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" }, fontSize: "0.875rem", lineHeight: "1.25rem" }}>
               <Box sx={{ textAlign: "center" }}>
@@ -365,6 +365,6 @@ export default function POS() {
               <Box sx={{ textAlign: "center", color: "hsl(var(--muted-foreground))", textTransform: "capitalize" }}>Paid via {lastSale.method}</Box>
             </Box>)}
 
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

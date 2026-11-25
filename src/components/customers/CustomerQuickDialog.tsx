@@ -10,7 +10,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { FormDialog, SegmentedControl, toast } from "@/components/mui";
+import { SegmentedControl, SideDrawer, toast } from "@/components/mui";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Building2, User, UserPlus } from "lucide-react";
@@ -153,14 +153,31 @@ export function CustomerQuickDialog({
   };
 
   return (
-    <FormDialog
+    <SideDrawer
       open={open}
+      busy={saving}
       onClose={onClose}
       title="Add New Customer"
       description="Create a customer account and select it immediately for this document."
-      paperSx={{ maxWidth: 560, overflowY: "auto" }}
+      width={540}
+      footer={
+        <>
+          <Button variant="outlined" onClick={onClose} disabled={saving} sx={{ minHeight: 38 }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={saving}
+            sx={{ minHeight: 38 }}
+            startIcon={<Box component={UserPlus} sx={{ width: 16, height: 16 }} />}
+          >
+            {saving ? "Saving..." : "Save & Select Customer"}
+          </Button>
+        </>
+      }
     >
-      <Box sx={{ display: "grid", gap: 2, mt: 1 }}>
+      <Box sx={{ display: "grid", gap: 2 }}>
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
           <SegmentedControl
             label="Customer Type"
@@ -319,21 +336,7 @@ export function CustomerQuickDialog({
             slotProps={{ inputLabel: { shrink: true } }}
           />
         </Box>
-
-        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1.5, mt: 1 }}>
-          <Button variant="outlined" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={saving}
-            startIcon={<Box component={UserPlus} sx={{ width: 16, height: 16 }} />}
-          >
-            {saving ? "Saving..." : "Save & Select Customer"}
-          </Button>
-        </Box>
       </Box>
-    </FormDialog>
+    </SideDrawer>
   );
 }

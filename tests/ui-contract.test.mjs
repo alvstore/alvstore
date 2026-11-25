@@ -17,7 +17,8 @@ test("all 57 screens use the MUI kit without legacy UI/Tailwind or unsafe motion
   assert.equal(result.screens, 57);
   assert.deepEqual(result.errors, []);
   assert.equal(result.adoption.AnimatedPage, 57);
-  for (const component of ["PageHeader", "StatCard", "DataTable", "FormDialog", "SearchToolbar", "StatusChip"]) assert.ok(result.adoption[component] > 0, `${component} must be used by screens`);
+  for (const component of ["PageHeader", "StatCard", "DataTable", "SideDrawer", "SearchToolbar", "StatusChip"]) assert.ok(result.adoption[component] > 0, `${component} must be used by screens`);
+  assert.equal(result.adoption.FormDialog ?? 0, 0, "FormDialog must be completely removed in favor of SideDrawer");
 });
 
 test("theme tokens produce valid MUI light/dark/alpha colors", async () => {

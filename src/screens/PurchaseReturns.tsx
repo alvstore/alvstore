@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, FormLabel, IconButton, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -142,9 +142,22 @@ export default function PurchaseReturns() {
           </DataTable>
         </Box>)}
 
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"New Purchase Return"} description={"Return items to supplier"} paperSx={{ overflowY: "auto", "@media (min-width: 640px)": { maxWidth: "36rem" } }}>
+      <SideDrawer
+        open={sheetOpen}
+        busy={saving}
+        onClose={() => setSheetOpen(false)}
+        title={"New Purchase Return"}
+        description={"Return items to supplier"}
+        width={580}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>{saving ? "Creating..." : "Create Return"}</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.25rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.25rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField value={form.supplier_id} label={"Supplier *"} select size="small" fullWidth onChange={event => (v => setForm(p => ({ ...p, supplier_id: v })))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select supplier"}</MenuItem>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</TextField>
@@ -180,8 +193,7 @@ export default function PurchaseReturns() {
             </Box>
 
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} label={"Notes"} size="small" fullWidth multiline/></Box>
-            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>{saving ? "Creating..." : "Create Return"}</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

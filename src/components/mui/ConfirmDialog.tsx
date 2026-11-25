@@ -2,16 +2,47 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { Alert, Button } from "@mui/material";
-import { FormDialog } from "./FormDialog";
+import { SideDrawer } from "./SideDrawer";
 
 export function ConfirmDialog({ open, title = "Confirm action", description, confirmLabel = "Delete", onConfirm, onClose }: {
   open: boolean; title?: string; description: string; confirmLabel?: string; onConfirm: () => void | Promise<void>; onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  return <FormDialog open={open} title={title} onClose={onClose} busy={busy} actions={<>
-    <Button onClick={onClose} disabled={busy}>Cancel</Button>
-    <Button color="error" variant="contained" disabled={busy} onClick={async () => { setBusy(true); try { await onConfirm(); onClose(); } finally { setBusy(false); } }}>{busy ? "Working…" : confirmLabel}</Button>
-  </>}><Alert severity="warning">{description}</Alert></FormDialog>;
+  return (
+    <SideDrawer
+      open={open}
+      title={title}
+      onClose={onClose}
+      busy={busy}
+      width={420}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={busy} variant="outlined" sx={{ minHeight: 36 }}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={busy}
+            sx={{ minHeight: 36 }}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm();
+                onClose();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "Working…" : confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <Alert severity="warning">{description}</Alert>
+    </SideDrawer>
+  );
 }
 
 type Request = { message: string; resolve: (accepted: boolean) => void };

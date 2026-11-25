@@ -2,7 +2,7 @@
 
 import { Box, Button, Card, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { AnimatedPage, DataTable, DistributionWidget, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, DistributionWidget, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -133,9 +133,21 @@ export default function Payments() {
       </Card>
 
       {/* Slide-over */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"Record Payment"} description={"Enter payment details"}>
+      <SideDrawer
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={"Record Payment"}
+        description={"Enter payment details"}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} variant="contained" sx={{ minHeight: 36 }}>Save Payment</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} label={"Amount *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
@@ -163,8 +175,7 @@ export default function Payments() {
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.reference_id} onChange={e => setForm(p => ({ ...p, reference_id: e.target.value }))} label={"Reference ID"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} label={"Notes"} size="small" fullWidth multiline/></Box>
-            <Button onClick={handleSave} variant="contained" sx={{ width: "100%" }}>Save Payment</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

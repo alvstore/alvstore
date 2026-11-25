@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Card, CardContent, Divider, MenuItem, TextField, Typography } from "@mui/material";
-import { AnimatedPage, FormDialog, toast } from "@/components/mui";
+import { AnimatedPage, SideDrawer, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
@@ -264,9 +264,20 @@ export default function InvoicePreview() {
       </Box>
 
       {/* Payment Sheet */}
-      <FormDialog open={paySheetOpen} onClose={() => setPaySheetOpen(false)} title={"Record Payment"}>
+      <SideDrawer
+        open={paySheetOpen}
+        onClose={() => setPaySheetOpen(false)}
+        title={"Record Payment"}
+        width={420}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setPaySheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={recordPayment} variant="contained" sx={{ minHeight: 36 }}>Record Payment</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)} label={"Amount"} size="small" fullWidth/>
@@ -280,8 +291,7 @@ export default function InvoicePreview() {
                   <MenuItem value="online">Online</MenuItem>
                 </TextField>
             </Box>
-            <Button onClick={recordPayment} variant="contained" sx={{ width: "100%" }}>Record Payment</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

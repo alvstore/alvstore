@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Divider, Typography } from "@mui/material";
-import { FormDialog } from "@/components/mui";
+import { SideDrawer } from "@/components/mui";
 import { BusinessHeader } from "./BusinessHeader";
 import { CustomerCard } from "./CustomerCard";
 import { ItemsTable, type DocumentItem } from "./ItemsTable";
@@ -34,20 +34,14 @@ interface DocumentPreviewProps {
     signatureName?: string | null;
 }
 export function DocumentPreview({ open, onOpenChange, type, number, status, customer, items, gstInclusive, globalDiscountType, globalDiscountValue, notes, terms, validUntil, dueDate, createdAt, signatureData, signatureName, }: DocumentPreviewProps) {
-    return (<FormDialog open={open} onClose={() => onOpenChange(false)} title={"Preview"} paperSx={{ maxWidth: "48rem", maxHeight: "90vh", overflowY: "auto", "@media print": { "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)" } }}>
-        <Box sx={{ "@media print": { display: "none" } }}>
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-
-            <Box sx={{ display: "flex", gap: "0.5rem" }}>
-              <Button onClick={() => window.print()} variant="outlined" size="small">
+    return (<SideDrawer open={open} onClose={() => onOpenChange(false)} title={"Preview"} width={760} footer={<Box sx={{ display: "flex", gap: 1, ml: "auto" }}>
+              <Button onClick={() => window.print()} variant="outlined" size="small" sx={{ minHeight: 36 }}>
                 <Box component={Printer} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.25rem" }}/> Print
               </Button>
-              <Button onClick={() => window.print()} variant="outlined" size="small">
+              <Button onClick={() => window.print()} variant="contained" size="small" sx={{ minHeight: 36 }}>
                 <Box component={Download} sx={{ height: "0.875rem", width: "0.875rem", marginRight: "0.25rem" }}/> PDF
               </Button>
-            </Box>
-          </Box>
-        </Box>
+            </Box>} paperSx={{ "@media print": { "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "none" } }}>
 
         <Box id="document-preview-content" data-print-area sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" }, padding: "0.5rem" }}>
           <BusinessHeader />
@@ -93,5 +87,5 @@ export function DocumentPreview({ open, onOpenChange, type, number, status, cust
               <Typography component="p" variant="body1" sx={{ fontSize: "10px", color: "hsl(var(--muted-foreground))" }}>Authorized Signature</Typography>
             </Box>)}
         </Box>
-      </FormDialog>);
+      </SideDrawer>);
 }

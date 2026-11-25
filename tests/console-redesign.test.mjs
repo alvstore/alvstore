@@ -60,7 +60,7 @@ test("SideDrawer and MetricStrip are exported cleanly and SideDrawer enforces mo
   assert.match(indexSrc, /export \{ MetricStrip/);
   assert.match(drawerSrc, /role:\s*["']dialog["']/);
   assert.match(drawerSrc, /"aria-modal":\s*true/);
-  assert.match(drawerSrc, /if\s*\(\s*!busy\s*\)\s*onClose\(\)/);
+  assert.match(drawerSrc, /if\s*\(\s*busy\s*\)\s*return;[\s\S]*onClose\?\.\(\)/);
   assert.match(stripSrc, /CountUp/);
 });
 
@@ -225,4 +225,46 @@ test("calendar-utils handles multi-day overlap intersection and strict category 
   assert.equal(matchesCategoryFilter("unknown_cat", partialOn), false);
   assert.equal(matchesCategoryFilter("business", partialOn), false);
   assert.equal(matchesCategoryFilter("personal", partialOn), true);
+});
+
+test("SideDrawer provides animated drawer choreography, reduced-motion support, and replaces all FormDialog/Dialog usages", () => {
+  const formDialogPath = path.join(root, "src/components/mui/FormDialog.tsx");
+  assert.equal(fs.existsSync(formDialogPath), false, "FormDialog.tsx must be removed");
+
+  const muiIndex = fs.readFileSync(path.join(root, "src/components/mui/index.ts"), "utf8");
+  assert.doesNotMatch(muiIndex, /FormDialog/, "mui barrel index must not export FormDialog");
+  assert.match(muiIndex, /export \{ SideDrawer\b/);
+
+  const sideDrawerSource = fs.readFileSync(path.join(root, "src/components/mui/SideDrawer.tsx"), "utf8");
+  for (const token of [
+    "useReducedMotion",
+    "AnimatePresence",
+    "component={motion.div}",
+    "trigger?",
+    "footer?",
+    "actions?",
+    "@media print",
+    'role: "dialog"',
+    '"aria-modal": true',
+  ]) {
+    assert.ok(sideDrawerSource.includes(token), `SideDrawer.tsx must include ${token}`);
+  }
+
+  const walk = (dir) => {
+    const out = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...walk(full));
+      else if (/\.(ts|tsx|js|jsx|mjs)$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  };
+  const offenders = [];
+  for (const file of walk(path.join(root, "src"))) {
+    const src = fs.readFileSync(file, "utf8");
+    if (/\bFormDialog\b|<Dialog(?:Title|Content|ContentText|Actions)?\b/.test(src)) {
+      offenders.push(path.relative(root, file));
+    }
+  }
+  assert.deepEqual(offenders, [], "zero files in src/ may reference FormDialog or MUI <Dialog>");
 });

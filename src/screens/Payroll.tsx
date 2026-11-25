@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Card, CardContent, Skeleton, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, StatCard, StatusChip, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SideDrawer, StatCard, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -254,9 +254,21 @@ export default function PayrollPage() {
         </Box>)}
 
       {/* Generate Salary Slip Sheet */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={"Generate Salary Slip"} description={<>{form.employee_name} — {selectedMonth}</>} paperSx={{ "@media (min-width: 640px)": { maxWidth: "28rem" } }}>
+      <SideDrawer
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={"Generate Salary Slip"}
+        description={<>{form.employee_name} — {selectedMonth}</>}
+        width={450}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleGenerate} variant="contained" sx={{ minHeight: 36 }}>Generate Slip</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--primary)) 20%, transparent)", backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 5%, transparent)" }}>
               <CardContent sx={{ padding: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <Box component={CalendarDays} sx={{ height: "1.25rem", width: "1.25rem", color: "hsl(var(--primary))" }}/>
@@ -279,8 +291,7 @@ export default function PayrollPage() {
               Net: ₹{((parseFloat(form.basic_salary) || 0) - (parseFloat(form.deductions) || 0) + (parseFloat(form.bonus) || 0)).toLocaleString()}
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} label={"Notes"} size="small" fullWidth/></Box>
-            <Button onClick={handleGenerate} variant="contained" sx={{ width: "100%" }}>Generate Slip</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }

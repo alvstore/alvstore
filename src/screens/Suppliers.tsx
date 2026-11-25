@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Card, CardContent, MenuItem, Tab, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, FormDialog, PageHeader, SearchToolbar, StatCard, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
+import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, TabBar, TabPanel, TabView, mergeSx, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -195,9 +195,22 @@ export default function Suppliers() {
         </Box>)}
 
       {/* Add/Edit Sheet */}
-      <FormDialog open={sheetOpen} onClose={() => setSheetOpen(false)} title={editId ? "Edit Supplier" : "Add Supplier"} description={"Manage supplier details"} paperSx={{ overflowY: "auto", "@media (min-width: 640px)": { maxWidth: "32rem" } }}>
+      <SideDrawer
+        open={sheetOpen}
+        busy={saving}
+        onClose={() => setSheetOpen(false)}
+        title={editId ? "Edit Supplier" : "Add Supplier"}
+        description={"Manage supplier details"}
+        width={520}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setSheetOpen(false)} disabled={saving} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ minHeight: 36 }}>{saving ? "Saving..." : editId ? "Update" : "Create Supplier"}</Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} label={"Name *"} size="small" fullWidth/></Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.gst_number} onChange={e => setForm(p => ({ ...p, gst_number: e.target.value }))} label={"GST Number"} size="small" fullWidth/></Box>
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.75rem" }}>
@@ -205,12 +218,11 @@ export default function Suppliers() {
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} label={"Email"} size="small" fullWidth/></Box>
             </Box>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} rows={3} label={"Address"} size="small" fullWidth multiline/></Box>
-            <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>{saving ? "Saving..." : editId ? "Update" : "Create Supplier"}</Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
 
-      {/* Supplier Ledger Dialog */}
-      <FormDialog open={ledgerOpen} onClose={() => setLedgerOpen(false)} title={<>Supplier Ledger — {ledgerSupplier?.name}</>} paperSx={{ maxWidth: "48rem", maxHeight: "85vh", overflowY: "auto" }}>
+      {/* Supplier Ledger Drawer */}
+      <SideDrawer open={ledgerOpen} onClose={() => setLedgerOpen(false)} width={760} title={<>Supplier Ledger — {ledgerSupplier?.name}</>}>
 
 
           {/* Supplier Contact Info */}
@@ -303,12 +315,27 @@ export default function Suppliers() {
               </DataTable>
             </TabPanel>
           </TabView>
-        </FormDialog>
+        </SideDrawer>
 
       {/* Record Payment Sheet */}
-      <FormDialog open={paySheetOpen} onClose={() => setPaySheetOpen(false)} title={"Record Supplier Payment"} description={<>Pay {ledgerSupplier?.name} — Outstanding: ₹{(ledgerSupplier?.outstanding_balance || 0).toLocaleString()}</>} paperSx={{ "@media (min-width: 640px)": { maxWidth: "28rem" } }}>
+      <SideDrawer
+        open={paySheetOpen}
+        busy={payingSaving}
+        onClose={() => setPaySheetOpen(false)}
+        title={"Record Supplier Payment"}
+        description={<>Pay {ledgerSupplier?.name} — Outstanding: ₹{(ledgerSupplier?.outstanding_balance || 0).toLocaleString()}</>}
+        width={440}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setPaySheetOpen(false)} disabled={payingSaving} sx={{ minHeight: 36 }}>Cancel</Button>
+            <Button onClick={recordSupplierPayment} disabled={payingSaving} variant="contained" sx={{ minHeight: 36 }}>
+              {payingSaving ? "Processing..." : "Record Payment"}
+            </Button>
+          </>
+        }
+      >
 
-          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" }, marginTop: "1.5rem" }}>
+          <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
               <TextField type="number" placeholder="0" value={payForm.amount} onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))} label={"Amount *"} size="small" fullWidth/>
@@ -332,10 +359,7 @@ export default function Suppliers() {
 
               <TextField value={payForm.notes} onChange={e => setPayForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Optional notes" label={"Notes"} size="small" fullWidth multiline/>
             </Box>
-            <Button onClick={recordSupplierPayment} disabled={payingSaving} variant="contained" sx={{ width: "100%" }}>
-              {payingSaving ? "Processing..." : "Record Payment"}
-            </Button>
           </Box>
-        </FormDialog>
+        </SideDrawer>
     </Box></AnimatedPage>;
 }
