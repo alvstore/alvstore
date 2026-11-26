@@ -16,10 +16,23 @@ export const PRIVATE_NOINDEX_METADATA: Metadata = {
   },
 };
 
+export const PUBLIC_ROBOTS_METADATA: NonNullable<Metadata["robots"]> = {
+  index: true,
+  follow: true,
+  googleBot: {
+    index: true,
+    follow: true,
+    "max-video-preview": -1,
+    "max-image-preview": "large",
+    "max-snippet": -1,
+  },
+};
+
 export const HOME_METADATA: Metadata = {
   title: "ALVStore — Bespoke Private Cinemas & Home Theaters",
   description:
     "Bespoke private cinemas, 4K laser projection & Dirac Live calibration across India. Authorised Denon, Marantz, JBL Synthesis & KEF partner.",
+  robots: PUBLIC_ROBOTS_METADATA,
   alternates: {
     canonical: `${SITE_URL}/`,
   },
@@ -54,6 +67,7 @@ export const CONTACT_METADATA: Metadata = {
   title: "Contact ALVStore — Private Cinema Consultation",
   description:
     "Visit our Udaipur studio or book a pan-India home theater consultation, room acoustic blueprint, and 4K laser projection demo. Call +91 98876 01200.",
+  robots: PUBLIC_ROBOTS_METADATA,
   alternates: {
     canonical: `${SITE_URL}/contact`,
   },

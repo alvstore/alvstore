@@ -18,6 +18,7 @@ Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
 Disallow: /pos
+Disallow: /sales/
 Disallow: /job/
 Disallow: /invoice/
 Disallow: /delivery-report/
@@ -26,6 +27,10 @@ User-agent: Applebot
 Allow: /
 Allow: /contact
 Disallow: /api/
+Disallow: /sales/
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
 
 User-agent: OAI-SearchBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
@@ -34,14 +39,20 @@ Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
 Disallow: /pos
+Disallow: /sales/
 Disallow: /job/
 Disallow: /invoice/
 Disallow: /delivery-report/
 
 User-agent: ChatGPT-User
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Allow: /contact
 Disallow: /api/
+Disallow: /sales/
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
 
 User-agent: Claude-SearchBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
@@ -50,14 +61,20 @@ Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
 Disallow: /pos
+Disallow: /sales/
 Disallow: /job/
 Disallow: /invoice/
 Disallow: /delivery-report/
 
 User-agent: Claude-User
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Allow: /contact
 Disallow: /api/
+Disallow: /sales/
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
 
 User-agent: PerplexityBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
@@ -66,14 +83,20 @@ Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
 Disallow: /pos
+Disallow: /sales/
 Disallow: /job/
 Disallow: /invoice/
 Disallow: /delivery-report/
 
 User-agent: Perplexity-User
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Allow: /contact
 Disallow: /api/
+Disallow: /sales/
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
 
 # AI Training & Grounding Control Groups
 User-agent: GPTBot
@@ -81,6 +104,7 @@ Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Allow: /contact
 Disallow: /api/
+Disallow: /sales/
 Disallow: /job/
 Disallow: /invoice/
 Disallow: /delivery-report/
@@ -90,16 +114,19 @@ Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Allow: /contact
 Disallow: /api/
+Disallow: /sales/
 Disallow: /job/
 Disallow: /invoice/
 Disallow: /delivery-report/
 
 User-agent: Google-Extended
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Allow: /contact
 Disallow: /api/
 
 User-agent: Applebot-Extended
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Allow: /contact
 Disallow: /api/

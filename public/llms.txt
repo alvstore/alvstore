@@ -2,19 +2,17 @@
 
 > Bespoke private cinema design, native 4K laser projection, architectural acoustics, and reference home theater engineering across India (established 2009, Udaipur studio).
 
+ALVStore designs, supplies, installs, and calibrates bespoke private cinemas across India from its experience room at Shop No. 2, 229, Alok School Road, Sector 11, Hiran Magri, Udaipur, Rajasthan 313001 (Mon–Sat, 10:00–20:00 IST; Sunday by appointment). Core partner systems include Sony SXRD & JVC D-ILA native 4K laser projectors (120"–220" woven acoustically transparent screens), Denon AVC, Marantz Cinema & Arcam Class G amplification, and JBL Synthesis, Bowers & Wilkins, KEF Uni-Q & Polk Audio architectural loudspeakers with Dirac Live and Audyssey MultEQ XT32 room calibration.
+
 ## Main Pages
 
-- [ALVStore Studio Gallery](https://alvstore.com/): Private cinema systems, interactive spatial room planner (5.1, 5.1.2, 7.2.2, 7.2.4), engineering workflow, and after-sales care.
-- [Contact & Consultation](https://alvstore.com/contact): Phone (+91 98876 01200), email (sales@alvstore.in), Udaipur studio directions, and in-home site survey booking.
+- [ALVStore Studio Gallery](https://alvstore.com/): Showcase of curated systems, architectural room engineering, and consultation intake.
+- [Contact & Consultation](https://alvstore.com/contact): Phone (+91 98876 01200), email (sales@alvstore.in), Udaipur studio directions, and pan-India site survey booking.
 
-## Capabilities & Authorised Brands
+## Architecture & Engineering Notes
 
-- **Projection & Screens**: Sony SXRD and JVC D-ILA native 4K laser projectors paired with woven acoustically transparent screens (120"–220").
-- **Amplification & Processors**: Denon AVC series, Marantz Cinema separates, and Arcam Class G amplification with Dirac Live & Audyssey MultEQ XT32 room calibration.
-- **Architectural Audio**: JBL Synthesis, Bowers & Wilkins, KEF Uni-Q, and Polk Audio calibrated multi-channel and multi-subwoofer speaker arrays.
-- **After-Sales & Support**: Scheduled Dirac Live re-tuning, projector laser optical servicing, HDMI 2.1 eARC diagnostics, and pan-India warranty care.
-
-## Studio Details
-
-- **Location**: Shop No. 2, 229, Alok School Road, Sector 11, Hiran Magri, Udaipur, Rajasthan 313001, India
-- **Hours**: Mon – Sat, 10:00 – 20:00 IST · Sunday by appointment
+- [Curated Hardware Collection](https://alvstore.com/#collection): Reference Denon, Marantz, JBL Synthesis, Arcam, Polk Audio, Bowers & Wilkins, KEF, Sony, and JVC cinema hardware.
+- [Interactive Spatial Room Planner](https://alvstore.com/#studio-planner): Live acoustic and geometry planning across 5.1, 5.1.2, 7.2.2, and 7.2.4 Dolby Atmos configurations.
+- [Three-Step Engineering Workflow](https://alvstore.com/#process): Room consultation, CAD acoustic drawing, turnkey installation, and on-site Dirac Live calibration.
+- [After-Sales & Support](https://alvstore.com/#after-sales): Scheduled Dirac Live re-tuning, projector optical maintenance, HDMI 2.1 eARC diagnostics, and pan-India care.
+- [Private Cinema Technical FAQ](https://alvstore.com/#engineering-notes): Room dimension requirements, supported projection/amplification hardware, Dirac Live & ISF calibration, and pan-India execution.

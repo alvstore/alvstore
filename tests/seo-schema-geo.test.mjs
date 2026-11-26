@@ -24,8 +24,10 @@ test("Schema.org JSON-LD graphs are valid, current (no FAQPage/deprecated types)
 
   assert.ok(String(HOME_METADATA.title).length <= 60);
   assert.ok(String(HOME_METADATA.description).length >= 120 && String(HOME_METADATA.description).length <= 160);
+  assert.equal(HOME_METADATA.robots?.index, true);
   assert.ok(String(CONTACT_METADATA.title).length <= 60);
   assert.ok(String(CONTACT_METADATA.description).length >= 120 && String(CONTACT_METADATA.description).length <= 160);
+  assert.equal(CONTACT_METADATA.robots?.index, true);
   assert.equal(PRIVATE_NOINDEX_METADATA.robots.index, false);
 
   const homeLd = buildHomeJsonLd();
@@ -48,6 +50,10 @@ test("Schema.org JSON-LD graphs are valid, current (no FAQPage/deprecated types)
 test("Public landing and contact pages render SSR content cleanly without global canonical collisions", () => {
   const rootLayout = fs.readFileSync(path.join(root, "src/app/layout.tsx"), "utf8");
   assert.doesNotMatch(rootLayout, /alternates:\s*\{\s*canonical:/);
+  assert.match(rootLayout, /index:\s*false/);
+
+  const legacyRoute = fs.readFileSync(path.join(root, "src/app/home-theater/page.tsx"), "utf8");
+  assert.match(legacyRoute, /permanentRedirect/);
 
   for (const routeFile of ["src/app/page.tsx", "src/app/contact/page.tsx"]) {
     const src = fs.readFileSync(path.join(root, routeFile), "utf8");
@@ -60,8 +66,8 @@ test("Public landing and contact pages render SSR content cleanly without global
 
 test("robots.txt, llms.txt, sitemap.xml, and private noindex layouts protect internal and customer-token routes", () => {
   const robots = fs.readFileSync(path.join(root, "public/robots.txt"), "utf8");
-  for (const bot of ["OAI-SearchBot", "Claude-SearchBot", "PerplexityBot", "GPTBot", "ClaudeBot", "Google-Extended", "Applebot-Extended"]) {
-    assert.match(robots, new RegExp(`User-agent:\\s*${bot}`));
+  for (const bot of ["OAI-SearchBot", "ChatGPT-User", "Claude-SearchBot", "Claude-User", "PerplexityBot", "Perplexity-User", "GPTBot", "ClaudeBot", "Google-Extended", "Applebot-Extended"]) {
+    assert.match(robots, new RegExp(`User-agent:\\s*${bot}[\\s\\S]*?Content-Signal:`));
   }
   assert.match(robots, /Disallow:\s*\/api\//);
   assert.match(robots, /Disallow:\s*\/job\//);

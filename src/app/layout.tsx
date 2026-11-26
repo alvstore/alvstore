@@ -26,16 +26,11 @@ export const metadata: Metadata = {
     "acoustic room treatment",
   ],
   authors: [{ name: "ALVStore" }],
+  // Default to noindex so unlisted/404 and utility routes never emit index,follow;
+  // public landing pages explicitly opt in via PUBLIC_ROBOTS_METADATA.
   robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
+    index: false,
+    follow: false,
   },
   openGraph: {
     type: "website",
