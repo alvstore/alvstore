@@ -18,6 +18,7 @@ export interface DocumentItem {
     gst_enabled: boolean;
     total: number;
     image_url?: string | null;
+    sort_order?: number | null;
 }
 interface Product {
     id: string;
@@ -31,6 +32,8 @@ interface ItemsTableProps {
     onItemsChange: (items: DocumentItem[]) => void;
     products: Product[];
     readOnly?: boolean;
+    showImages?: boolean;
+    hidePricing?: boolean;
 }
 export function calcItemTotal(item: DocumentItem): number {
     const lineTotal = item.quantity * item.unit_price;
@@ -43,7 +46,7 @@ export function calcItemTotal(item: DocumentItem): number {
     }
     return Math.max(0, lineTotal - discount);
 }
-export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTableProps) {
+export function ItemsTable({ items, onItemsChange, products, readOnly, showImages = true, hidePricing = false }: ItemsTableProps) {
     const addItem = (productId: string) => {
         const product = products.find(p => p.id === productId);
         if (!product)
@@ -57,7 +60,7 @@ export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTa
             unit_price: product.selling_price || 0,
             discount_type: "percentage",
             discount_value: 0,
-            gst_percentage: product.gst_percentage || 18,
+            gst_percentage: product.gst_percentage ?? 18,
             gst_enabled: true,
             total: product.selling_price || 0,
         };
@@ -92,41 +95,47 @@ export function ItemsTable({ items, onItemsChange, products, readOnly }: ItemsTa
         ]);
     };
     if (readOnly) {
+        const colsCount = 3 + (showImages ? 1 : 0) + (!hidePricing ? 4 : 0);
         return (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", overflow: "hidden" }}>
-        <DataTable columnsCount={7}>
+        <DataTable columnsCount={colsCount}>
           <TableHead>
             <TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)" }}>
               <TableCell sx={{ width: "2.5rem", fontSize: "0.75rem", lineHeight: "1rem" }}>#</TableCell>
+              {showImages && <TableCell sx={{ width: "4rem", fontSize: "0.75rem", lineHeight: "1rem" }}>Image</TableCell>}
               <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>Item</TableCell>
               <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "4rem" }}>Qty</TableCell>
-              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "6rem" }}>Price</TableCell>
-              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "5rem" }}>Disc.</TableCell>
-              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "4rem" }}>GST%</TableCell>
-              <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "6rem" }}>Amount</TableCell>
+              {!hidePricing && (<>
+                  <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "6rem" }}>Price</TableCell>
+                  <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "5rem" }}>Disc.</TableCell>
+                  <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "4rem" }}>GST%</TableCell>
+                  <TableCell sx={{ textAlign: "right", fontSize: "0.75rem", lineHeight: "1rem", width: "6rem" }}>Amount</TableCell>
+                </>)}
             </TableRow>
           </TableHead>
           <TableBody>
-            {items.map((item, idx) => (<TableRow key={idx}>
+            {items.map((item, idx) => (<TableRow key={item.id || idx}>
                 <TableCell sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{idx + 1}</TableCell>
+                {showImages && (<TableCell sx={{ width: "4rem" }}>
+                    {item.image_url ? (<Box src={item.image_url} alt={item.product_name} component="img" sx={{ height: "2.75rem", width: "2.75rem", borderRadius: "calc(var(--radius) - 2px)", objectFit: "cover", borderWidth: "1px", borderColor: "hsl(var(--border))", display: "block" }}/>) : (<Box sx={{ height: "2.75rem", width: "2.75rem", borderRadius: "calc(var(--radius) - 2px)", borderWidth: "1px", borderStyle: "dashed", borderColor: "hsl(var(--border))", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 25%, transparent)" }}/>)}
+                  </TableCell>)}
                 <TableCell>
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: "0.625rem" }}>
-                    {item.image_url && (<Box src={item.image_url} alt={item.product_name} component="img" sx={{ height: "2.5rem", width: "2.5rem", borderRadius: "calc(var(--radius) - 2px)", objectFit: "cover", borderWidth: "1px", borderColor: "hsl(var(--border))", flexShrink: "0", marginTop: "0.125rem" }}/>)}
-                    <Box>
-                      <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>{item.product_name}</Typography>
-                      {item.description && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{item.description}</Typography>}
-                      {item.hsn_code && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>HSN: {item.hsn_code}</Typography>}
-                    </Box>
+                  <Box>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>{item.product_name}</Typography>
+                    {item.description && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-line" }}>{item.description}</Typography>}
+                    {item.hsn_code && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>HSN: {item.hsn_code}</Typography>}
                   </Box>
                 </TableCell>
-                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>{item.quantity}</TableCell>
-                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>₹{item.unit_price.toFixed(2)}</TableCell>
-                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
-                  {item.discount_value > 0
-                    ? item.discount_type === "percentage" ? `${item.discount_value}%` : `₹${item.discount_value}`
-                    : "—"}
-                </TableCell>
-                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem" }}>{item.gst_enabled ? `${item.gst_percentage}%` : "—"}</TableCell>
-                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>₹{item.total.toFixed(2)}</TableCell>
+                <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem", fontVariantNumeric: "tabular-nums" }}>{item.quantity}</TableCell>
+                {!hidePricing && (<>
+                    <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem", fontVariantNumeric: "tabular-nums" }}>₹{Number(item.unit_price || 0).toFixed(2)}</TableCell>
+                    <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem", fontVariantNumeric: "tabular-nums" }}>
+                      {item.discount_value > 0
+                        ? item.discount_type === "percentage" ? `${item.discount_value}%` : `₹${item.discount_value}`
+                        : "—"}
+                    </TableCell>
+                    <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem", fontVariantNumeric: "tabular-nums" }}>{item.gst_enabled !== false ? `${item.gst_percentage}%` : "—"}</TableCell>
+                    <TableCell sx={{ textAlign: "right", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", fontVariantNumeric: "tabular-nums" }}>₹{Number(item.total || 0).toFixed(2)}</TableCell>
+                  </>)}
               </TableRow>))}
           </TableBody>
         </DataTable>

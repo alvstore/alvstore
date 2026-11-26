@@ -11,6 +11,7 @@ import { CustomerCard } from "@/components/documents/CustomerCard";
 import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
 import { StatusBadge } from "@/components/documents/StatusBadge";
+import { downloadDocumentPdf } from "@/lib/document-pdf-client";
 interface InvoiceData {
     id: string;
     invoice_number: string;
@@ -50,13 +51,14 @@ export default function PublicInvoice() {
             const { data: inv } = await supabase.from("invoices").select("*, customers(name, email, phone, address, gst_number)").eq("public_token", token).single();
             if (inv) {
                 setInvoice(inv as any);
-                const { data: itemsData } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
-                setItems((itemsData || []).map((i: any) => ({
+                const { data: itemsData } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id).order("sort_order", { ascending: true });
+                setItems((itemsData || []).map((i: any, idx: number) => ({
                     product_id: i.product_id, product_name: i.product_name,
                     description: i.description || "", hsn_code: i.hsn_code || "",
                     quantity: i.quantity, unit_price: i.unit_price,
                     discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-                    gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+                    gst_percentage: i.gst_percentage ?? 18, gst_enabled: true, total: i.total,
+                    sort_order: i.sort_order ?? idx,
                 })));
             }
             setLoading(false);
@@ -107,7 +109,7 @@ export default function PublicInvoice() {
               {balance > 0 && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--destructive))", fontWeight: "500" }}>Balance Due: ₹{balance.toLocaleString("en-IN")}</Typography>}
             </Box>
 
-            <ItemsTable items={items} onItemsChange={() => { }} products={[]} readOnly/>
+            <ItemsTable items={items} onItemsChange={() => { }} products={[]} showImages={false} readOnly/>
 
             <TotalsPanel items={items} gstInclusive={invoice.gst_inclusive || false} globalDiscountType={(invoice.discount_type as any) || "percentage"} globalDiscountValue={invoice.discount_value || 0} readOnly/>
 
@@ -122,13 +124,13 @@ export default function PublicInvoice() {
               {balance > 0 && (<Button onClick={() => toast.info("Online payment coming soon")} variant="contained" sx={{ flex: "1 1 0%" }}>
                   <Box component={CreditCard} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Pay Now
                 </Button>)}
-              <Button onClick={() => window.print()} variant="outlined" color="secondary" sx={balance > 0 ? { flex: "1 1 0%" } : { width: "100%" }}>
-                <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Download PDF
+              <Button onClick={() => token && void downloadDocumentPdf({ docType: "invoice", token, filename: `${invoice.invoice_number}.pdf` })} variant="outlined" color="secondary" sx={balance > 0 ? { flex: "1 1 0%" } : { width: "100%" }}>
+                <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Download Branded PDF
               </Button>
             </Box>
           </CardContent>
         </Card>
-        <Typography component="p" variant="body1" sx={{ textAlign: "center", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Powered by ERPMaster</Typography>
+        <Typography component="p" variant="body1" sx={{ textAlign: "center", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>ALVStore · Authentic Apple &amp; Custom Studio Gear</Typography>
       </Box>
     </Box></AnimatedPage>;
 }

@@ -19,9 +19,9 @@ export function CustomerCard({ name, email, phone, address, gstNumber, compact }
         <Typography component="p" variant="body1" sx={mergeSx(compact ? { fontSize: "0.875rem", lineHeight: "1.25rem" } : { fontSize: "1rem", lineHeight: "1.5rem" }, { fontWeight: "600", color: "hsl(var(--foreground))" })}>{name}</Typography>
         {gstNumber && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>GSTIN: {gstNumber}</Typography>}
         <Box sx={{ display: "flex", flexWrap: "wrap", columnGap: "0.75rem", rowGap: "0.125rem", marginTop: "0.125rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
-          {email && <Box component="span" sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Mail} sx={{ height: "0.75rem", width: "0.75rem" }}/>{email}</Box>}
-          {phone && <Box component="span" sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={Phone} sx={{ height: "0.75rem", width: "0.75rem" }}/>{phone}</Box>}
-          {address && <Box component="span" sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Box component={MapPin} sx={{ height: "0.75rem", width: "0.75rem", flexShrink: "0" }}/><Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{address}</Box></Box>}
+          {email && <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", minWidth: 0, overflowWrap: "anywhere" }}><Box component={Mail} sx={{ height: "0.75rem", width: "0.75rem", flexShrink: 0 }}/>{email}</Box>}
+          {phone && <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", flexShrink: 0 }}><Box component={Phone} sx={{ height: "0.75rem", width: "0.75rem", flexShrink: 0 }}/>{phone}</Box>}
+          {address && <Box component="span" sx={{ display: "inline-flex", alignItems: "flex-start", gap: "0.25rem", minWidth: 0, maxWidth: "100%" }}><Box component={MapPin} sx={{ height: "0.75rem", width: "0.75rem", flexShrink: 0, mt: "0.125rem" }}/><Box component="span" sx={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{address}</Box></Box>}
         </Box>
       </Box>
     </Box>);

@@ -75,6 +75,9 @@ test("AuditLogs includes job_sheet_audit_log + exports, and RepairsReport querie
 });
 
 test("All document editors expose explicit Add Custom Item support alongside catalog selection", () => {
+  const sharedEditor = fs.readFileSync(path.join(root, "src/components/documents/SortableLineItemsEditor.tsx"), "utf8");
+  assert.match(sharedEditor, /Custom item name/, "SortableLineItemsEditor must allow editing custom item name inline");
+
   for (const file of [
     "src/components/documents/ItemsTable.tsx",
     "src/screens/InvoiceAdd.tsx",
@@ -84,7 +87,10 @@ test("All document editors expose explicit Add Custom Item support alongside cat
     const src = fs.readFileSync(path.join(root, file), "utf8");
     assert.match(src, /DocumentItemAdder/, `${file} must use DocumentItemAdder`);
     assert.match(src, /addCustomItem/, `${file} must implement addCustomItem`);
-    assert.match(src, /Custom item name/, `${file} must allow editing custom item name inline`);
+    assert.ok(
+      /Custom item name/.test(src) || /SortableLineItemsEditor/.test(src),
+      `${file} must allow editing custom item name inline or via SortableLineItemsEditor`
+    );
   }
 });
 

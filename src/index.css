@@ -148,7 +148,6 @@ button, input, textarea, select { font: inherit; }
   [data-print-area] { display: block !important; visibility: visible !important; position: absolute; left: 0; top: 0; width: 100%; z-index: 9999; }
   body:has([data-print-area]) * { visibility: hidden; }
   body:has([data-print-area]) [data-print-area], body:has([data-print-area]) [data-print-area] * { visibility: visible !important; }
-  [data-print-area]::after { content: "ORIGINAL COPY — DO NOT ALTER"; position: fixed; bottom: 10mm; left: 0; right: 0; text-align: center; font-size: 8pt; color: #ccc; letter-spacing: 2px; }
   .MuiDialog-root, .MuiDialog-container { position: static !important; height: auto !important; }
   .MuiDialog-paper { width: 100%; max-width: none !important; box-shadow: none !important; overflow: visible !important; margin: 0 !important; }
   .MuiTableContainer-root { max-height: none !important; overflow: visible !important; }

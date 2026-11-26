@@ -73,6 +73,10 @@ function authHeaders(): Record<string, string> {
   return currentToken ? { Authorization: `Bearer ${currentToken}` } : {};
 }
 
+export function getBackendAuthHeaders(): Record<string, string> {
+  return authHeaders();
+}
+
 // ---------------------------------------------------------------------------
 // query builder
 // ---------------------------------------------------------------------------

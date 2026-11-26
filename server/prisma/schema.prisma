@@ -366,12 +366,18 @@ model DeliveryChallanItems {
   challan_id          String           @db.Uuid
   product_id          String?          @db.Uuid
   product_name        String           @default(dbgenerated("''::text"))
+  description         String?
   quantity            Int?             @default(dbgenerated("1"))
   unit_price          Decimal?         @default(dbgenerated("0")) @db.Decimal
+  discount_type       String?          @default(dbgenerated("'percentage'::text"))
+  discount_value      Decimal?         @default(dbgenerated("0")) @db.Decimal
   total               Decimal?         @default(dbgenerated("0")) @db.Decimal
   hsn_code            String?
   gst_percentage      Decimal?         @default(dbgenerated("18")) @db.Decimal
   gst_amount          Decimal?         @default(dbgenerated("0")) @db.Decimal
+  image_url           String?
+  sort_order          Int              @default(dbgenerated("0"))
+  r_products          Products?        @relation(name: "delivery_challan_items_product_id_fkey", fields: [product_id], references: [id])
   r_delivery_challans DeliveryChallans @relation(name: "delivery_challan_items_challan_id_fkey", fields: [challan_id], references: [id], onDelete: Cascade)
 
   @@map("delivery_challan_items")
@@ -381,21 +387,47 @@ model DeliveryChallanItems {
 model DeliveryChallans {
   id                        String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   challan_number            String                 @default(dbgenerated("''::text"))
+  public_token              String                 @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customer_id               String?                @db.Uuid
-  status                    String                 @default(dbgenerated("'draft'::text"))
-  notes                     String?
+  quotation_id              String?                @db.Uuid
   invoice_id                String?                @db.Uuid
+  job_sheet_id              String?                @db.Uuid
+  challan_type              String                 @default(dbgenerated("'delivery'::text"))
+  status                    String                 @default(dbgenerated("'draft'::text"))
+  show_pricing              Boolean                @default(dbgenerated("true"))
+  show_item_images          Boolean                @default(dbgenerated("false"))
+  shipping_address          String?
+  courier_name              String?
+  tracking_number           String?
+  tracking_url              String?
+  eway_bill_number          String?
+  dispatched_at             DateTime?              @db.Timestamptz(6)
+  expected_delivery_at      DateTime?              @db.Timestamptz(6)
+  delivered_at              DateTime?              @db.Timestamptz(6)
+  notes                     String?
   created_by                String?                @db.Uuid
   created_at                DateTime?              @default(now()) @db.Timestamptz(6)
   updated_at                DateTime?              @default(now()) @db.Timestamptz(6)
   delivery_person           String?
   vehicle_number            String?
+  receiver_name             String?
+  receiver_phone            String?
   receiver_signature        String?
+  pod_photo_url             String?
   gst_inclusive             Boolean?               @default(dbgenerated("false"))
+  discount_type             String?                @default(dbgenerated("'percentage'::text"))
+  discount_value            Decimal?               @default(dbgenerated("0")) @db.Decimal
   subtotal                  Decimal?               @default(dbgenerated("0")) @db.Decimal
   gst_amount                Decimal?               @default(dbgenerated("0")) @db.Decimal
   total                     Decimal?               @default(dbgenerated("0")) @db.Decimal
+  deduct_stock              Boolean                @default(dbgenerated("true"))
+  stock_deducted_at         DateTime?              @db.Timestamptz(6)
+  stock_reversed_at         DateTime?              @db.Timestamptz(6)
+  timeline                  Json?                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
   r_customers               Customers?             @relation(name: "delivery_challans_customer_id_fkey", fields: [customer_id], references: [id])
+  r_quotations              Quotations?            @relation(name: "delivery_challans_quotation_id_fkey", fields: [quotation_id], references: [id])
+  r_invoices                Invoices?              @relation(name: "delivery_challans_invoice_id_fkey", fields: [invoice_id], references: [id])
+  r_job_sheets              JobSheets?             @relation(name: "delivery_challans_job_sheet_id_fkey", fields: [job_sheet_id], references: [id])
   rl_delivery_challan_items DeliveryChallanItems[] @relation(name: "delivery_challan_items_challan_id_fkey")
 
   @@map("delivery_challans")
@@ -666,6 +698,7 @@ model InvoiceItems {
   discount_type  String?   @default(dbgenerated("'percentage'::text"))
   discount_value Decimal?  @default(dbgenerated("0")) @db.Decimal
   hsn_code       String?
+  sort_order     Int       @default(dbgenerated("0"))
   r_invoices     Invoices  @relation(name: "invoice_items_invoice_id_fkey", fields: [invoice_id], references: [id], onDelete: Cascade)
   r_products     Products? @relation(name: "invoice_items_product_id_fkey", fields: [product_id], references: [id])
 
@@ -697,12 +730,16 @@ model Invoices {
   signature_data                 String?
   signature_name                 String?
   signed_at                      DateTime?         @db.Timestamptz(6)
-  salesperson_id                 String?           @db.Uuid
+  salesperson_id                 String?            @db.Uuid
   payment_terms                  String?
-  r_customers                    Customers?        @relation(name: "invoices_customer_id_fkey", fields: [customer_id], references: [id])
-  r_job_sheets                   JobSheets?        @relation(name: "invoices_job_sheet_id_fkey", fields: [job_sheet_id], references: [id])
-  r_quotations                   Quotations?       @relation(name: "invoices_quotation_id_fkey", fields: [quotation_id], references: [id])
-  rl_invoice_items_invoice_id    InvoiceItems[]    @relation(name: "invoice_items_invoice_id_fkey")
+  deduct_stock                   Boolean            @default(dbgenerated("true"))
+  stock_deducted_at              DateTime?          @db.Timestamptz(6)
+  stock_reversed_at              DateTime?          @db.Timestamptz(6)
+  r_customers                    Customers?         @relation(name: "invoices_customer_id_fkey", fields: [customer_id], references: [id])
+  r_job_sheets                   JobSheets?         @relation(name: "invoices_job_sheet_id_fkey", fields: [job_sheet_id], references: [id])
+  r_quotations                   Quotations?        @relation(name: "invoices_quotation_id_fkey", fields: [quotation_id], references: [id])
+  rl_delivery_challans_invoice_id DeliveryChallans[] @relation(name: "delivery_challans_invoice_id_fkey")
+  rl_invoice_items_invoice_id    InvoiceItems[]     @relation(name: "invoice_items_invoice_id_fkey")
   rl_job_sheets_invoice_id       JobSheets[]       @relation(name: "job_sheets_invoice_id_fkey")
   rl_payment_register_invoice_id PaymentRegister[] @relation(name: "payment_register_invoice_id_fkey")
 
@@ -818,6 +855,7 @@ model JobSheets {
   r_invoices                          Invoices?            @relation(name: "job_sheets_invoice_id_fkey", fields: [invoice_id], references: [id])
   r_issue_categories                  IssueCategories?     @relation(name: "job_sheets_issue_category_id_fkey", fields: [issue_category_id], references: [id])
   rl_invoices_job_sheet_id            Invoices[]           @relation(name: "invoices_job_sheet_id_fkey")
+  rl_delivery_challans_job_sheet_id   DeliveryChallans[]   @relation(name: "delivery_challans_job_sheet_id_fkey")
   rl_job_sheet_audit_log_job_sheet_id JobSheetAuditLog[]   @relation(name: "job_sheet_audit_log_job_sheet_id_fkey")
   rl_job_sheet_images_job_sheet_id    JobSheetImages[]     @relation(name: "job_sheet_images_job_sheet_id_fkey")
   rl_payments_job_sheet_id            Payments[]           @relation(name: "payments_job_sheet_id_fkey")
@@ -1018,6 +1056,7 @@ model Products {
   rl_purchase_order_items_product_id  PurchaseOrderItems[]  @relation(name: "purchase_order_items_product_id_fkey")
   rl_purchase_return_items_product_id PurchaseReturnItems[] @relation(name: "purchase_return_items_product_id_fkey")
   rl_quotation_items_product_id       QuotationItems[]      @relation(name: "quotation_items_product_id_fkey")
+  rl_delivery_challan_items_product_id DeliveryChallanItems[] @relation(name: "delivery_challan_items_product_id_fkey")
   rl_stock_movements_product_id       StockMovements[]      @relation(name: "stock_movements_product_id_fkey")
 
   @@map("products")
@@ -1171,6 +1210,7 @@ model QuotationItems {
   discount_type  String?    @default(dbgenerated("'percentage'::text"))
   discount_value Decimal?   @default(dbgenerated("0")) @db.Decimal
   hsn_code       String?
+  sort_order     Int        @default(dbgenerated("0"))
   r_products     Products?  @relation(name: "quotation_items_product_id_fkey", fields: [product_id], references: [id])
   r_quotations   Quotations @relation(name: "quotation_items_quotation_id_fkey", fields: [quotation_id], references: [id], onDelete: Cascade)
 
@@ -1203,11 +1243,15 @@ model Quotations {
   view_count                      Int?             @default(dbgenerated("0"))
   last_viewed_at                  DateTime?        @db.Timestamptz(6)
   reminder_sent_at                DateTime?        @db.Timestamptz(6)
-  converted_invoice_id            String?          @db.Uuid
-  salesperson_id                  String?          @db.Uuid
+  converted_invoice_id            String?            @db.Uuid
+  salesperson_id                  String?            @db.Uuid
   payment_terms                   String?
-  r_customers                     Customers?       @relation(name: "quotations_customer_id_fkey", fields: [customer_id], references: [id])
-  rl_invoices_quotation_id        Invoices[]       @relation(name: "invoices_quotation_id_fkey")
+  show_item_images                Boolean            @default(dbgenerated("true"))
+  rejection_reason                String?
+  responded_at                    DateTime?          @db.Timestamptz(6)
+  r_customers                     Customers?         @relation(name: "quotations_customer_id_fkey", fields: [customer_id], references: [id])
+  rl_delivery_challans_quotation_id DeliveryChallans[] @relation(name: "delivery_challans_quotation_id_fkey")
+  rl_invoices_quotation_id        Invoices[]         @relation(name: "invoices_quotation_id_fkey")
   rl_payments_quotation_id        Payments[]       @relation(name: "payments_quotation_id_fkey")
   rl_quotation_items_quotation_id QuotationItems[] @relation(name: "quotation_items_quotation_id_fkey")
 

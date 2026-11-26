@@ -11,11 +11,14 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Send, Eye, Save, Trash2, Plus, UserPlus } from "lucide-react";
+import { ArrowLeft, Send, Eye, Save, Plus, UserPlus } from "lucide-react";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
 import { DocumentItemAdder } from "@/components/documents/DocumentItemAdder";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
-import { CustomerQuickDialog, type CustomerData } from "@/components/customers/CustomerQuickDialog";
+import { SortableLineItemsEditor, type EditableLineItem } from "@/components/documents/SortableLineItemsEditor";
+import { DocumentPreview } from "@/components/documents/DocumentPreview";
+import { SendDocumentDrawer } from "@/components/documents/SendDocumentDrawer";
+import { CustomerQuickDialog } from "@/components/customers/CustomerQuickDialog";
 import { recordSystemAudit } from "@/lib/audit";
 interface Product {
     id: string;
@@ -67,6 +70,16 @@ export default function InvoiceAdd() {
     const [paymentTerms, setPaymentTerms] = useState("");
     const [items, setItems] = useState<DocumentItem[]>([]);
     const [gstInclusive, setGstInclusive] = useState(false);
+    const [deductStock, setDeductStock] = useState(true);
+    const [stockDeductedAt, setStockDeductedAt] = useState<string | null>(null);
+    const [invoiceNumber, setInvoiceNumber] = useState("");
+    const [invoicePublicToken, setInvoicePublicToken] = useState<string | null>(null);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [sendDrawerTarget, setSendDrawerTarget] = useState<{
+        id: string;
+        docNumber: string;
+        publicToken: string | null;
+    } | null>(null);
     const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
     const [discountValue, setDiscountValue] = useState(0);
     // Toggles
@@ -94,7 +107,7 @@ export default function InvoiceAdd() {
             supabase.from("customers").select("id, name, email, phone, address, gst_number").order("name"),
             supabase.from("products").select("id, name, description, selling_price, gst_percentage").order("name"),
             supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url").limit(1).single(),
-            supabase.from("employees").select("id, name").in("role", ["admin", "staff"]).eq("status", "active").order("name"),
+            supabase.from("employees").select("id, name").in("role", ["admin", "staff", "technician"]).eq("status", "active").order("name"),
         ]).then(([c, p, b, e]) => {
             setCustomers(c.data || []);
             setProducts(p.data || []);
@@ -116,15 +129,22 @@ export default function InvoiceAdd() {
                 setGstInclusive(inv.gst_inclusive || false);
                 setDiscountType((inv.discount_type as "percentage" | "fixed") || "percentage");
                 setDiscountValue(inv.discount_value || 0);
+                setSalesperson(inv.salesperson_id || "");
+                setPaymentTerms(inv.payment_terms || "");
+                setDeductStock(inv.deduct_stock !== false);
+                setStockDeductedAt(inv.stock_deducted_at || null);
+                setInvoiceNumber(inv.invoice_number || "");
+                setInvoicePublicToken(inv.public_token || null);
             }
-            const { data: itms } = await supabase.from("invoice_items").select("*").eq("invoice_id", editId);
+            const { data: itms } = await supabase.from("invoice_items").select("*").eq("invoice_id", editId).order("sort_order", { ascending: true });
             if (itms) {
-                setItems(itms.map((i: any) => ({
+                setItems(itms.map((i: any, idx: number) => ({
                     id: i.id, product_id: i.product_id, product_name: i.product_name,
                     description: i.description || "", hsn_code: i.hsn_code || "",
                     quantity: i.quantity, unit_price: i.unit_price,
                     discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-                    gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+                    gst_percentage: i.gst_percentage ?? 18, gst_enabled: true, total: i.total,
+                    sort_order: i.sort_order ?? idx,
                 })));
             }
         };
@@ -141,8 +161,9 @@ export default function InvoiceAdd() {
             description: product.description || "", hsn_code: "",
             quantity: 1, unit_price: product.selling_price || 0,
             discount_type: "percentage", discount_value: 0,
-            gst_percentage: product.gst_percentage || 18, gst_enabled: true,
+            gst_percentage: product.gst_percentage ?? 18, gst_enabled: true,
             total: product.selling_price || 0,
+            sort_order: items.length,
         };
         setItems([...items, newItem]);
     };
@@ -154,19 +175,30 @@ export default function InvoiceAdd() {
                 discount_type: "percentage", discount_value: 0,
                 gst_percentage: 18, gst_enabled: true,
                 total: 0,
+                sort_order: items.length,
             }]);
     };
-    const updateItem = (idx: number, updates: Partial<DocumentItem>) => {
-        setItems(items.map((item, i) => {
-            if (i !== idx)
-                return item;
-            const updated = { ...item, ...updates };
-            updated.total = calcItemTotal(updated);
-            return updated;
+    const handleEditorItemsChange = (nextItems: EditableLineItem[]) => {
+        setItems(nextItems.map((it, idx) => {
+            const docItem: DocumentItem = {
+                product_id: it.product_id,
+                product_name: it.product_name,
+                description: it.description,
+                hsn_code: it.hsn_code,
+                quantity: Number(it.quantity || 1),
+                unit_price: Number(it.unit_price || 0),
+                discount_type: it.discount_type === "fixed" ? "fixed" : "percentage",
+                discount_value: Number(it.discount_value || 0),
+                gst_percentage: Number(it.gst_percentage ?? 18),
+                gst_enabled: true,
+                total: 0,
+                sort_order: it.sort_order ?? idx,
+            };
+            docItem.total = calcItemTotal(docItem);
+            return docItem;
         }));
     };
-    const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-    const handleSave = async () => {
+    const persistInvoice = async (openSendAfter = false) => {
         if (!customerId) {
             toast.error("Select a customer");
             return;
@@ -176,35 +208,57 @@ export default function InvoiceAdd() {
             return;
         }
         setSaving(true);
-        if (isEditing) {
-            const { error: invErr } = await supabase.from("invoices").update({
+        const targetId = isEditing ? editId : sendDrawerTarget?.id;
+        if (targetId) {
+            const { data: updatedInv, error: invErr } = await supabase.from("invoices").update({
                 customer_id: customerId, subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount,
                 total: totals.grandTotal, notes: notes || null, due_date: dueDate || null,
                 discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
-            }).eq("id", editId);
+                salesperson_id: salesperson || null,
+                payment_terms: showPaymentTerms ? (paymentTerms || null) : null,
+                deduct_stock: deductStock,
+            } as any).eq("id", targetId).select("id, invoice_number, public_token").single();
             if (invErr) {
                 toast.error(invErr.message);
                 setSaving(false);
                 return;
             }
-            await supabase.from("invoice_items").delete().eq("invoice_id", editId);
-            const invItems = items.map(i => ({
-                invoice_id: editId, product_id: i.product_id, product_name: i.product_name,
+            await supabase.from("invoice_items").delete().eq("invoice_id", targetId);
+            const invItems = items.map((i, idx) => ({
+                invoice_id: targetId, product_id: i.product_id, product_name: i.product_name,
                 quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
                 description: i.description || null, hsn_code: i.hsn_code || null,
                 discount_type: i.discount_type, discount_value: i.discount_value,
+                sort_order: i.sort_order ?? idx,
             }));
             await supabase.from("invoice_items").insert(invItems);
+            if (deductStock) {
+                await supabase.functions.invoke("document-stock", {
+                    body: { doc_type: "invoice", doc_id: targetId, note: `Invoice ${updatedInv?.invoice_number || targetId}` },
+                });
+            }
             await recordSystemAudit({
                 action: "invoice_updated",
                 module: "sales",
                 entityType: "invoice",
-                entityId: editId,
+                entityId: targetId,
                 details: `Updated invoice (${items.length} items, ₹${totals.grandTotal.toFixed(2)})`,
             });
             setSaving(false);
+            if (updatedInv) {
+                setInvoiceNumber(updatedInv.invoice_number || invoiceNumber);
+                setInvoicePublicToken(updatedInv.public_token || invoicePublicToken);
+            }
+            if (openSendAfter) {
+                setSendDrawerTarget({
+                    id: targetId,
+                    docNumber: updatedInv?.invoice_number || invoiceNumber || "Invoice",
+                    publicToken: updatedInv?.public_token || invoicePublicToken,
+                });
+                return;
+            }
             toast.success("Invoice updated");
-            navigate(`/invoices/${editId}`);
+            navigate(`/invoices/${targetId}`);
         }
         else {
             const { data: inv, error: invErr } = await supabase.from("invoices").insert({
@@ -212,20 +266,29 @@ export default function InvoiceAdd() {
                 total: totals.grandTotal, notes: notes || null, due_date: dueDate || null,
                 discount_type: discountType, discount_value: discountValue,
                 gst_inclusive: gstInclusive, created_by: user?.id,
-            }).select().single();
+                salesperson_id: salesperson || null,
+                payment_terms: showPaymentTerms ? (paymentTerms || null) : null,
+                deduct_stock: deductStock,
+            } as any).select().single();
             if (invErr) {
                 toast.error(invErr.message);
                 setSaving(false);
                 return;
             }
-            const invItems = items.map(i => ({
+            const invItems = items.map((i, idx) => ({
                 invoice_id: inv.id, product_id: i.product_id, product_name: i.product_name,
                 quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage, total: i.total,
                 description: i.description || null, hsn_code: i.hsn_code || null,
                 discount_type: i.discount_type, discount_value: i.discount_value,
+                sort_order: i.sort_order ?? idx,
             }));
             const { error: iErr } = await supabase.from("invoice_items").insert(invItems);
             if (!iErr) {
+                if (deductStock) {
+                    await supabase.functions.invoke("document-stock", {
+                        body: { doc_type: "invoice", doc_id: inv.id, note: `Created invoice ${inv.invoice_number}` },
+                    });
+                }
                 await recordSystemAudit({
                     action: "invoice_created",
                     module: "sales",
@@ -235,12 +298,23 @@ export default function InvoiceAdd() {
                 });
             }
             setSaving(false);
-            if (iErr)
+            if (iErr) {
                 toast.error(iErr.message);
-            else {
-                toast.success("Invoice created — " + inv.invoice_number);
-                navigate(`/invoices/${inv.id}`);
+                return;
             }
+            setInvoiceNumber(inv.invoice_number);
+            setInvoicePublicToken(inv.public_token || null);
+            if (openSendAfter) {
+                toast.success("Invoice saved — " + inv.invoice_number);
+                setSendDrawerTarget({
+                    id: inv.id,
+                    docNumber: inv.invoice_number,
+                    publicToken: inv.public_token || null,
+                });
+                return;
+            }
+            toast.success("Invoice created — " + inv.invoice_number);
+            navigate(`/invoices/${inv.id}`);
         }
     };
     return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
@@ -478,7 +552,7 @@ export default function InvoiceAdd() {
 
               <Divider />
 
-              {/* Items Table - Materialize style */}
+              {/* Items Table - Branded Clean Tax Invoice (no item thumbnails) */}
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
                 <DocumentItemAdder
                   products={products}
@@ -488,51 +562,13 @@ export default function InvoiceAdd() {
                   emptyPlaceholder="+ Add Item"
                 />
 
-                {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>
-                    <Box component={Plus} sx={{ height: "2rem", width: "2rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 40%, transparent)", marginBottom: "0.5rem" }}/>
-                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", marginBottom: "0.75rem" }}>Add catalog or custom items to your invoice</Typography>
-                    <Button type="button" variant="outlined" size="small" onClick={addCustomItem} startIcon={<Box component={Plus} sx={{ width: 14, height: 14 }} />}>
-                      Add Custom Item
-                    </Button>
-                  </Box>) : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", overflow: "hidden" }}>
-                    <DataTable columnsCount={5} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
-                      <TableHead>
-                        <TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderBottomWidth: "1px", borderColor: "hsl(var(--border))" }}>
-                          <TableCell sx={{ textAlign: "left", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Item</TableCell>
-                          <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "6rem" }}>Cost</TableCell>
-                          <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "5rem" }}>Qty</TableCell>
-                          <TableCell sx={{ textAlign: "right", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "6rem" }}>Price</TableCell>
-                          <TableCell sx={{ width: "2.5rem" }}/>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {items.map((item, idx) => (<TableRow key={idx} sx={{ borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "&:last-child": { borderWidth: "0px" } }}>
-                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              {item.product_id ? (
-                                <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{item.product_name}</Typography>
-                              ) : (
-                                <TextField placeholder="Item name *" value={item.product_name} onChange={e => updateItem(idx, { product_name: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Custom item name" } }} sx={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: "0.25rem" }}/>
-                              )}
-                              <TextField placeholder="Description" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Description" } }} sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem", marginTop: "0.25rem", borderWidth: "0px", paddingLeft: "0px", paddingRight: "0px", backgroundColor: "transparent", "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", "&:focus-visible": { "--alv-ring-offset-shadow": "var(--alv-ring-inset) 0 0 0 var(--alv-ring-offset-width) var(--alv-ring-offset-color)", "--alv-ring-shadow": "var(--alv-ring-inset) 0 0 0 calc(0px + var(--alv-ring-offset-width)) var(--alv-ring-color)", boxShadow: "var(--alv-ring-offset-shadow), var(--alv-ring-shadow), var(--alv-shadow, 0 0 #0000)" } }}/>
-                            </TableCell>
-                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              <TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/>
-                            </TableCell>
-                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              <TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { min: "1", "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/>
-                            </TableCell>
-                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", textAlign: "right", fontWeight: "600", color: "hsl(var(--foreground))" }}>
-                              ₹{item.total.toFixed(2)}
-                            </TableCell>
-                            <TableCell sx={{ paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              <IconButton onClick={() => removeItem(idx)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}>
-                                <Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }}/>
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>))}
-                      </TableBody>
-                    </DataTable>
-                  </Box>)}
+                <SortableLineItemsEditor
+                  items={items}
+                  onChange={handleEditorItemsChange}
+                  allowImages={false}
+                  showImages={false}
+                  uploadFolder="invoice-items"
+                />
               </Box>
 
               <Divider />
@@ -541,8 +577,8 @@ export default function InvoiceAdd() {
               <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField value={salesperson} label={"Salesperson"} select size="small" fullWidth onChange={event => setSalesperson(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select salesperson"}</MenuItem>
-                      {employees.map(e => <MenuItem key={e.id} value={e.name}>{e.name}</MenuItem>)}
+                  <TextField value={salesperson} label={"Salesperson"} select size="small" fullWidth onChange={event => setSalesperson(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="">{"Unassigned"}</MenuItem>
+                      {employees.map(e => <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>)}
                     </TextField>
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
@@ -607,19 +643,25 @@ export default function InvoiceAdd() {
         <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
           <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", position: "sticky", top: "1.5rem" }}>
             <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-              <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
+              <Button onClick={() => void persistInvoice(true)} disabled={saving} variant="contained" sx={{ width: "100%" }}>
                 <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>{saving ? "Saving..." : "Send Invoice"}
               </Button>
-              <Button onClick={() => navigate("/invoices")} variant="outlined" sx={{ width: "100%" }}>
+              <Button onClick={() => setPreviewOpen(true)} variant="outlined" sx={{ width: "100%" }}>
                 <Box component={Eye} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Preview
               </Button>
-              <Button onClick={handleSave} disabled={saving} variant="outlined" sx={{ width: "100%" }}>
+              <Button onClick={() => void persistInvoice(false)} disabled={saving} variant="outlined" sx={{ width: "100%" }}>
                 <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Save
               </Button>
 
               <Divider />
 
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
+                    Deduct Stock {stockDeductedAt ? "(Done)" : ""}
+                  </FormLabel>
+                  <Switch checked={deductStock} disabled={Boolean(stockDeductedAt)} onChange={(_, checked) => setDeductStock(checked)}/>
+                </Box>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>GST Inclusive</FormLabel>
                   <Switch checked={gstInclusive} onChange={(event, checked) => setGstInclusive(checked)}/>
@@ -648,5 +690,59 @@ export default function InvoiceAdd() {
           setCustomerSearchInput("");
         }}
       />
+
+      <DocumentPreview
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        type="invoice"
+        docId={editId || sendDrawerTarget?.id || null}
+        publicToken={invoicePublicToken}
+        number={invoiceNumber || "Draft"}
+        status="draft"
+        customer={selectedCustomer ? {
+          name: selectedCustomer.name,
+          email: selectedCustomer.email,
+          phone: selectedCustomer.phone,
+          address: selectedCustomer.address,
+          gstNumber: selectedCustomer.gst_number,
+        } : null}
+        items={items}
+        showImages={false}
+        gstInclusive={gstInclusive}
+        globalDiscountType={discountType}
+        globalDiscountValue={discountValue}
+        notes={showClientNotes ? notes : null}
+        dueDate={dueDate || null}
+        paymentTerms={showPaymentTerms ? (paymentTerms || null) : null}
+        salespersonName={employees.find((e) => e.id === salesperson)?.name || null}
+        createdAt={dateIssued}
+        onSendClick={() => {
+          setPreviewOpen(false);
+          void persistInvoice(true);
+        }}
+      />
+
+      {sendDrawerTarget && (
+        <SendDocumentDrawer
+          open={Boolean(sendDrawerTarget)}
+          onClose={() => {
+            const savedId = sendDrawerTarget.id;
+            setSendDrawerTarget(null);
+            navigate(`/invoices/${savedId}`);
+          }}
+          docType="invoice"
+          docId={sendDrawerTarget.id}
+          docNumber={sendDrawerTarget.docNumber}
+          customerName={selectedCustomer?.name}
+          defaultEmail={selectedCustomer?.email}
+          defaultPhone={selectedCustomer?.phone}
+          publicUrl={
+            sendDrawerTarget.publicToken
+              ? `${window.location.origin}/invoice/public/${sendDrawerTarget.publicToken}`
+              : null
+          }
+          totalLabel={`₹${totals.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        />
+      )}
     </Box></AnimatedPage>;
 }

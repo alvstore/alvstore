@@ -5,7 +5,8 @@ import { AnimatedPage, DataTable, PageHeader, StatCard, StatusChip, TabBar, TabP
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { FileText, Wrench, CreditCard, Check, X, AlertCircle, CheckCircle2, Loader2, Eye, } from "lucide-react";
+import { FileText, Wrench, CreditCard, Check, X, AlertCircle, CheckCircle2, Loader2, Eye, Download } from "lucide-react";
+import { downloadDocumentPdf } from "@/lib/document-pdf-client";
 interface CustomerRecord {
     id: string;
     name: string;
@@ -52,14 +53,20 @@ export default function CustomerPortal() {
         void load();
         return () => { active = false; };
     }, [userId, retry]);
-    const respondQuotation = async (id: string, status: "accepted" | "rejected") => {
-        const { error } = await supabase.from("quotations").update({ status }).eq("id", id);
-        if (error)
-            toast.error(error.message);
-        else {
-            toast.success(`Quotation ${status}`);
-            setQuotations(prev => prev.map(q => q.id === id ? { ...q, status } : q));
+    const rejectQuotation = async (q: any) => {
+        if (!q?.public_token) {
+            toast.error("Public quotation link unavailable");
+            return;
         }
+        const { data, error } = await supabase.functions.invoke("public-quotation-respond", {
+            body: { token: q.public_token, action: "reject" },
+        });
+        if (error || !data?.success) {
+            toast.error(error?.message || data?.error || "Could not decline quotation");
+            return;
+        }
+        toast.success("Quotation declined");
+        setQuotations(prev => prev.map(row => row.id === q.id ? { ...row, status: "rejected" } : row));
     };
     const statusColor = (s: string) => {
         const map = {
@@ -139,15 +146,22 @@ export default function CustomerPortal() {
                         <TableCell>₹{q.total?.toLocaleString()}</TableCell>
                         <TableCell><StatusChip label={q.status} sx={statusColor(q.status)}/></TableCell>
                         <TableCell>
-                          {(q.status === "sent" || q.status === "draft") && (<Box sx={{ display: "flex", gap: "0.5rem" }}>
-                              <Button onClick={() => respondQuotation(q.id, "accepted")} variant="outlined" size="small">
-                                <Box component={Check} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Accept
+                          <Box sx={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                            {(q.status === "sent" || q.status === "draft") && q.public_token && (<>
+                                <Button component="a" href={`/sales/public/${q.public_token}`} target="_blank" rel="noopener noreferrer" variant="contained" size="small">
+                                  <Box component={Check} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Review &amp; Sign
+                                </Button>
+                                <Button onClick={() => void rejectQuotation(q)} variant="text" color="error" size="small">
+                                  <Box component={X} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Decline
+                                </Button>
+                              </>)}
+                            {q.status === "accepted" && <StatusChip label={<><Box component={CheckCircle2} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Accepted</>} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }}/>}
+                            {q.public_token && (
+                              <Button onClick={() => void downloadDocumentPdf({ docType: "quotation", token: q.public_token, filename: `${q.quotation_number}.pdf` })} variant="outlined" size="small">
+                                <Box component={Download} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>PDF
                               </Button>
-                              <Button onClick={() => respondQuotation(q.id, "rejected")} variant="text" size="small">
-                                <Box component={X} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Reject
-                              </Button>
-                            </Box>)}
-                          {q.status === "accepted" && <StatusChip label={<><Box component={CheckCircle2} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/>Accepted</>} sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" }}/>}
+                            )}
+                          </Box>
                         </TableCell>
                       </TableRow>))}
                   </TableBody>

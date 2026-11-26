@@ -5,8 +5,9 @@ import { AnimatedPage, DataTable, PageHeader, SearchToolbar, StatCard, TabBar, T
 import { useState, useEffect } from "react";
 import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, ShoppingCart, Copy, Eye, FileText, TrendingUp, Clock, CheckCircle } from "lucide-react";
+import { Plus, Search, ShoppingCart, Copy, Eye, FileText, TrendingUp, Clock, CheckCircle, Download, Files } from "lucide-react";
 import { StatusBadge } from "@/components/documents/StatusBadge";
+import { downloadDocumentPdf } from "@/lib/document-pdf-client";
 interface Quotation {
     id: string;
     quotation_number: string;
@@ -86,6 +87,7 @@ export default function Sales() {
             <Tab value="sent" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Sent</Box>}/>
             <Tab value="accepted" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Accepted</Box>}/>
             <Tab value="rejected" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Rejected</Box>}/>
+            <Tab value="expired" label={<Box sx={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Expired</Box>}/>
           </TabBar>
         </TabView>
         <SearchToolbar onSearch={query => setSearch(query)} value={search} placeholder="Search quotations..." sx={{ maxWidth: "24rem" }}/>
@@ -133,10 +135,16 @@ export default function Sales() {
                 </TableCell>
                 <TableCell onClick={e => e.stopPropagation()}>
                   <Box sx={{ display: "flex", gap: "0.25rem", alignItems: "center", justifyContent: "flex-end" }}>
+                    <IconButton onClick={() => void downloadDocumentPdf({ docType: "quotation", id: q.id, filename: `${q.quotation_number}.pdf` })} title="Download Branded PDF" aria-label={"Download PDF"} sx={{ height: "2rem", width: "2rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
+                      <Box component={Download} sx={{ height: "1rem", width: "1rem" }}/>
+                    </IconButton>
+                    <IconButton onClick={() => navigate(`/sales/new?duplicateFrom=${q.id}`)} title="Duplicate as New Quotation" aria-label={"Duplicate"} sx={{ height: "2rem", width: "2rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
+                      <Box component={Files} sx={{ height: "1rem", width: "1rem" }}/>
+                    </IconButton>
                     <IconButton onClick={() => copyPublicLink(q.public_token)} title="Copy link" aria-label={"Copy link"} sx={{ height: "2rem", width: "2rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}>
                       <Box component={Copy} sx={{ height: "1rem", width: "1rem" }}/>
                     </IconButton>
-                    <IconButton title="View" aria-label={"View"} component={"a"} href={`/sales/public/${q.public_token}`} target="_blank" sx={{ height: "2rem", width: "2rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}><Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/></IconButton>
+                    <IconButton title="View Public Quote" aria-label={"View"} component={"a"} href={`/sales/public/${q.public_token}`} target="_blank" sx={{ height: "2rem", width: "2rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--foreground))" } }}><Box component={Eye} sx={{ height: "1rem", width: "1rem" }}/></IconButton>
                   </Box>
                 </TableCell>
               </TableRow>))}</TableBody>

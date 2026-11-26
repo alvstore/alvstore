@@ -1,301 +1,873 @@
 "use client";
 
-import { Box, Button, Card, CardContent, Divider, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { AnimatedPage, DataTable, PageHeader, toast } from "@/components/mui";
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "@/lib/router-compat";
+import {
+  Alert,
+  Autocomplete,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Divider,
+  FormLabel,
+  IconButton,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+  createFilterOptions,
+} from "@mui/material";
+import { AnimatedPage, PageHeader, toast } from "@/components/mui";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Send, Trash2, Plus, Truck, Car } from "lucide-react";
+import { ArrowLeft, Eye, Save, Send, Truck } from "lucide-react";
+import { type DocumentItem } from "@/components/documents/ItemsTable";
 import { DocumentItemAdder } from "@/components/documents/DocumentItemAdder";
+import { calculateTotals } from "@/components/documents/TotalsPanel";
+import {
+  SortableLineItemsEditor,
+  computeLineTotal,
+  type EditableLineItem,
+} from "@/components/documents/SortableLineItemsEditor";
+import { DocumentPreview } from "@/components/documents/DocumentPreview";
+import { CustomerQuickDialog } from "@/components/customers/CustomerQuickDialog";
 import { recordSystemAudit } from "@/lib/audit";
-interface Product {
-    id: string;
-    name: string;
-    selling_price: number | null;
-    gst_percentage: number | null;
+
+interface ProductOption {
+  id: string;
+  name: string;
+  description: string | null;
+  selling_price: number | null;
+  gst_percentage: number | null;
+  image_url?: string | null;
 }
-interface Customer {
-    id: string;
-    name: string;
-    phone: string | null;
-    address: string | null;
-    gst_number: string | null;
+
+interface CustomerOption {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  gst_number: string | null;
+  shipping_address?: string | null;
+  shipping_city?: string | null;
+  shipping_state?: string | null;
+  shipping_pincode?: string | null;
 }
-interface ChallanItem {
-    product_id: string | null;
-    product_name: string;
-    quantity: number;
-    unit_price: number;
-    total: number;
-    hsn_code: string;
-    gst_percentage: number;
-    gst_amount: number;
+
+function formatShippingAddress(c?: CustomerOption | null): string {
+  if (!c) return "";
+  if (c.shipping_address) {
+    return [c.shipping_address, c.shipping_city, c.shipping_state, c.shipping_pincode].filter(Boolean).join(", ");
+  }
+  return c.address || "";
 }
+
 export default function DeliveryChallanAdd() {
-    const { user } = useAuth();
-    const { id: editId } = useParams<{
-        id: string;
-    }>();
-    const navigate = useNavigate();
-    const [customers, setCustomers] = useState<Customer[]>([]);
-    const [products, setProducts] = useState<Product[]>([]);
-    const [saving, setSaving] = useState(false);
-    const isEditing = !!editId;
-    const [customerId, setCustomerId] = useState("");
-    const [notes, setNotes] = useState("");
-    const [deliveryPerson, setDeliveryPerson] = useState("");
-    const [vehicleNumber, setVehicleNumber] = useState("");
-    const [gstInclusive, setGstInclusive] = useState(false);
-    const [items, setItems] = useState<ChallanItem[]>([]);
-    useEffect(() => {
-        Promise.all([
-            supabase.from("customers").select("id, name, phone, address, gst_number").order("name"),
-            supabase.from("products").select("id, name, selling_price, gst_percentage").order("name"),
-        ]).then(([c, p]) => {
-            setCustomers(c.data || []);
-            setProducts(p.data || []);
-        });
-    }, []);
-    useEffect(() => {
-        if (!editId)
-            return;
-        (async () => {
-            const { data: ch } = await (supabase as any).from("delivery_challans").select("*").eq("id", editId).single();
-            if (ch) {
-                setCustomerId(ch.customer_id || "");
-                setNotes(ch.notes || "");
-                setDeliveryPerson(ch.delivery_person || "");
-                setVehicleNumber(ch.vehicle_number || "");
-                setGstInclusive(ch.gst_inclusive || false);
-            }
-            const { data: itms } = await (supabase as any).from("delivery_challan_items").select("*").eq("challan_id", editId);
-            if (itms)
-                setItems(itms.map((i: any) => ({
-                    product_id: i.product_id, product_name: i.product_name,
-                    quantity: i.quantity, unit_price: i.unit_price, total: i.total,
-                    hsn_code: i.hsn_code || "", gst_percentage: i.gst_percentage ?? 18, gst_amount: i.gst_amount || 0,
-                })));
-        })();
-    }, [editId]);
-    const addItem = (productId: string) => {
-        const p = products.find(pr => pr.id === productId);
-        if (!p)
-            return;
-        const price = p.selling_price || 0;
-        const gstPct = p.gst_percentage ?? 18;
-        const gstAmt = gstInclusive ? (price * gstPct) / (100 + gstPct) : (price * gstPct) / 100;
-        setItems([...items, {
-                product_id: p.id, product_name: p.name, quantity: 1,
-                unit_price: price, total: price, hsn_code: "", gst_percentage: gstPct, gst_amount: gstAmt,
-            }]);
-    };
-    const addCustomItem = () => {
-        setItems([...items, {
-                product_id: null, product_name: "Custom Item", quantity: 1,
-                unit_price: 0, total: 0, hsn_code: "", gst_percentage: 18, gst_amount: 0,
-            }]);
-    };
-    const recalcItem = (item: ChallanItem): ChallanItem => {
-        const base = item.quantity * item.unit_price;
+  const { user } = useAuth();
+  const { id: editId } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const isEditing = Boolean(editId);
+  const quotationIdParam = searchParams?.get("quotationId") || "";
+  const invoiceIdParam = searchParams?.get("invoiceId") || "";
+  const jobIdParam = searchParams?.get("jobId") || "";
+  const duplicateFrom = searchParams?.get("duplicateFrom") || "";
+
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const [challanNumber, setChallanNumber] = useState("");
+  const [publicToken, setPublicToken] = useState<string | null>(null);
+  const [challanStatus, setChallanStatus] = useState("draft");
+  const [customerId, setCustomerId] = useState("");
+  const [customerSearchInput, setCustomerSearchInput] = useState("");
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
+
+  const [linkedQuotationId, setLinkedQuotationId] = useState<string | null>(null);
+  const [linkedInvoiceId, setLinkedInvoiceId] = useState<string | null>(null);
+  const [linkedJobSheetId, setLinkedJobSheetId] = useState<string | null>(null);
+  const [invoiceAlreadyDeducted, setInvoiceAlreadyDeducted] = useState(false);
+  const [stockDeductedAt, setStockDeductedAt] = useState<string | null>(null);
+
+  const [challanType, setChallanType] = useState("delivery");
+  const [showPricing, setShowPricing] = useState(true);
+  const [showItemImages, setShowItemImages] = useState(false);
+  const [deductStock, setDeductStock] = useState(true);
+  const [gstInclusive, setGstInclusive] = useState(false);
+  const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [discountValue, setDiscountValue] = useState(0);
+
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [courierName, setCourierName] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
+  const [ewayBillNumber, setEwayBillNumber] = useState("");
+  const [deliveryPerson, setDeliveryPerson] = useState("");
+  const [vehicleNumber, setVehicleNumber] = useState("");
+  const [expectedDeliveryAt, setExpectedDeliveryAt] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const [items, setItems] = useState<DocumentItem[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const customerFilter = useMemo(
+    () =>
+      createFilterOptions<CustomerOption>({
+        stringify: (o) => [o.name, o.phone, o.email, o.gst_number].filter(Boolean).join(" "),
+      }),
+    []
+  );
+
+  useEffect(() => {
+    void Promise.all([
+      supabase
+        .from("customers")
+        .select("id, name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode")
+        .order("name"),
+      supabase
+        .from("products")
+        .select("id, name, description, selling_price, gst_percentage, image_url")
+        .order("name"),
+    ]).then(([c, p]) => {
+      setCustomers((c.data || []) as CustomerOption[]);
+      setProducts((p.data || []) as ProductOption[]);
+    });
+  }, []);
+
+  // Load existing challan for edit or duplicate, or prefill from quotationId / invoiceId / jobId
+  useEffect(() => {
+    const sourceChallanId = editId || duplicateFrom;
+    if (sourceChallanId) {
+      void (async () => {
+        const { data: ch } = await (supabase as any).from("delivery_challans").select("*").eq("id", sourceChallanId).single();
+        if (ch) {
+          setCustomerId(ch.customer_id || "");
+          setLinkedQuotationId(ch.quotation_id || null);
+          setLinkedInvoiceId(editId ? (ch.invoice_id || null) : null);
+          setLinkedJobSheetId(ch.job_sheet_id || null);
+          setChallanType(ch.challan_type || "delivery");
+          setShowPricing(ch.show_pricing !== false);
+          setShowItemImages(ch.show_item_images !== false);
+          setDeductStock(ch.job_sheet_id ? false : ch.deduct_stock !== false);
+          setGstInclusive(Boolean(ch.gst_inclusive));
+          setDiscountType((ch.discount_type as "percentage" | "fixed") || "percentage");
+          setDiscountValue(Number(ch.discount_value || 0));
+          setShippingAddress(ch.shipping_address || "");
+          setCourierName(ch.courier_name || "");
+          setTrackingNumber(ch.tracking_number || "");
+          setTrackingUrl(ch.tracking_url || "");
+          setEwayBillNumber(ch.eway_bill_number || "");
+          setDeliveryPerson(ch.delivery_person || "");
+          setVehicleNumber(ch.vehicle_number || "");
+          setExpectedDeliveryAt(ch.expected_delivery_at ? String(ch.expected_delivery_at).slice(0, 10) : "");
+          setNotes(ch.notes || "");
+          if (editId) {
+            setChallanNumber(ch.challan_number || "");
+            setPublicToken(ch.public_token || null);
+            setChallanStatus(ch.status || "draft");
+            setStockDeductedAt(ch.stock_deducted_at || null);
+          }
+          if (ch.invoice_id) {
+            const { data: inv } = await supabase
+              .from("invoices")
+              .select("stock_deducted_at")
+              .eq("id", ch.invoice_id)
+              .maybeSingle();
+            setInvoiceAlreadyDeducted(Boolean(inv?.stock_deducted_at));
+          }
+        }
+        const { data: itms } = await (supabase as any)
+          .from("delivery_challan_items")
+          .select("*")
+          .eq("challan_id", sourceChallanId)
+          .order("sort_order", { ascending: true });
+        if (itms) {
+          setItems(
+            itms.map((i: any, idx: number) => ({
+              id: editId ? i.id : undefined,
+              product_id: i.product_id,
+              product_name: i.product_name,
+              description: i.description || "",
+              hsn_code: i.hsn_code || "",
+              quantity: Number(i.quantity || 1),
+              unit_price: Number(i.unit_price || 0),
+              discount_type: (i.discount_type as "percentage" | "fixed") || "percentage",
+              discount_value: Number(i.discount_value || 0),
+              gst_percentage: Number(i.gst_percentage ?? 18),
+              gst_enabled: true,
+              total: Number(i.total || 0),
+              image_url: i.image_url || null,
+              sort_order: i.sort_order ?? idx,
+            }))
+          );
+        }
+      })();
+      return;
+    }
+
+    if (quotationIdParam) {
+      void (async () => {
+        const { data: q } = await supabase
+          .from("quotations")
+          .select("*, customers(id, address, shipping_address, shipping_city, shipping_state, shipping_pincode)")
+          .eq("id", quotationIdParam)
+          .single();
+        if (q) {
+          setLinkedQuotationId(q.id);
+          setCustomerId(q.customer_id || "");
+          setShippingAddress(formatShippingAddress((q as any).customers));
+          setGstInclusive(Boolean(q.gst_inclusive));
+          setDiscountType((q.discount_type as "percentage" | "fixed") || "percentage");
+          setDiscountValue(Number(q.discount_value || 0));
+          setShowItemImages(q.show_item_images !== false);
+          setNotes(q.notes || `Dispatch against Quotation ${q.quotation_number}`);
+        }
+        const { data: qItems } = await supabase
+          .from("quotation_items")
+          .select("*")
+          .eq("quotation_id", quotationIdParam)
+          .order("sort_order", { ascending: true });
+        if (qItems) {
+          setItems(
+            qItems.map((i: any, idx: number) => ({
+              product_id: i.product_id,
+              product_name: i.product_name,
+              description: i.description || "",
+              hsn_code: i.hsn_code || "",
+              quantity: Number(i.quantity || 1),
+              unit_price: Number(i.unit_price || 0),
+              discount_type: (i.discount_type as "percentage" | "fixed") || "percentage",
+              discount_value: Number(i.discount_value || 0),
+              gst_percentage: Number(i.gst_percentage ?? 18),
+              gst_enabled: true,
+              total: Number(i.total || 0),
+              image_url: i.image_url || null,
+              sort_order: i.sort_order ?? idx,
+            }))
+          );
+        }
+      })();
+      return;
+    }
+
+    if (invoiceIdParam) {
+      void (async () => {
+        const { data: inv } = await supabase
+          .from("invoices")
+          .select("*, customers(id, address, shipping_address, shipping_city, shipping_state, shipping_pincode)")
+          .eq("id", invoiceIdParam)
+          .single();
+        if (inv) {
+          setLinkedInvoiceId(inv.id);
+          setLinkedQuotationId(inv.quotation_id || null);
+          setCustomerId(inv.customer_id || "");
+          setShippingAddress(formatShippingAddress((inv as any).customers));
+          setGstInclusive(Boolean(inv.gst_inclusive));
+          setDiscountType((inv.discount_type as "percentage" | "fixed") || "percentage");
+          setDiscountValue(Number(inv.discount_value || 0));
+          setInvoiceAlreadyDeducted(Boolean(inv.stock_deducted_at));
+          if (inv.stock_deducted_at) setDeductStock(false);
+          setNotes(inv.notes || `Dispatch against Invoice ${inv.invoice_number}`);
+        }
+        const { data: invItems } = await supabase
+          .from("invoice_items")
+          .select("*")
+          .eq("invoice_id", invoiceIdParam)
+          .order("sort_order", { ascending: true });
+        if (invItems) {
+          setItems(
+            invItems.map((i: any, idx: number) => ({
+              product_id: i.product_id,
+              product_name: i.product_name,
+              description: i.description || "",
+              hsn_code: i.hsn_code || "",
+              quantity: Number(i.quantity || 1),
+              unit_price: Number(i.unit_price || 0),
+              discount_type: (i.discount_type as "percentage" | "fixed") || "percentage",
+              discount_value: Number(i.discount_value || 0),
+              gst_percentage: Number(i.gst_percentage ?? 18),
+              gst_enabled: true,
+              total: Number(i.total || 0),
+              image_url: null,
+              sort_order: i.sort_order ?? idx,
+            }))
+          );
+        }
+      })();
+      return;
+    }
+
+    if (jobIdParam) {
+      void (async () => {
+        const { data: job } = await supabase
+          .from("job_sheets")
+          .select("*, customers(id, address, shipping_address, shipping_city, shipping_state, shipping_pincode)")
+          .eq("id", jobIdParam)
+          .single();
+        if (job) {
+          setLinkedJobSheetId(job.id);
+          setLinkedInvoiceId(job.invoice_id || null);
+          setCustomerId(job.customer_id || "");
+          setShippingAddress(formatShippingAddress((job as any).customers));
+          setChallanType("delivery");
+          setShowPricing(false);
+          setDeductStock(false);
+          setNotes(`Customer repaired device return handover for Job ${job.job_number}`);
+          const deviceLabel = [job.device_brand, job.device_model].filter(Boolean).join(" ") || "Repaired Device";
+          const specLine = [
+            job.serial_number ? `Serial: ${job.serial_number}` : "",
+            job.imei ? `IMEI: ${job.imei}` : "",
+            job.problem_description || "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          setItems([
+            {
+              product_id: null,
+              product_name: deviceLabel,
+              description: specLine,
+              hsn_code: "",
+              quantity: 1,
+              unit_price: 0,
+              discount_type: "percentage",
+              discount_value: 0,
+              gst_percentage: 0,
+              gst_enabled: false,
+              total: 0,
+              image_url: null,
+              sort_order: 0,
+            },
+          ]);
+        }
+      })();
+    }
+  }, [editId, duplicateFrom, quotationIdParam, invoiceIdParam, jobIdParam]);
+
+  const selectedCustomer = useMemo(() => customers.find((c) => c.id === customerId) || null, [customers, customerId]);
+  const totals = calculateTotals(items, gstInclusive, discountType, discountValue);
+
+  const addItem = (productId: string) => {
+    const p = products.find((pr) => pr.id === productId);
+    if (!p) return;
+    setItems([
+      ...items,
+      {
+        product_id: p.id,
+        product_name: p.name,
+        description: p.description || "",
+        hsn_code: "",
+        quantity: 1,
+        unit_price: Number(p.selling_price || 0),
+        discount_type: "percentage",
+        discount_value: 0,
+        gst_percentage: p.gst_percentage ?? 18,
+        gst_enabled: true,
+        total: Number(p.selling_price || 0),
+        image_url: p.image_url || null,
+        sort_order: items.length,
+      },
+    ]);
+  };
+
+  const addCustomItem = () => {
+    setItems([
+      ...items,
+      {
+        product_id: null,
+        product_name: "Custom Item",
+        description: "",
+        hsn_code: "",
+        quantity: 1,
+        unit_price: 0,
+        discount_type: "percentage",
+        discount_value: 0,
+        gst_percentage: 18,
+        gst_enabled: true,
+        total: 0,
+        image_url: null,
+        sort_order: items.length,
+      },
+    ]);
+  };
+
+  const handleEditorItemsChange = (nextItems: EditableLineItem[]) => {
+    setItems(
+      nextItems.map((it, idx) => {
+        const docItem: DocumentItem = {
+          product_id: it.product_id,
+          product_name: it.product_name,
+          description: it.description,
+          hsn_code: it.hsn_code,
+          quantity: Number(it.quantity || 1),
+          unit_price: Number(it.unit_price || 0),
+          discount_type: it.discount_type === "fixed" ? "fixed" : "percentage",
+          discount_value: Number(it.discount_value || 0),
+          gst_percentage: Number(it.gst_percentage ?? 18),
+          gst_enabled: true,
+          total: 0,
+          image_url: it.image_url || null,
+          sort_order: it.sort_order ?? idx,
+        };
+        docItem.total = computeLineTotal(docItem);
+        return docItem;
+      })
+    );
+  };
+
+  const saveChallan = async (dispatchNow = false) => {
+    if (!customerId) {
+      toast.error("Select a customer");
+      return;
+    }
+    if (items.length === 0) {
+      toast.error("Add at least one item");
+      return;
+    }
+    setSaving(true);
+    try {
+      const effectiveDeductStock = linkedJobSheetId ? false : deductStock;
+      const basePayload: Record<string, unknown> = {
+        customer_id: customerId,
+        quotation_id: linkedQuotationId,
+        invoice_id: linkedInvoiceId,
+        job_sheet_id: linkedJobSheetId,
+        challan_type: challanType,
+        show_pricing: showPricing,
+        show_item_images: showItemImages,
+        deduct_stock: effectiveDeductStock,
+        gst_inclusive: gstInclusive,
+        discount_type: discountType,
+        discount_value: discountValue,
+        subtotal: totals.itemSubtotal,
+        gst_amount: totals.gstAmount,
+        total: totals.grandTotal,
+        shipping_address: shippingAddress.trim() || null,
+        courier_name: courierName.trim() || null,
+        tracking_number: trackingNumber.trim() || null,
+        tracking_url: trackingUrl.trim() || null,
+        eway_bill_number: ewayBillNumber.trim() || null,
+        delivery_person: deliveryPerson.trim() || null,
+        vehicle_number: vehicleNumber.trim() || null,
+        expected_delivery_at: expectedDeliveryAt ? new Date(expectedDeliveryAt).toISOString() : null,
+        notes: notes.trim() || null,
+      };
+
+      let savedId = editId || "";
+      let savedNumber = challanNumber;
+
+      if (isEditing && editId) {
+        const { error: uErr } = await (supabase as any).from("delivery_challans").update(basePayload).eq("id", editId);
+        if (uErr) throw new Error(uErr.message);
+        await (supabase as any).from("delivery_challan_items").delete().eq("challan_id", editId);
+      } else {
+        const { data: created, error: cErr } = await (supabase as any)
+          .from("delivery_challans")
+          .insert({
+            challan_number: "",
+            status: "draft",
+            created_by: user?.id,
+            timeline: [
+              {
+                status: "draft",
+                label: "Draft Created",
+                at: new Date().toISOString(),
+                by: user?.email || "Staff",
+              },
+            ],
+            ...basePayload,
+          })
+          .select()
+          .single();
+        if (cErr || !created) throw new Error(cErr?.message || "Failed to create delivery challan");
+        savedId = created.id;
+        savedNumber = created.challan_number;
+      }
+
+      const itemRows = items.map((i, idx) => {
+        const gstPct = Number(i.gst_percentage ?? 18);
         const gstAmt = gstInclusive
-            ? (base * item.gst_percentage) / (100 + item.gst_percentage)
-            : (base * item.gst_percentage) / 100;
-        return { ...item, total: base, gst_amount: Math.round(gstAmt * 100) / 100 };
-    };
-    const updateItem = (idx: number, updates: Partial<ChallanItem>) => {
-        setItems(items.map((item, i) => i !== idx ? item : recalcItem({ ...item, ...updates })));
-    };
-    const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-    const subtotal = items.reduce((s, i) => s + i.total, 0);
-    const totalGst = items.reduce((s, i) => s + i.gst_amount, 0);
-    const grandTotal = gstInclusive ? subtotal : subtotal + totalGst;
-    const handleSave = async () => {
-        if (!customerId) {
-            toast.error("Select a customer");
-            return;
+          ? (i.total * gstPct) / (100 + gstPct)
+          : (i.total * gstPct) / 100;
+        return {
+          challan_id: savedId,
+          product_id: i.product_id,
+          product_name: i.product_name,
+          description: i.description || null,
+          hsn_code: i.hsn_code || null,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          discount_type: i.discount_type,
+          discount_value: i.discount_value,
+          gst_percentage: gstPct,
+          gst_amount: Math.round(gstAmt * 100) / 100,
+          total: i.total,
+          image_url: i.image_url || null,
+          sort_order: i.sort_order ?? idx,
+        };
+      });
+      const { error: iErr } = await (supabase as any).from("delivery_challan_items").insert(itemRows);
+      if (iErr) throw new Error(iErr.message);
+
+      if (dispatchNow) {
+        const { data: tr, error: trErr } = await supabase.functions.invoke("challan-transition", {
+          body: {
+            challan_id: savedId,
+            target_status: "dispatched",
+            note: courierName ? `Dispatched via ${courierName}${trackingNumber ? ` (${trackingNumber})` : ""}` : "Marked dispatched",
+          },
+        });
+        if (trErr || !tr?.success) {
+          throw new Error(trErr?.message || tr?.error || "Saved challan, but dispatch transition failed");
         }
-        if (items.length === 0) {
-            toast.error("Add at least one item");
-            return;
-        }
-        setSaving(true);
-        try {
-            const challanPayload: any = {
-                customer_id: customerId, notes: notes || null,
-                delivery_person: deliveryPerson || null, vehicle_number: vehicleNumber || null,
-                gst_inclusive: gstInclusive, subtotal, gst_amount: totalGst, total: grandTotal,
-            };
-            if (isEditing) {
-                await (supabase as any).from("delivery_challans").update(challanPayload).eq("id", editId);
-                await (supabase as any).from("delivery_challan_items").delete().eq("challan_id", editId);
-                await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
-                    challan_id: editId, product_id: i.product_id, product_name: i.product_name,
-                    quantity: i.quantity, unit_price: i.unit_price, total: i.total,
-                    hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
-                })));
-                await recordSystemAudit({
-                    action: "challan_updated",
-                    module: "sales",
-                    entityType: "delivery_challan",
-                    entityId: editId,
-                    details: `Updated delivery challan (${items.length} items, ₹${grandTotal.toFixed(2)})`,
-                });
-                toast.success("Challan updated");
-                navigate(`/challans/${editId}`);
-            }
-            else {
-                const { data: ch, error } = await (supabase as any).from("delivery_challans").insert({
-                    challan_number: "", ...challanPayload, created_by: user?.id,
-                }).select().single();
-                if (error)
-                    throw error;
-                await (supabase as any).from("delivery_challan_items").insert(items.map(i => ({
-                    challan_id: ch.id, product_id: i.product_id, product_name: i.product_name,
-                    quantity: i.quantity, unit_price: i.unit_price, total: i.total,
-                    hsn_code: i.hsn_code || null, gst_percentage: i.gst_percentage, gst_amount: i.gst_amount,
-                })));
-                await recordSystemAudit({
-                    action: "challan_created",
-                    module: "sales",
-                    entityType: "delivery_challan",
-                    entityId: ch.id,
-                    details: `Created challan ${ch.challan_number} (${items.length} items, ₹${grandTotal.toFixed(2)})`,
-                });
-                toast.success("Challan created — " + ch.challan_number);
-                navigate(`/challans/${ch.id}`);
-            }
-        }
-        catch (err: any) {
-            toast.error(err.message);
-        }
-        setSaving(false);
-    };
-    const selectedCustomer = customers.find(c => c.id === customerId);
-    return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-      <PageHeader title={isEditing ? "Edit Delivery Challan" : "New Delivery Challan"} subtitle={"Items to be delivered before invoicing"} actions={<><IconButton onClick={() => navigate("/challans")} aria-label={"Arrow Left"}><Box component={ArrowLeft} sx={{ height: "1.25rem", width: "1.25rem" }}/></IconButton></>}/>
+      }
 
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
-        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 8 / span 8" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-          {/* Customer & Delivery Info */}
-          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
-            <CardContent sx={{ padding: "1.5rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
-                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+      await recordSystemAudit({
+        action: isEditing ? "challan_updated" : "challan_created",
+        module: "sales",
+        entityType: "delivery_challan",
+        entityId: savedId,
+        details: `${isEditing ? "Updated" : "Created"} challan ${savedNumber} (${challanType}, ${items.length} items)`,
+      });
 
-                  <TextField value={customerId} label={"Customer *"} select size="small" fullWidth onChange={event => setCustomerId(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select customer"}</MenuItem>{customers.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</TextField>
-                </Box>
-                {selectedCustomer && (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 20%, transparent)", padding: "0.75rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.125rem" } }}>
-                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500" }}>{selectedCustomer.name}</Typography>
-                    {selectedCustomer.phone && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.phone}</Typography>}
-                    {selectedCustomer.address && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>{selectedCustomer.address}</Typography>}
-                    {selectedCustomer.gst_number && <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontFamily: "JetBrains Mono, monospace", color: "hsl(var(--muted-foreground))" }}>GST: {selectedCustomer.gst_number}</Typography>}
-                  </Box>)}
-              </Box>
+      toast.success(dispatchNow ? `${savedNumber} saved & dispatched` : `${savedNumber} saved`);
+      navigate(`/challans/${savedId}`);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-              <Divider />
+  return (
+    <AnimatedPage>
+      <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
+        <PageHeader
+          title={isEditing ? `Edit Delivery Challan${challanNumber ? ` · ${challanNumber}` : ""}` : "New Delivery Challan"}
+          subtitle="2026 GST Rule 55 dispatch tracking, item thumbnails, reordering, and POD readiness"
+          actions={
+            <IconButton onClick={() => navigate("/challans")} aria-label="Back to Challans">
+              <Box component={ArrowLeft} sx={{ height: "1.25rem", width: "1.25rem" }} />
+            </IconButton>
+          }
+        />
 
-              {/* Delivery Person & Vehicle */}
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
-                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+        {linkedJobSheetId && (
+          <Alert severity="info">
+            Customer repair return handover: pricing &amp; showroom stock deduction are automatically disabled by default.
+          </Alert>
+        )}
+        {invoiceAlreadyDeducted && (
+          <Alert severity="info">
+            Linked invoice has already deducted showroom stock — dispatching this challan will NOT double-deduct inventory.
+          </Alert>
+        )}
 
-                  <TextField value={deliveryPerson} onChange={e => setDeliveryPerson(e.target.value)} placeholder="Driver / delivery person name" label={<><Box component={Truck} sx={{ height: "0.875rem", width: "0.875rem" }}/>Delivery Person</>} size="small" fullWidth/>
-                </Box>
-                <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(12, minmax(0, 1fr))" }, gap: 3 }}>
+          <Box sx={{ gridColumn: { lg: "span 8 / span 8" } }}>
+            <Stack spacing={3}>
+              {/* Customer & Logistics Header */}
+              <Card>
+                <CardContent sx={{ p: 3 }}>
+                  <Stack spacing={2.5}>
+                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+                      <Box>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.75 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                            Customer *
+                          </Typography>
+                          <Button size="small" onClick={() => setQuickCustomerOpen(true)}>
+                            + Quick Add
+                          </Button>
+                        </Box>
+                        <Autocomplete<CustomerOption>
+                          size="small"
+                          options={customers}
+                          filterOptions={customerFilter}
+                          value={selectedCustomer}
+                          isOptionEqualToValue={(option, val) => option.id === val.id}
+                          onInputChange={(_, val, reason) => {
+                            if (reason === "input") setCustomerSearchInput(val);
+                            else if (reason === "reset" || reason === "clear") setCustomerSearchInput("");
+                          }}
+                          getOptionLabel={(o) => o.name || ""}
+                          onChange={(_, val) => {
+                            setCustomerId(val?.id || "");
+                            if (val && !shippingAddress) {
+                              setShippingAddress(formatShippingAddress(val));
+                            }
+                          }}
+                          renderOption={(props, opt) => (
+                            <Box component="li" {...props} key={opt.id}>
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  {opt.name}
+                                </Typography>
+                                {(opt.phone || opt.email) && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {[opt.phone, opt.email].filter(Boolean).join(" · ")}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                          )}
+                          renderInput={(params) => (
+                            <TextField {...params} placeholder="Search name, phone, GSTIN..." />
+                          )}
+                        />
+                      </Box>
 
-                  <TextField value={vehicleNumber} onChange={e => setVehicleNumber(e.target.value)} placeholder="e.g. MH-12-AB-1234" label={<><Box component={Car} sx={{ height: "0.875rem", width: "0.875rem" }}/>Vehicle Number</>} size="small" fullWidth/>
-                </Box>
-              </Box>
+                      <TextField
+                        select
+                        size="small"
+                        fullWidth
+                        label="Challan Type"
+                        value={challanType}
+                        onChange={(e) => setChallanType(e.target.value)}
+                      >
+                        <MenuItem value="delivery">Standard Delivery</MenuItem>
+                        <MenuItem value="approval_demo">Approval / Demo Unit</MenuItem>
+                        <MenuItem value="job_work">Job Work / Repair Handover</MenuItem>
+                        <MenuItem value="returnable">Returnable Gate Pass</MenuItem>
+                        <MenuItem value="sales_return">Sales Return</MenuItem>
+                      </TextField>
+                    </Box>
 
-              <Divider />
+                    <TextField
+                      size="small"
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      label="Shipping / Delivery Address"
+                      placeholder="Full delivery street, floor, city & PIN code..."
+                      value={shippingAddress}
+                      onChange={(e) => setShippingAddress(e.target.value)}
+                    />
 
-              {/* GST Toggle */}
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <FormLabel sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}>GST Inclusive</FormLabel>
-                <Switch checked={gstInclusive} onChange={(event, checked) => setGstInclusive(checked)}/>
-              </Box>
+                    <Divider />
 
-              {/* Items */}
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-                <DocumentItemAdder
-                  products={products}
-                  onSelectProduct={addItem}
-                  onAddCustomItem={addCustomItem}
-                  selectLabel="Items"
-                  emptyPlaceholder="+ Add Item"
-                />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 0.75 }}>
+                      <Truck size={14} /> Carrier, AWB &amp; Compliance Metadata
+                    </Typography>
 
-                {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>
-                    <Box component={Plus} sx={{ height: "2rem", width: "2rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 40%, transparent)", marginBottom: "0.5rem" }}/>
-                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", marginBottom: "0.75rem" }}>Add catalog or custom items to the delivery challan</Typography>
-                    <Button type="button" variant="outlined" size="small" onClick={addCustomItem} startIcon={<Box component={Plus} sx={{ width: 14, height: 14 }} />}>
-                      Add Custom Item
-                    </Button>
-                  </Box>) : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", overflow: "hidden" }}>
-                    <DataTable columnsCount={7} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
-                      <TableHead><TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderBottomWidth: "1px" }}>
-                        <TableCell sx={{ textAlign: "left", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase" }}>Item</TableCell>
-                        <TableCell sx={{ textAlign: "left", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "5rem" }}>HSN</TableCell>
-                        <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "6rem" }}>Rate</TableCell>
-                        <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "4rem" }}>Qty</TableCell>
-                        <TableCell sx={{ textAlign: "right", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "4rem" }}>GST%</TableCell>
-                        <TableCell sx={{ textAlign: "right", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", width: "6rem" }}>Total</TableCell>
-                        <TableCell sx={{ width: "2.5rem" }}/>
-                      </TableRow></TableHead>
-                      <TableBody>
-                        {items.map((item, idx) => (<TableRow key={idx} sx={{ borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "&:last-child": { borderWidth: "0px" } }}>
-                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", fontWeight: "500" }}>
-                              {item.product_id ? (
-                                item.product_name
-                              ) : (
-                                <TextField placeholder="Item name *" value={item.product_name} onChange={e => updateItem(idx, { product_name: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Custom item name" } }} sx={{ fontSize: "0.875rem", fontWeight: 500 }}/>
-                              )}
-                            </TableCell>
-                            <TableCell sx={{ paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField value={item.hsn_code} onChange={e => updateItem(idx, { hsn_code: e.target.value })} placeholder="HSN" size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "HSN" } }} sx={{ height: "2rem", fontSize: "0.75rem", lineHeight: "1rem" }}/></TableCell>
-                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>
-                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { min: "1", "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>
-                            <TableCell sx={{ paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><TextField type="number" value={item.gst_percentage} onChange={e => updateItem(idx, { gst_percentage: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/></TableCell>
-                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", textAlign: "right", fontWeight: "600" }}>₹{item.total.toFixed(2)}</TableCell>
-                            <TableCell sx={{ paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}><IconButton onClick={() => removeItem(idx)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}><Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }}/></IconButton></TableCell>
-                          </TableRow>))}
-                      </TableBody>
-                    </DataTable>
-                  </Box>)}
-              </Box>
+                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.5 }}>
+                      <TextField
+                        size="small"
+                        label="Courier / Carrier"
+                        placeholder="BlueDart, Delhivery, Self"
+                        value={courierName}
+                        onChange={(e) => setCourierName(e.target.value)}
+                      />
+                      <TextField
+                        size="small"
+                        label="AWB / Tracking Number"
+                        placeholder="AWB123456789"
+                        value={trackingNumber}
+                        onChange={(e) => setTrackingNumber(e.target.value)}
+                      />
+                      <TextField
+                        size="small"
+                        type="date"
+                        label="Expected Delivery"
+                        value={expectedDeliveryAt}
+                        onChange={(e) => setExpectedDeliveryAt(e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Carrier Tracking URL"
+                        placeholder="https://..."
+                        value={trackingUrl}
+                        onChange={(e) => setTrackingUrl(e.target.value)}
+                      />
+                      <TextField
+                        size="small"
+                        label="e-Way Bill Number"
+                        placeholder="12-digit EWB"
+                        value={ewayBillNumber}
+                        onChange={(e) => setEwayBillNumber(e.target.value)}
+                        helperText={
+                          totals.grandTotal >= 50000 && showPricing && !ewayBillNumber.trim()
+                            ? "GST e-Way Bill recommended for consignment ≥ ₹50,000"
+                            : undefined
+                        }
+                      />
+                      <TextField
+                        size="small"
+                        label="Vehicle Number"
+                        placeholder="MH-12-AB-1234"
+                        value={vehicleNumber}
+                        onChange={(e) => setVehicleNumber(e.target.value)}
+                      />
+                      <TextField
+                        size="small"
+                        label="Delivery Person / Driver"
+                        placeholder="Executive name"
+                        value={deliveryPerson}
+                        onChange={(e) => setDeliveryPerson(e.target.value)}
+                        sx={{ gridColumn: { sm: "1 / -1" } }}
+                      />
+                    </Box>
 
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+                    <Divider />
 
-                <TextField value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Delivery instructions..." label={"Notes"} size="small" fullWidth multiline/>
-              </Box>
+                    <DocumentItemAdder
+                      products={products}
+                      onSelectProduct={addItem}
+                      onAddCustomItem={addCustomItem}
+                      selectLabel="Dispatch Items"
+                      emptyPlaceholder="+ Add Product / Serial"
+                    />
 
-              {/* Totals */}
-              <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                <Box sx={{ width: "100%", maxWidth: "20rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
-                  <Divider sx={{ marginBottom: "0.75rem" }}/>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Subtotal</Box><Box component="span">₹{subtotal.toFixed(2)}</Box></Box>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>CGST</Box><Box component="span">₹{(totalGst / 2).toFixed(2)}</Box></Box>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>SGST</Box><Box component="span">₹{(totalGst / 2).toFixed(2)}</Box></Box>
+                    <SortableLineItemsEditor
+                      items={items}
+                      onChange={handleEditorItemsChange}
+                      allowImages
+                      showImages={showItemImages}
+                      hidePricing={!showPricing}
+                      uploadFolder="challan-items"
+                    />
+
+                    <TextField
+                      size="small"
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      label="Delivery Instructions / Condition Notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+
+                    {showPricing && (
+                      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                        <Box sx={{ width: 260 }}>
+                          <Stack spacing={0.5}>
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography variant="body2" color="text.secondary">Subtotal</Typography>
+                              <Typography variant="body2">₹{totals.itemSubtotal.toFixed(2)}</Typography>
+                            </Box>
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography variant="body2" color="text.secondary">GST</Typography>
+                              <Typography variant="body2">₹{totals.gstAmount.toFixed(2)}</Typography>
+                            </Box>
+                            <Divider />
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Declared Value</Typography>
+                              <Typography variant="subtitle1" color="primary.main" sx={{ fontWeight: 700 }}>
+                                ₹{totals.grandTotal.toFixed(2)}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </Box>
+                      </Box>
+                    )}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Stack>
+          </Box>
+
+          {/* Right Sidebar */}
+          <Box sx={{ gridColumn: { lg: "span 4 / span 4" } }}>
+            <Card sx={{ position: "sticky", top: 24 }}>
+              <CardContent sx={{ p: 2.5 }}>
+                <Stack spacing={1.25}>
+                  <Button variant="contained" disabled={saving} onClick={() => void saveChallan(true)} startIcon={<Send size={16} />}>
+                    {saving ? "Saving..." : "Save & Mark Dispatched"}
+                  </Button>
+                  <Button variant="outlined" disabled={saving} onClick={() => void saveChallan(false)} startIcon={<Save size={16} />}>
+                    Save Draft
+                  </Button>
+                  <Button variant="outlined" onClick={() => setPreviewOpen(true)} startIcon={<Eye size={16} />}>
+                    Preview Challan
+                  </Button>
+                  <Button variant="text" onClick={() => navigate("/challans")}>
+                    Cancel
+                  </Button>
+
                   <Divider />
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                    <Box component="span" sx={{ fontWeight: "600" }}>Grand Total</Box>
-                    <Box component="span" sx={{ fontSize: "1.25rem", lineHeight: "1.75rem", fontWeight: "700" }}>₹{grandTotal.toFixed(2)}</Box>
+
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <FormLabel sx={{ fontSize: 12 }}>Show Item Images</FormLabel>
+                    <Switch checked={showItemImages} onChange={(_, c) => setShowItemImages(c)} />
                   </Box>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <FormLabel sx={{ fontSize: 12 }}>Show Pricing on Challan &amp; PDF</FormLabel>
+                    <Switch checked={showPricing} onChange={(_, c) => setShowPricing(c)} />
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <FormLabel sx={{ fontSize: 12 }}>
+                      Deduct Stock on Dispatch {stockDeductedAt ? "(Done)" : ""}
+                    </FormLabel>
+                    <Switch
+                      checked={linkedJobSheetId ? false : deductStock}
+                      disabled={Boolean(linkedJobSheetId) || Boolean(stockDeductedAt) || invoiceAlreadyDeducted}
+                      onChange={(_, c) => setDeductStock(c)}
+                    />
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <FormLabel sx={{ fontSize: 12 }}>GST Inclusive</FormLabel>
+                    <Switch checked={gstInclusive} disabled={!showPricing} onChange={(_, c) => setGstInclusive(c)} />
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Box>
         </Box>
 
-        <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" } }}>
-          <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", position: "sticky", top: "1.5rem" }}>
-            <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-              <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
-                <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>{saving ? "Saving..." : "Save Challan"}
-              </Button>
-              <Button onClick={() => navigate("/challans")} variant="outlined" sx={{ width: "100%" }}>Cancel</Button>
-            </CardContent>
-          </Card>
-        </Box>
+        <CustomerQuickDialog
+          open={quickCustomerOpen}
+          onClose={() => setQuickCustomerOpen(false)}
+          initialName={customerSearchInput}
+          onCustomerCreated={(newCust) => {
+            setCustomers((prev) => [newCust as CustomerOption, ...prev]);
+            setCustomerId(newCust.id);
+            setCustomerSearchInput("");
+          }}
+        />
+
+        <DocumentPreview
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          type="challan"
+          docId={editId || null}
+          publicToken={publicToken}
+          number={challanNumber || "Draft"}
+          status={challanStatus}
+          customer={
+            selectedCustomer
+              ? {
+                  name: selectedCustomer.name,
+                  email: selectedCustomer.email,
+                  phone: selectedCustomer.phone,
+                  address: shippingAddress || selectedCustomer.address,
+                  gstNumber: selectedCustomer.gst_number,
+                }
+              : null
+          }
+          items={items}
+          showImages={showItemImages}
+          hidePricing={!showPricing}
+          gstInclusive={gstInclusive}
+          globalDiscountType={discountType}
+          globalDiscountValue={discountValue}
+          notes={notes}
+          challanMeta={{
+            challan_type: challanType,
+            courier_name: courierName,
+            tracking_number: trackingNumber,
+            tracking_url: trackingUrl,
+            eway_bill_number: ewayBillNumber,
+            shipping_address: shippingAddress,
+            delivery_person: deliveryPerson,
+            vehicle_number: vehicleNumber,
+          }}
+        />
       </Box>
-    </Box></AnimatedPage>;
+    </AnimatedPage>
+  );
 }

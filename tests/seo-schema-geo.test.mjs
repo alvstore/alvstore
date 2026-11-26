@@ -71,6 +71,7 @@ test("robots.txt, llms.txt, sitemap.xml, and private noindex layouts protect int
   }
   assert.match(robots, /Disallow:\s*\/api\//);
   assert.match(robots, /Disallow:\s*\/job\//);
+  assert.match(robots, /Disallow:\s*\/challan\//);
   assert.match(robots, /Sitemap:\s*https:\/\/alvstore\.com\/sitemap\.xml/);
 
   assert.ok(fs.existsSync(path.join(root, "public/llms.txt")));
@@ -83,6 +84,7 @@ test("robots.txt, llms.txt, sitemap.xml, and private noindex layouts protect int
     "src/app/login/layout.tsx",
     "src/app/job/layout.tsx",
     "src/app/invoice/layout.tsx",
+    "src/app/challan/layout.tsx",
     "src/app/delivery-report/layout.tsx",
     "src/app/sales/public/layout.tsx",
   ]) {

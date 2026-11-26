@@ -1,14 +1,378 @@
 import { isDatabaseUnavailable } from "../lib/api-errors.js";
 import { asyncHandler } from "../lib/async-handler.js";
 import { Router, type Request, type Response } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import multer from "multer";
 import { prisma, pool } from "../db.js";
 import { env } from "../env.js";
+import { publicUrl } from "./storage.js";
+import { buildBrandedDocumentPdf, type BrandedDocumentPdfInput, type BrandedDocumentType } from "../lib/document-pdf.js";
+import { escapeHtml, renderBrandedEmailHtml, resolveSmtpConfig, sendMailWithConfig } from "../lib/mailer.js";
+import { syncDocumentStock } from "../lib/inventory-ledger.js";
+import { appendChallanTimeline, CHALLAN_POD_ALLOWED_STATUSES, validatePublicQuotationResponse } from "../lib/public-documents.js";
 import { resolveHikvisionCredentials } from "../lib/hikvision-config.js";
 import { handlePublicLeadRequest } from "../lib/public-lead.js";
 import { isValidAppRole, replaceUserRole } from "../lib/user-roles.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
+
+const DOC_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STAFF_ROLES = new Set(["admin", "staff", "technician"]);
+const CHALLAN_VALID_STATUSES = new Set([
+  "draft",
+  "packed",
+  "sent",
+  "dispatched",
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+  "returned",
+  "invoiced",
+  "cancelled",
+]);
+const POD_UPLOAD_DIR = path.resolve(env.uploadsDir, "uploads", "pod");
+const podUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.mimetype.toLowerCase())) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PNG, JPEG, or WebP POD photos up to 5 MB are supported"));
+    }
+  },
+});
+
+function hasStaffRole(req: Request): boolean {
+  const roles = req.user?.roles ?? [];
+  return roles.some((r) => STAFF_ROLES.has(r));
+}
+
+function requireStaff(req: Request, res: Response, next: () => void): void {
+  if (!req.user) {
+    res.status(401).json({ error: "Unauthorized", success: false });
+    return;
+  }
+  if (!hasStaffRole(req)) {
+    res.status(403).json({ error: "Staff access required", success: false });
+    return;
+  }
+  next();
+}
+
+function getClientIp(req: Request): string {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.trim()) return xff.split(",")[0].trim().slice(0, 64);
+  if (Array.isArray(xff) && xff[0]) return String(xff[0]).trim().slice(0, 64);
+  return String(req.ip || req.socket.remoteAddress || "").slice(0, 64);
+}
+
+async function notifyStaffAndCreator(opts: {
+  createdBy?: string | null;
+  type: string;
+  title: string;
+  message: string;
+  link: string;
+  metadata: Record<string, unknown>;
+}) {
+  const recipients = new Set<string>();
+  const admins = await pool.query("SELECT user_id FROM public.user_roles WHERE role = 'admin'");
+  for (const row of admins.rows) if (row.user_id) recipients.add(row.user_id);
+  if (opts.createdBy) recipients.add(opts.createdBy);
+  for (const userId of recipients) {
+    await pool.query(
+      `INSERT INTO public.notifications (user_id, title, message, type, link) VALUES ($1::uuid, $2, $3, $4, $5)`,
+      [userId, opts.title, opts.message, opts.type, opts.link]
+    );
+    await pool.query(
+      `INSERT INTO public.notification_feed (user_id, type, title, body, metadata) VALUES ($1::uuid, $2, $3, $4, $5::jsonb)`,
+      [userId, opts.type, opts.title, opts.message, JSON.stringify({ link: opts.link, ...opts.metadata })]
+    );
+  }
+}
+
+async function resolveSalespersonName(salespersonId?: string | null): Promise<string | null> {
+  if (!salespersonId) return null;
+  const emp = await prisma.employees.findFirst({
+    where: { OR: [{ id: salespersonId }, { user_id: salespersonId }] },
+    select: { name: true },
+  });
+  if (emp?.name) return emp.name;
+  const prof = await prisma.profiles.findFirst({
+    where: { OR: [{ id: salespersonId }, { user_id: salespersonId }] },
+    select: { full_name: true },
+  });
+  return prof?.full_name ?? null;
+}
+
+async function loadDocumentForPdf(
+  docType: BrandedDocumentType,
+  opts: { id?: string; token?: string }
+): Promise<{
+  id: string;
+  docNumber: string;
+  status: string;
+  filename: string;
+  publicToken: string | null;
+  publicPath: string | null;
+  customerEmail: string | null;
+  customerName: string | null;
+  pdfInput: BrandedDocumentPdfInput;
+} | null> {
+  const biz = await prisma.businessSettings.findFirst();
+  const business = {
+    company_name: biz?.company_name ?? "ALVStore",
+    company_address: biz?.company_address ?? null,
+    company_phone: biz?.company_phone ?? null,
+    company_email: biz?.company_email ?? null,
+    gst_number: biz?.gst_number ?? null,
+    logo_url: biz?.logo_url ?? "/alvstore-logo.png",
+    bank_name: biz?.bank_name ?? null,
+    bank_account_number: biz?.bank_account_number ?? null,
+    bank_ifsc: biz?.bank_ifsc ?? null,
+    bank_branch: biz?.bank_branch ?? null,
+    bank_upi_id: biz?.bank_upi_id ?? null,
+  };
+
+  if (docType === "quotation") {
+    const where = opts.id ? { id: opts.id } : opts.token ? { public_token: opts.token } : null;
+    if (!where) return null;
+    const q = await prisma.quotations.findFirst({
+      where,
+      include: {
+        r_customers: true,
+        rl_quotation_items_quotation_id: { orderBy: [{ sort_order: "asc" }, { product_name: "asc" }] },
+      },
+    });
+    if (!q) return null;
+    const salespersonName = await resolveSalespersonName(q.salesperson_id);
+    const items = q.rl_quotation_items_quotation_id.map((it) => ({
+      product_id: it.product_id,
+      product_name: it.product_name,
+      description: it.description,
+      hsn_code: it.hsn_code,
+      quantity: Number(it.quantity ?? 0),
+      unit_price: Number(it.unit_price ?? 0),
+      discount_type: it.discount_type,
+      discount_value: Number(it.discount_value ?? 0),
+      gst_percentage: Number(it.gst_percentage ?? 0),
+      total: Number(it.total ?? 0),
+      image_url: it.image_url,
+      sort_order: it.sort_order,
+    }));
+    const docNumber = q.quotation_number || q.id.slice(0, 8).toUpperCase();
+    return {
+      id: q.id,
+      docNumber,
+      status: q.status || "draft",
+      filename: `${docNumber}.pdf`,
+      publicToken: q.public_token ?? null,
+      publicPath: q.public_token ? `/sales/public/${q.public_token}` : null,
+      customerEmail: q.r_customers?.email ?? null,
+      customerName: q.r_customers?.name ?? null,
+      pdfInput: {
+        docType: "quotation",
+        docNumber,
+        status: q.status || "draft",
+        createdAt: q.created_at,
+        validUntil: q.valid_until,
+        paymentTerms: q.payment_terms,
+        salespersonName,
+        showItemImages: Boolean(q.show_item_images),
+        showPricing: true,
+        gstInclusive: Boolean(q.gst_inclusive),
+        globalDiscountType: q.discount_type,
+        globalDiscountValue: Number(q.discount_value ?? 0),
+        subtotal: Number(q.subtotal ?? 0),
+        gstAmount: Number(q.gst_amount ?? 0),
+        total: Number(q.total ?? 0),
+        notes: q.notes,
+        terms: q.terms,
+        signatureData: q.signature_data,
+        signatureName: q.signature_name,
+        signedAt: q.signed_at,
+        rejectionReason: q.rejection_reason,
+        business,
+        customer: q.r_customers
+          ? {
+              name: q.r_customers.name,
+              email: q.r_customers.email,
+              phone: q.r_customers.phone,
+              address: q.r_customers.address,
+              gst_number: q.r_customers.gst_number,
+              shipping_address: q.r_customers.shipping_address,
+              shipping_city: q.r_customers.shipping_city,
+              shipping_state: q.r_customers.shipping_state,
+              shipping_pincode: q.r_customers.shipping_pincode,
+            }
+          : null,
+        items,
+      },
+    };
+  }
+
+  if (docType === "invoice") {
+    const where = opts.id ? { id: opts.id } : opts.token ? { public_token: opts.token } : null;
+    if (!where) return null;
+    const inv = await prisma.invoices.findFirst({
+      where,
+      include: {
+        r_customers: true,
+        rl_invoice_items_invoice_id: { orderBy: [{ sort_order: "asc" }, { product_name: "asc" }] },
+      },
+    });
+    if (!inv) return null;
+    const salespersonName = await resolveSalespersonName(inv.salesperson_id);
+    const items = inv.rl_invoice_items_invoice_id.map((it) => ({
+      product_id: it.product_id,
+      product_name: it.product_name,
+      description: it.description,
+      hsn_code: it.hsn_code,
+      quantity: Number(it.quantity ?? 0),
+      unit_price: Number(it.unit_price ?? 0),
+      discount_type: it.discount_type,
+      discount_value: Number(it.discount_value ?? 0),
+      gst_percentage: Number(it.gst_percentage ?? 0),
+      total: Number(it.total ?? 0),
+      sort_order: it.sort_order,
+    }));
+    const docNumber = inv.invoice_number || inv.id.slice(0, 8).toUpperCase();
+    return {
+      id: inv.id,
+      docNumber,
+      status: inv.payment_status || inv.status || "issued",
+      filename: `${docNumber}.pdf`,
+      publicToken: inv.public_token ?? null,
+      publicPath: inv.public_token ? `/invoice/public/${inv.public_token}` : null,
+      customerEmail: inv.r_customers?.email ?? null,
+      customerName: inv.r_customers?.name ?? null,
+      pdfInput: {
+        docType: "invoice",
+        docNumber,
+        status: inv.payment_status || inv.status || "issued",
+        createdAt: inv.created_at,
+        dueDate: inv.due_date,
+        paymentTerms: inv.payment_terms,
+        salespersonName,
+        showItemImages: false,
+        showPricing: true,
+        gstInclusive: Boolean(inv.gst_inclusive),
+        globalDiscountType: inv.discount_type,
+        globalDiscountValue: Number(inv.discount_value ?? 0),
+        subtotal: Number(inv.subtotal ?? 0),
+        gstAmount: Number(inv.gst_amount ?? 0),
+        total: Number(inv.total ?? 0),
+        paidAmount: Number(inv.paid_amount ?? 0),
+        notes: inv.notes,
+        signatureData: inv.signature_data,
+        signatureName: inv.signature_name,
+        signedAt: inv.signed_at,
+        business,
+        customer: inv.r_customers
+          ? {
+              name: inv.r_customers.name,
+              email: inv.r_customers.email,
+              phone: inv.r_customers.phone,
+              address: inv.r_customers.address,
+              gst_number: inv.r_customers.gst_number,
+              shipping_address: inv.r_customers.shipping_address,
+              shipping_city: inv.r_customers.shipping_city,
+              shipping_state: inv.r_customers.shipping_state,
+              shipping_pincode: inv.r_customers.shipping_pincode,
+            }
+          : null,
+        items,
+      },
+    };
+  }
+
+  const where = opts.id ? { id: opts.id } : opts.token ? { public_token: opts.token } : null;
+  if (!where) return null;
+  const ch = await prisma.deliveryChallans.findFirst({
+    where,
+    include: {
+      r_customers: true,
+      rl_delivery_challan_items: { orderBy: [{ sort_order: "asc" }, { product_name: "asc" }] },
+    },
+  });
+  if (!ch) return null;
+  const items = ch.rl_delivery_challan_items.map((it) => ({
+    product_id: it.product_id,
+    product_name: it.product_name,
+    description: it.description,
+    hsn_code: it.hsn_code,
+    quantity: Number(it.quantity ?? 0),
+    unit_price: Number(it.unit_price ?? 0),
+    discount_type: it.discount_type,
+    discount_value: Number(it.discount_value ?? 0),
+    gst_percentage: Number(it.gst_percentage ?? 0),
+    total: Number(it.total ?? 0),
+    image_url: it.image_url,
+    sort_order: it.sort_order,
+  }));
+  const docNumber = ch.challan_number || ch.id.slice(0, 8).toUpperCase();
+  return {
+    id: ch.id,
+    docNumber,
+    status: ch.status || "draft",
+    filename: `${docNumber}.pdf`,
+    publicToken: ch.public_token ?? null,
+    publicPath: ch.public_token ? `/challan/public/${ch.public_token}` : null,
+    customerEmail: ch.r_customers?.email ?? null,
+    customerName: ch.r_customers?.name ?? null,
+    pdfInput: {
+      docType: "challan",
+      docNumber,
+      status: ch.status || "draft",
+      createdAt: ch.created_at ?? new Date(),
+      showItemImages: Boolean(ch.show_item_images),
+      showPricing: Boolean(ch.show_pricing),
+      gstInclusive: Boolean(ch.gst_inclusive),
+      globalDiscountType: ch.discount_type,
+      globalDiscountValue: Number(ch.discount_value ?? 0),
+      subtotal: Number(ch.subtotal ?? 0),
+      gstAmount: Number(ch.gst_amount ?? 0),
+      total: Number(ch.total ?? 0),
+      notes: ch.notes,
+      signatureData: ch.receiver_signature,
+      signatureName: ch.receiver_name,
+      signedAt: ch.delivered_at,
+      challanMeta: {
+        challan_type: ch.challan_type,
+        shipping_address: ch.shipping_address,
+        courier_name: ch.courier_name,
+        tracking_number: ch.tracking_number,
+        tracking_url: ch.tracking_url,
+        eway_bill_number: ch.eway_bill_number,
+        delivery_person: ch.delivery_person,
+        vehicle_number: ch.vehicle_number,
+        dispatched_at: ch.dispatched_at,
+        expected_delivery_at: ch.expected_delivery_at,
+        delivered_at: ch.delivered_at,
+        receiver_name: ch.receiver_name,
+        receiver_phone: ch.receiver_phone,
+        pod_photo_url: ch.pod_photo_url,
+      },
+      business,
+      customer: ch.r_customers
+        ? {
+            name: ch.r_customers.name,
+            email: ch.r_customers.email,
+            phone: ch.r_customers.phone,
+            address: ch.r_customers.address,
+            gst_number: ch.r_customers.gst_number,
+            shipping_address: ch.r_customers.shipping_address,
+            shipping_city: ch.r_customers.shipping_city,
+            shipping_state: ch.r_customers.shipping_state,
+            shipping_pincode: ch.r_customers.shipping_pincode,
+          }
+        : null,
+      items,
+    },
+  };
+}
 
 /**
  * Full ports of the former Supabase Edge Functions.
@@ -227,35 +591,138 @@ functionsRouter.post("/send-whatsapp", requireAuth, asyncHandler(async (req, res
 }));
 
 // ---------------------------------------------------------------------------
-// send-email — template support + SMTP (generic HTTP mail API pattern)
+// send-email — ALVStore SMTP (Settings -> Integrations, fallback env) + PDF attach
 // ---------------------------------------------------------------------------
 functionsRouter.post("/send-email", requireAuth, asyncHandler(async (req, res) => {
   try {
-    const { to, subject, body, template_id, variables } = req.body ?? {};
-    if (!to || !subject) return fail(res, "Missing 'to' or 'subject'");
+    if (req.user?.roles.includes("customer") && !hasStaffRole(req)) {
+      return fail(res, "Staff access required to send emails", 403);
+    }
+    const {
+      to,
+      subject,
+      body,
+      html,
+      template_id,
+      variables,
+      attach_document,
+      mark_sent,
+      plain_text,
+    } = req.body ?? {};
+    const recipient = String(to ?? "").trim();
+    const cleanSubject = String(subject ?? "").trim();
+    if (!recipient || !cleanSubject) return fail(res, "Missing 'to' or 'subject'");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      return fail(res, "Please enter a valid recipient email address");
+    }
 
-    let emailBody = body || "";
+    const smtp = await resolveSmtpConfig(pool);
+    if (!smtp) {
+      return fail(res, "SMTP not configured. Add SMTP credentials in Settings -> Integrations.", 500);
+    }
+
+    let rawBodyContent = typeof html === "string" && html.trim() ? html : typeof body === "string" ? body : "";
     if (template_id) {
       const tpl = await pool.query("SELECT body, subject FROM public.templates WHERE id = $1 LIMIT 1", [template_id]);
-      if (tpl.rows.length) emailBody = applyVariables(tpl.rows[0].body ?? "", variables);
+      if (tpl.rows.length) rawBodyContent = applyVariables(tpl.rows[0].body ?? "", variables);
     }
 
-    const { smtpHost, smtpPort, smtpUser, smtpPass, smtpFrom } = env;
-    if (!smtpHost || !smtpUser || !smtpPass) {
-      return fail(res, "SMTP not configured. Add SMTP_HOST, SMTP_USER, SMTP_PASS to server/.env", 500);
-    }
-    void smtpPort; // port is implicit in the generic HTTP mail API pattern
+    const attachments: Array<{ filename: string; content: Buffer; contentType?: string }> = [];
+    let ctaLabel: string | undefined;
+    let ctaUrl: string | undefined;
+    let companyName = smtp.fromName || "ALVStore";
+    let companyEmail: string | null = smtp.fromEmail;
+    let companyPhone: string | null = null;
+    let attachedDoc: { type: BrandedDocumentType; id: string; docNumber: string } | null = null;
 
-    const response = await fetch(`https://${smtpHost}/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${smtpPass}` },
-      body: JSON.stringify({ from: smtpFrom || smtpUser, to, subject, html: emailBody }),
+    if (attach_document && typeof attach_document === "object") {
+      const docType = String(attach_document.type ?? "") as BrandedDocumentType;
+      const docId = String(attach_document.id ?? "");
+      if (!["quotation", "invoice", "challan"].includes(docType) || !DOC_UUID_RE.test(docId)) {
+        return fail(res, "Invalid attach_document parameter");
+      }
+      const loaded = await loadDocumentForPdf(docType, { id: docId });
+      if (!loaded) return fail(res, `${docType} not found`, 404);
+      const pdfBytes = await buildBrandedDocumentPdf(loaded.pdfInput);
+      attachments.push({
+        filename: loaded.filename,
+        content: Buffer.from(pdfBytes),
+        contentType: "application/pdf",
+      });
+      companyName = loaded.pdfInput.business.company_name || companyName;
+      companyEmail = loaded.pdfInput.business.company_email || companyEmail;
+      companyPhone = loaded.pdfInput.business.company_phone || null;
+      if (loaded.publicPath) {
+        const origin = env.appOrigin.replace(/\/$/, "");
+        ctaUrl = `${origin}${loaded.publicPath}`;
+        ctaLabel =
+          docType === "quotation"
+            ? "View & Accept Quotation Online"
+            : docType === "invoice"
+            ? "View Tax Invoice Online"
+            : "Track Delivery & Sign POD";
+      }
+      attachedDoc = { type: docType, id: loaded.id, docNumber: loaded.docNumber };
+    } else {
+      const biz = await prisma.businessSettings.findFirst({
+        select: { company_name: true, company_email: true, company_phone: true },
+      });
+      if (biz) {
+        companyName = biz.company_name || companyName;
+        companyEmail = biz.company_email || companyEmail;
+        companyPhone = biz.company_phone || null;
+      }
+    }
+
+    let finalHtml = rawBodyContent;
+    const isFullHtmlDoc = /^\s*<!doctype|^\s*<html/i.test(rawBodyContent);
+    if (!isFullHtmlDoc) {
+      const fragmentHtml =
+        plain_text || (!/<[a-z][\s\S]*>/i.test(rawBodyContent) && typeof html !== "string")
+          ? `<p>${escapeHtml(rawBodyContent).replace(/\n/g, "<br/>")}</p>`
+          : rawBodyContent;
+      finalHtml = renderBrandedEmailHtml({
+        companyName,
+        companyEmail,
+        companyPhone,
+        title: cleanSubject,
+        bodyHtml: fragmentHtml,
+        ctaLabel,
+        ctaUrl,
+      });
+    }
+
+    const result = await sendMailWithConfig(smtp, {
+      to: recipient,
+      subject: cleanSubject,
+      html: finalHtml,
+      attachments,
     });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Email send failed: ${errText}`);
+
+    if (attachedDoc && attachedDoc.type === "quotation" && mark_sent !== false) {
+      await prisma.quotations.updateMany({
+        where: { id: attachedDoc.id, status: "draft" },
+        data: { status: "sent", updated_at: new Date() },
+      });
     }
-    return ok(res, { success: true });
+
+    if (attachedDoc) {
+      await pool.query(
+        `INSERT INTO public.system_audit_log (user_id, action, module, entity_type, entity_id, details, ip_address)
+         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::jsonb, $7)`,
+        [
+          req.user?.id ?? null,
+          `${attachedDoc.type}_emailed`,
+          attachedDoc.type === "challan" ? "logistics" : "sales",
+          attachedDoc.type,
+          attachedDoc.id,
+          JSON.stringify({ to: recipient, subject: cleanSubject, doc_number: attachedDoc.docNumber, message_id: result.messageId }),
+          getClientIp(req),
+        ]
+      );
+    }
+
+    return ok(res, { success: true, messageId: result.messageId });
   } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
@@ -1745,5 +2212,446 @@ functionsRouter.post("/notify-job-event", asyncHandler(async (req, res) => {
   } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
+  }
+}));
+
+const POD_PHOTO_PATH_RE = /^\/api\/backend\/storage\/files\/uploads\/pod\/[A-Za-z0-9._-]+$/;
+
+// ---------------------------------------------------------------------------
+// document-pdf — Vector A4 Branded ALVStore PDF (Quotations, Invoices, Challans)
+// ---------------------------------------------------------------------------
+functionsRouter.get("/document-pdf", asyncHandler(async (req, res) => {
+  try {
+    const docType = String(req.query.type ?? "").toLowerCase() as BrandedDocumentType;
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    const token = typeof req.query.token === "string" ? req.query.token.trim() : "";
+    const download = req.query.download === "1" || req.query.download === "true";
+
+    if (!["quotation", "invoice", "challan"].includes(docType)) {
+      return fail(res, "Query parameter 'type' must be quotation, invoice, or challan", 400);
+    }
+
+    if (!token) {
+      if (!req.user) return fail(res, "Unauthorized", 401);
+      if (!hasStaffRole(req)) return fail(res, "Staff access required", 403);
+      if (!id || !DOC_UUID_RE.test(id)) return fail(res, "Valid 'id' or 'token' is required", 400);
+    } else if (!DOC_UUID_RE.test(token)) {
+      return fail(res, "Valid 'token' UUID is required", 400);
+    }
+
+    const loaded = await loadDocumentForPdf(docType, token ? { token } : { id });
+    if (!loaded) return fail(res, `${docType} not found`, 404);
+
+    const pdfBytes = await buildBrandedDocumentPdf(loaded.pdfInput);
+    const safeFilename = loaded.filename.replace(/[^A-Za-z0-9._-]/g, "_");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${safeFilename}"`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.send(Buffer.from(pdfBytes));
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// public-quotation-view — token-gated public view counter
+// ---------------------------------------------------------------------------
+functionsRouter.post("/public-quotation-view", asyncHandler(async (req, res) => {
+  try {
+    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+    if (!token || !DOC_UUID_RE.test(token)) return fail(res, "Valid quotation token required", 400);
+    const existing = await prisma.quotations.findFirst({
+      where: { public_token: token },
+      select: { id: true, view_count: true },
+    });
+    if (!existing) return fail(res, "Quotation not found", 404);
+    const updated = await prisma.quotations.update({
+      where: { id: existing.id },
+      data: {
+        view_count: (existing.view_count ?? 0) + 1,
+        last_viewed_at: new Date(),
+      },
+      select: { view_count: true, last_viewed_at: true },
+    });
+    return ok(res, { success: true, ...updated });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// public-quotation-respond — token-gated atomic customer accept / reject
+// ---------------------------------------------------------------------------
+functionsRouter.post("/public-quotation-respond", asyncHandler(async (req, res) => {
+  try {
+    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+    const action = typeof req.body?.action === "string" ? req.body.action.trim().toLowerCase() : "";
+    const signatureName = typeof req.body?.signature_name === "string" ? req.body.signature_name.trim() : "";
+    const signatureData = typeof req.body?.signature_data === "string" ? req.body.signature_data.trim() : "";
+    const rejectionReason = typeof req.body?.rejection_reason === "string" ? req.body.rejection_reason.trim() : "";
+
+    if (!token || !DOC_UUID_RE.test(token)) return fail(res, "Valid quotation token required", 400);
+
+    const q = await prisma.quotations.findFirst({
+      where: { public_token: token },
+      include: { r_customers: { select: { name: true } } },
+    });
+    if (!q) return fail(res, "Quotation not found", 404);
+
+    const check = validatePublicQuotationResponse({
+      status: String(q.status),
+      validUntil: q.valid_until,
+      action,
+      signatureName,
+      signatureData,
+    });
+    if (!check.ok) {
+      return res.status(check.status).json({ error: check.message, code: check.code, success: false });
+    }
+
+    const clientIp = getClientIp(req);
+    const now = new Date();
+    const targetStatus = action === "accept" ? "accepted" : "rejected";
+
+    const updated = await prisma.quotations.updateMany({
+      where: { id: q.id, status: { in: ["draft", "sent"] } },
+      data: {
+        status: targetStatus,
+        signature_name: action === "accept" ? signatureName : null,
+        signature_data: action === "accept" ? signatureData : null,
+        signed_at: action === "accept" ? now : null,
+        responded_at: now,
+        signed_ip: clientIp,
+        rejection_reason: action === "reject" ? rejectionReason || null : null,
+        updated_at: now,
+      },
+    });
+    if (updated.count === 0) {
+      return res.status(409).json({ error: "Quotation has already been responded to", code: "ALREADY_RESPONDED", success: false });
+    }
+
+    await pool.query(
+      `INSERT INTO public.system_audit_log (action, module, entity_type, entity_id, details, ip_address)
+       VALUES ($1, 'sales', 'quotation', $2::uuid, $3::jsonb, $4)`,
+      [
+        action === "accept" ? "quotation_accepted" : "quotation_rejected",
+        q.id,
+        JSON.stringify({
+          quotation_number: q.quotation_number,
+          signature_name: signatureName || null,
+          rejection_reason: rejectionReason || null,
+        }),
+        clientIp,
+      ]
+    );
+
+    await notifyStaffAndCreator({
+      createdBy: q.created_by,
+      type: "quotation",
+      title:
+        action === "accept"
+          ? `Quotation Accepted — ${q.quotation_number}`
+          : `Quotation Declined — ${q.quotation_number}`,
+      message:
+        action === "accept"
+          ? `${q.r_customers?.name || signatureName || "Customer"} digitally signed ${q.quotation_number}`
+          : `${q.r_customers?.name || "Customer"} declined ${q.quotation_number}${rejectionReason ? `: ${rejectionReason}` : ""}`,
+      link: `/sales/${q.id}`,
+      metadata: { quotation_id: q.id, action },
+    });
+
+    return ok(res, {
+      success: true,
+      status: targetStatus,
+      responded_at: now.toISOString(),
+      signed_at: action === "accept" ? now.toISOString() : null,
+    });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// document-stock — idempotent inventory deduction/restore for Invoice & Challan
+// ---------------------------------------------------------------------------
+functionsRouter.post("/document-stock", requireStaff, asyncHandler(async (req, res) => {
+  try {
+    const docType = String(req.body?.doc_type ?? "").toLowerCase();
+    const docId = String(req.body?.doc_id ?? "");
+    const targetStatus = typeof req.body?.target_status === "string" ? req.body.target_status : undefined;
+    const mode = req.body?.mode === "deduct" || req.body?.mode === "reverse" ? req.body.mode : undefined;
+    const note = typeof req.body?.note === "string" ? req.body.note : undefined;
+
+    if (docType !== "invoice" && docType !== "challan") {
+      return fail(res, "doc_type must be 'invoice' or 'challan'", 400);
+    }
+    if (!DOC_UUID_RE.test(docId)) {
+      return fail(res, "Valid doc_id UUID required", 400);
+    }
+
+    const result = await prisma.$transaction((tx) =>
+      syncDocumentStock(tx, {
+        docType,
+        docId,
+        targetStatus,
+        explicitMode: mode,
+        userId: req.user?.id ?? null,
+        note,
+      })
+    );
+    return ok(res, { success: true, ...result });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// challan-transition — atomic milestone update, timeline append & stock ledger
+// ---------------------------------------------------------------------------
+functionsRouter.post("/challan-transition", requireStaff, asyncHandler(async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const challanId = String(body.challan_id ?? "");
+    const targetStatus = String(body.target_status ?? "").toLowerCase();
+    const note = typeof body.note === "string" ? body.note.trim() : undefined;
+
+    if (!DOC_UUID_RE.test(challanId)) return fail(res, "Valid challan_id UUID required", 400);
+    if (!CHALLAN_VALID_STATUSES.has(targetStatus)) return fail(res, `Unsupported challan status: ${targetStatus}`, 400);
+
+    const out = await prisma.$transaction(async (tx) => {
+      const existing = await tx.deliveryChallans.findUnique({ where: { id: challanId } });
+      if (!existing) throw Object.assign(new Error("Delivery challan not found"), { httpStatus: 404 });
+
+      const now = new Date();
+      const nextTimeline = appendChallanTimeline(existing.timeline, {
+        status: targetStatus,
+        note,
+        by: req.user?.email || "Staff",
+      });
+
+      const isDispatchState = ["sent", "dispatched", "in_transit", "out_for_delivery", "delivered"].includes(targetStatus);
+      const data: Record<string, unknown> = {
+        status: targetStatus,
+        timeline: nextTimeline as unknown as object,
+        updated_at: now,
+      };
+      if (isDispatchState && !existing.dispatched_at) data.dispatched_at = now;
+      if (targetStatus === "delivered" && !existing.delivered_at) data.delivered_at = now;
+
+      const optionalStringFields = [
+        "courier_name",
+        "tracking_number",
+        "tracking_url",
+        "eway_bill_number",
+        "delivery_person",
+        "vehicle_number",
+        "receiver_name",
+        "receiver_phone",
+        "receiver_signature",
+        "pod_photo_url",
+      ] as const;
+      for (const field of optionalStringFields) {
+        if (field in body) {
+          const val = typeof body[field] === "string" && body[field].trim() ? body[field].trim() : null;
+          if (field === "pod_photo_url" && val && !POD_PHOTO_PATH_RE.test(val)) {
+            throw Object.assign(new Error("Invalid POD photo path"), { httpStatus: 400 });
+          }
+          data[field] = val;
+        }
+      }
+      if ("expected_delivery_at" in body) {
+        if (body.expected_delivery_at) {
+          const parsed = new Date(String(body.expected_delivery_at));
+          if (Number.isNaN(parsed.getTime())) {
+            throw Object.assign(new Error("Invalid expected_delivery_at date"), { httpStatus: 400 });
+          }
+          data.expected_delivery_at = parsed;
+        } else {
+          data.expected_delivery_at = null;
+        }
+      }
+
+      const challan = await tx.deliveryChallans.update({
+        where: { id: challanId },
+        data: data as any,
+      });
+
+      const stock = await syncDocumentStock(tx, {
+        docType: "challan",
+        docId: challanId,
+        targetStatus,
+        userId: req.user?.id ?? null,
+        note,
+      });
+
+      return { challan, stock };
+    });
+
+    await pool.query(
+      `INSERT INTO public.system_audit_log (user_id, action, module, entity_type, entity_id, details, ip_address)
+       VALUES ($1::uuid, $2, 'logistics', 'delivery_challan', $3::uuid, $4::jsonb, $5)`,
+      [
+        req.user?.id ?? null,
+        `challan_${targetStatus}`,
+        challanId,
+        JSON.stringify({ note: note || null, stock: out.stock }),
+        getClientIp(req),
+      ]
+    );
+
+    return ok(res, { success: true, challan: out.challan, stock: out.stock });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    const status = (e as { httpStatus?: number }).httpStatus || 500;
+    return fail(res, (e as Error).message, status);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// public-challan-pod-upload — token-validated POD photo upload (max 5 MB)
+// ---------------------------------------------------------------------------
+functionsRouter.post("/public-challan-pod-upload", (req, res) => {
+  podUpload.single("file")(req, res, (err) => {
+    void (async () => {
+      try {
+        if (err) return fail(res, (err as Error).message || "Upload rejected", 400);
+        const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+        if (!token || !DOC_UUID_RE.test(token)) return fail(res, "Valid challan token required", 400);
+
+        const ch = await prisma.deliveryChallans.findFirst({
+          where: { public_token: token },
+          select: { id: true, status: true },
+        });
+        if (!ch) return fail(res, "Delivery challan not found", 404);
+        if (!CHALLAN_POD_ALLOWED_STATUSES.has(String(ch.status))) {
+          return fail(res, "POD photo upload is only allowed for dispatched challans", 409);
+        }
+
+        const file = req.file;
+        if (!file || !file.buffer?.length) return fail(res, "Image file is required", 400);
+        const b = file.buffer;
+        const isPng = b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+        const isJpg = b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+        const isWebp =
+          b.length >= 12 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP";
+        if (!isPng && !isJpg && !isWebp) {
+          return fail(res, "File content must be a valid PNG, JPEG, or WebP image", 400);
+        }
+
+        const ext = isPng ? "png" : isJpg ? "jpg" : "webp";
+        fs.mkdirSync(POD_UPLOAD_DIR, { recursive: true });
+        const filename = `${ch.id}-${crypto.randomUUID()}.${ext}`;
+        fs.writeFileSync(path.join(POD_UPLOAD_DIR, filename), file.buffer);
+        return ok(res, { success: true, url: publicUrl("uploads", `pod/${filename}`) });
+      } catch (e) {
+        if (isDatabaseUnavailable(e)) return fail(res, "Database unavailable", 503);
+        return fail(res, (e as Error).message, 500);
+      }
+    })();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// public-challan-pod — contactless receiver POD signature + delivery confirm
+// ---------------------------------------------------------------------------
+functionsRouter.post("/public-challan-pod", asyncHandler(async (req, res) => {
+  try {
+    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+    const receiverName = typeof req.body?.receiver_name === "string" ? req.body.receiver_name.trim() : "";
+    const receiverPhone = typeof req.body?.receiver_phone === "string" ? req.body.receiver_phone.trim() : "";
+    const receiverSignature =
+      typeof req.body?.receiver_signature === "string" ? req.body.receiver_signature.trim() : "";
+    const podPhotoUrl = typeof req.body?.pod_photo_url === "string" ? req.body.pod_photo_url.trim() : "";
+
+    if (!token || !DOC_UUID_RE.test(token)) return fail(res, "Valid challan token required", 400);
+    if (!receiverName) return fail(res, "Receiver full name is required", 400);
+    if (!receiverSignature.startsWith("data:image/")) {
+      return fail(res, "Receiver digital signature is required", 400);
+    }
+    if (podPhotoUrl && !POD_PHOTO_PATH_RE.test(podPhotoUrl)) {
+      return fail(res, "Invalid POD photo path", 400);
+    }
+
+    const ch = await prisma.deliveryChallans.findFirst({
+      where: { public_token: token },
+      include: { r_customers: { select: { name: true } } },
+    });
+    if (!ch) return fail(res, "Delivery challan not found", 404);
+    if (!CHALLAN_POD_ALLOWED_STATUSES.has(String(ch.status))) {
+      return res.status(409).json({
+        error: `Delivery POD cannot be captured when challan is '${ch.status}'`,
+        success: false,
+      });
+    }
+
+    const now = new Date();
+    const clientIp = getClientIp(req);
+    const nextTimeline = appendChallanTimeline(ch.timeline, {
+      status: "delivered",
+      note: `Contactless POD signed by ${receiverName}${receiverPhone ? ` (${receiverPhone})` : ""}`,
+      by: receiverName,
+      at: now.toISOString(),
+    });
+
+    const stock = await prisma.$transaction(async (tx) => {
+      const updated = await tx.deliveryChallans.updateMany({
+        where: { id: ch.id, status: { in: Array.from(CHALLAN_POD_ALLOWED_STATUSES) } },
+        data: {
+          status: "delivered",
+          receiver_name: receiverName,
+          receiver_phone: receiverPhone || null,
+          receiver_signature: receiverSignature,
+          pod_photo_url: podPhotoUrl || null,
+          delivered_at: now,
+          dispatched_at: ch.dispatched_at ?? now,
+          timeline: nextTimeline as unknown as object,
+          updated_at: now,
+        },
+      });
+      if (updated.count === 0) {
+        throw Object.assign(new Error("Delivery POD has already been completed"), { httpStatus: 409 });
+      }
+      return await syncDocumentStock(tx, {
+        docType: "challan",
+        docId: ch.id,
+        targetStatus: "delivered",
+        note: `POD confirmed by ${receiverName}`,
+      });
+    });
+
+    await pool.query(
+      `INSERT INTO public.system_audit_log (action, module, entity_type, entity_id, details, ip_address)
+       VALUES ('challan_pod_captured', 'logistics', 'delivery_challan', $1::uuid, $2::jsonb, $3)`,
+      [
+        ch.id,
+        JSON.stringify({ challan_number: ch.challan_number, receiver_name: receiverName, pod_photo_url: podPhotoUrl || null }),
+        clientIp,
+      ]
+    );
+
+    await notifyStaffAndCreator({
+      createdBy: ch.created_by,
+      type: "logistics",
+      title: `Delivery POD Confirmed — ${ch.challan_number}`,
+      message: `${receiverName} signed proof of delivery for ${ch.challan_number} (${ch.r_customers?.name || "Customer"})`,
+      link: `/challans/${ch.id}`,
+      metadata: { challan_id: ch.id, receiver_name: receiverName },
+    });
+
+    return ok(res, {
+      success: true,
+      status: "delivered",
+      delivered_at: now.toISOString(),
+      stock,
+      timeline: nextTimeline,
+    });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    const status = (e as { httpStatus?: number }).httpStatus || 500;
+    return fail(res, (e as Error).message, status);
   }
 }));

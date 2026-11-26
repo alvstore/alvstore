@@ -1116,6 +1116,12 @@
           "hasDefault": true
         },
         {
+          "name": "description",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
           "name": "quantity",
           "udt": "int4",
           "nullable": true,
@@ -1123,6 +1129,18 @@
         },
         {
           "name": "unit_price",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
           "udt": "numeric",
           "nullable": true,
           "hasDefault": true
@@ -1150,9 +1168,31 @@
           "udt": "numeric",
           "nullable": true,
           "hasDefault": true
+        },
+        {
+          "name": "image_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "sort_order",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
         }
       ],
       "relations": [
+        {
+          "field": "r_products",
+          "kind": "many-to-one",
+          "targetTable": "products",
+          "targetModel": "Products",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
         {
           "field": "r_delivery_challans",
           "kind": "many-to-one",
@@ -1181,10 +1221,40 @@
           "hasDefault": true
         },
         {
+          "name": "public_token",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
           "name": "customer_id",
           "udt": "uuid",
           "nullable": true,
           "hasDefault": false
+        },
+        {
+          "name": "quotation_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "invoice_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "job_sheet_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "challan_type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
         },
         {
           "name": "status",
@@ -1193,14 +1263,68 @@
           "hasDefault": true
         },
         {
-          "name": "notes",
+          "name": "show_pricing",
+          "udt": "bool",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "show_item_images",
+          "udt": "bool",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "shipping_address",
           "udt": "text",
           "nullable": true,
           "hasDefault": false
         },
         {
-          "name": "invoice_id",
-          "udt": "uuid",
+          "name": "courier_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "tracking_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "tracking_url",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "eway_bill_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "dispatched_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "expected_delivery_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "delivered_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
           "nullable": true,
           "hasDefault": false
         },
@@ -1235,7 +1359,25 @@
           "hasDefault": false
         },
         {
+          "name": "receiver_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "receiver_phone",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
           "name": "receiver_signature",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "pod_photo_url",
           "udt": "text",
           "nullable": true,
           "hasDefault": false
@@ -1243,6 +1385,18 @@
         {
           "name": "gst_inclusive",
           "udt": "bool",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_type",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "discount_value",
+          "udt": "numeric",
           "nullable": true,
           "hasDefault": true
         },
@@ -1263,6 +1417,30 @@
           "udt": "numeric",
           "nullable": true,
           "hasDefault": true
+        },
+        {
+          "name": "deduct_stock",
+          "udt": "bool",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "stock_deducted_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "stock_reversed_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "timeline",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
         }
       ],
       "relations": [
@@ -1273,6 +1451,36 @@
           "targetModel": "Customers",
           "fkColumns": [
             "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_quotations",
+          "kind": "many-to-one",
+          "targetTable": "quotations",
+          "targetModel": "Quotations",
+          "fkColumns": [
+            "quotation_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_invoices",
+          "kind": "many-to-one",
+          "targetTable": "invoices",
+          "targetModel": "Invoices",
+          "fkColumns": [
+            "invoice_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "r_job_sheets",
+          "kind": "many-to-one",
+          "targetTable": "job_sheets",
+          "targetModel": "JobSheets",
+          "fkColumns": [
+            "job_sheet_id"
           ],
           "optional": true
         },
@@ -2535,6 +2743,12 @@
           "udt": "text",
           "nullable": true,
           "hasDefault": false
+        },
+        {
+          "name": "sort_order",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
         }
       ],
       "relations": [
@@ -2712,6 +2926,24 @@
           "udt": "text",
           "nullable": true,
           "hasDefault": false
+        },
+        {
+          "name": "deduct_stock",
+          "udt": "bool",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "stock_deducted_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "stock_reversed_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
         }
       ],
       "relations": [
@@ -2742,6 +2974,16 @@
           "targetModel": "Quotations",
           "fkColumns": [
             "quotation_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_delivery_challans_invoice_id",
+          "kind": "one-to-many",
+          "targetTable": "delivery_challans",
+          "targetModel": "DeliveryChallans",
+          "fkColumns": [
+            "invoice_id"
           ],
           "optional": true
         },
@@ -3364,6 +3606,16 @@
           "kind": "one-to-many",
           "targetTable": "invoices",
           "targetModel": "Invoices",
+          "fkColumns": [
+            "job_sheet_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_delivery_challans_job_sheet_id",
+          "kind": "one-to-many",
+          "targetTable": "delivery_challans",
+          "targetModel": "DeliveryChallans",
           "fkColumns": [
             "job_sheet_id"
           ],
@@ -4403,6 +4655,16 @@
           "optional": true
         },
         {
+          "field": "rl_delivery_challan_items_product_id",
+          "kind": "one-to-many",
+          "targetTable": "delivery_challan_items",
+          "targetModel": "DeliveryChallanItems",
+          "fkColumns": [
+            "product_id"
+          ],
+          "optional": true
+        },
+        {
           "field": "rl_stock_movements_product_id",
           "kind": "one-to-many",
           "targetTable": "stock_movements",
@@ -5146,6 +5408,12 @@
           "udt": "text",
           "nullable": true,
           "hasDefault": false
+        },
+        {
+          "name": "sort_order",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
         }
       ],
       "relations": [
@@ -5335,6 +5603,24 @@
           "udt": "text",
           "nullable": true,
           "hasDefault": false
+        },
+        {
+          "name": "show_item_images",
+          "udt": "bool",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "rejection_reason",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "responded_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
         }
       ],
       "relations": [
@@ -5345,6 +5631,16 @@
           "targetModel": "Customers",
           "fkColumns": [
             "customer_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_delivery_challans_quotation_id",
+          "kind": "one-to-many",
+          "targetTable": "delivery_challans",
+          "targetModel": "DeliveryChallans",
+          "fkColumns": [
+            "quotation_id"
           ],
           "optional": true
         },

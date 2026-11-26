@@ -10,7 +10,9 @@ import { BusinessHeader } from "@/components/documents/BusinessHeader";
 import { StatusBadge } from "@/components/documents/StatusBadge";
 import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable";
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
-import { ArrowLeft, Send, Download, Printer, Pencil, CreditCard, Copy, Eye, Link, Loader2 } from "lucide-react";
+import { SendDocumentDrawer } from "@/components/documents/SendDocumentDrawer";
+import { downloadDocumentPdf } from "@/lib/document-pdf-client";
+import { ArrowLeft, Send, Download, Printer, Pencil, CreditCard, Copy, Link, Loader2, Truck } from "lucide-react";
 export default function InvoicePreview() {
     const { id } = useParams<{
         id: string;
@@ -20,6 +22,7 @@ export default function InvoicePreview() {
     const [invoice, setInvoice] = useState<any>(null);
     const [items, setItems] = useState<DocumentItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [sendDrawerOpen, setSendDrawerOpen] = useState(false);
     // Payment
     const [paySheetOpen, setPaySheetOpen] = useState(false);
     const [payAmount, setPayAmount] = useState("");
@@ -37,18 +40,55 @@ export default function InvoicePreview() {
                 .single();
             if (inv)
                 setInvoice(inv);
-            const { data: itms } = await supabase.from("invoice_items").select("*").eq("invoice_id", id);
-            setItems((itms || []).map((i: any) => ({
+            const { data: itms } = await supabase.from("invoice_items").select("*").eq("invoice_id", id).order("sort_order", { ascending: true });
+            setItems((itms || []).map((i: any, idx: number) => ({
                 id: i.id, product_id: i.product_id, product_name: i.product_name,
                 description: i.description || "", hsn_code: i.hsn_code || "",
                 quantity: i.quantity, unit_price: i.unit_price,
                 discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-                gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+                gst_percentage: i.gst_percentage ?? 18, gst_enabled: true, total: i.total,
+                sort_order: i.sort_order ?? idx,
             })));
             setLoading(false);
         };
         load();
     }, [id]);
+    const [cancelling, setCancelling] = useState(false);
+    const cancelInvoiceAndRestoreStock = async () => {
+        if (!invoice || cancelling || invoice.status === "cancelled")
+            return;
+        setCancelling(true);
+        try {
+            const { error: uErr } = await supabase.from("invoices").update({ status: "cancelled" }).eq("id", invoice.id);
+            if (uErr)
+                throw new Error(uErr.message);
+            let reversedAt = invoice.stock_reversed_at || null;
+            if (invoice.stock_deducted_at && !invoice.stock_reversed_at) {
+                const { data: sData, error: sErr } = await supabase.functions.invoke("document-stock", {
+                    body: {
+                        doc_type: "invoice",
+                        doc_id: invoice.id,
+                        target_status: "cancelled",
+                        mode: "reverse",
+                        note: `Invoice ${invoice.invoice_number} cancelled`,
+                    },
+                });
+                if (sErr)
+                    throw new Error(sErr.message);
+                if (sData?.action === "restore_in") {
+                    reversedAt = new Date().toISOString();
+                }
+            }
+            setInvoice({ ...invoice, status: "cancelled", stock_reversed_at: reversedAt });
+            toast.success(reversedAt ? "Invoice cancelled and stock restored" : "Invoice cancelled");
+        }
+        catch (err: any) {
+            toast.error(err?.message || "Failed to cancel invoice");
+        }
+        finally {
+            setCancelling(false);
+        }
+    };
     const recordPayment = async () => {
         if (!invoice)
             return;
@@ -133,7 +173,7 @@ export default function InvoicePreview() {
 
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
         {/* Document - Left Column */}
-        <Box data-print-area sx={{ "@media (min-width: 1024px)": { gridColumn: "span 8 / span 8" } }}>
+        <Box data-print-area sx={{ minWidth: 0, "@media (min-width: 1024px)": { gridColumn: "span 8 / span 8" } }}>
           <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
             <CardContent sx={{ padding: "1.5rem", "@media (min-width: 768px)": { padding: "2rem" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
               {/* Header row: Business + Invoice info */}
@@ -147,7 +187,7 @@ export default function InvoicePreview() {
                   {invoice.due_date && (<Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>
                       Due: {new Date(invoice.due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                     </Typography>)}
-                  <StatusBadge status={invoice.payment_status || "unpaid"}/>
+                  <StatusBadge status={invoice.status === "cancelled" ? "cancelled" : (invoice.payment_status || "unpaid")}/>
                 </Box>
               </Box>
 
@@ -172,7 +212,7 @@ export default function InvoicePreview() {
                 </Box>)}
 
               {/* Items Table */}
-              <ItemsTable items={items} onItemsChange={() => { }} products={[]} readOnly/>
+              <ItemsTable items={items} onItemsChange={() => { }} products={[]} showImages={false} readOnly/>
 
               {/* Totals */}
               <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
@@ -202,12 +242,16 @@ export default function InvoicePreview() {
           <Box sx={{ "@media (min-width: 1024px)": { position: "sticky", top: "1.5rem" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
             <Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
               <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-                <Button onClick={copyPublicLink} variant="contained" sx={{ width: "100%", backgroundColor: "hsl(var(--primary))", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 90%, transparent)" } }}>
+                <Button onClick={() => setSendDrawerOpen(true)} variant="contained" sx={{ width: "100%", backgroundColor: "hsl(var(--primary))", "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 90%, transparent)" } }}>
                   <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Send Invoice
                 </Button>
 
-                <Button onClick={() => window.print()} variant="outlined" sx={{ width: "100%" }}>
-                  <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Download
+                <Button onClick={() => void downloadDocumentPdf({ docType: "invoice", id: invoice.id, filename: `${invoice.invoice_number}.pdf` }).then(() => toast.success(`Downloaded ${invoice.invoice_number}.pdf`)).catch((e) => toast.error((e as Error).message))} variant="outlined" sx={{ width: "100%" }}>
+                  <Box component={Download} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Download Branded PDF
+                </Button>
+
+                <Button onClick={copyPublicLink} variant="outlined" sx={{ width: "100%" }}>
+                  <Box component={Copy} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Copy Customer Link
                 </Button>
 
                 <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>
@@ -218,10 +262,22 @@ export default function InvoicePreview() {
                     <Box component={Pencil} sx={{ height: "1rem", width: "1rem", marginRight: "0.375rem" }}/> Edit
                   </Button>
                 </Box>
+
+                <Button onClick={() => navigate(`/challans/new?invoiceId=${invoice.id}`)} variant="outlined" sx={{ width: "100%" }}>
+                  <Box component={Truck} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Create Delivery Challan
+                </Button>
+
+                {invoice.status !== "cancelled" && (<Button variant="text" color="error" size="small" disabled={cancelling} onClick={() => void cancelInvoiceAndRestoreStock()} sx={{ width: "100%" }}>
+                    {cancelling
+                ? "Cancelling..."
+                : invoice.stock_deducted_at && !invoice.stock_reversed_at
+                    ? "Cancel Invoice & Restore Stock"
+                    : "Cancel Invoice"}
+                  </Button>)}
               </CardContent>
             </Card>
 
-            {invoice.payment_status !== "paid" && (<Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
+            {invoice.status !== "cancelled" && invoice.payment_status !== "paid" && (<Card sx={{ "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
                 <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
                   <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>Accept Payment</Typography>
                   <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))" }}>
@@ -251,7 +307,7 @@ export default function InvoicePreview() {
                 </Box>
                 <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
                   <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Payment</Box>
-                  <StatusBadge status={invoice.payment_status || "unpaid"}/>
+                  <StatusBadge status={invoice.status === "cancelled" ? "cancelled" : (invoice.payment_status || "unpaid")}/>
                 </Box>
                 {invoice.quotation_id && (<Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
                     <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>From Quotation</Box>
@@ -293,5 +349,18 @@ export default function InvoicePreview() {
             </Box>
           </Box>
         </SideDrawer>
+
+      <SendDocumentDrawer
+        open={sendDrawerOpen}
+        onClose={() => setSendDrawerOpen(false)}
+        docType="invoice"
+        docId={invoice.id}
+        docNumber={invoice.invoice_number}
+        customerName={customer?.name}
+        defaultEmail={customer?.email}
+        defaultPhone={customer?.phone}
+        publicUrl={invoice.public_token ? `${window.location.origin}/invoice/public/${invoice.public_token}` : null}
+        totalLabel={`₹${Number(invoice.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+      />
     </Box></AnimatedPage>;
 }

@@ -90,9 +90,9 @@ export function SignaturePad({ onSignature, existingSignature, existingName, dis
     if (existingSignature && disabled) {
         return (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
         <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))" }}>Digital Signature</FormLabel>
-        <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "hsl(var(--card))", padding: "0.75rem" }}>
+        <Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", backgroundColor: "#FFFFFF", padding: "0.75rem" }}>
           <Box src={existingSignature} alt="Signature" component="img" sx={{ height: "4rem", marginLeft: "auto", marginRight: "auto" }}/>
-          {existingName && <Typography component="p" variant="body1" sx={{ textAlign: "center", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", marginTop: "0.25rem" }}>{existingName}</Typography>}
+          {existingName && <Typography component="p" variant="body1" sx={{ textAlign: "center", fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "500", marginTop: "0.25rem", color: "#0F172A" }}>{existingName}</Typography>}
         </Box>
       </Box>);
     }
@@ -103,7 +103,7 @@ export function SignaturePad({ onSignature, existingSignature, existingName, dis
             <Box component={Eraser} sx={{ height: "0.75rem", width: "0.75rem", marginRight: "0.25rem" }}/> Clear
           </Button>)}
       </Box>
-      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", backgroundColor: "hsl(var(--card))", overflow: "hidden" }}>
+      <Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", backgroundColor: "#FFFFFF", overflow: "hidden" }}>
         <Box ref={canvasRef} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw} onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw} component="canvas" sx={{ width: "100%", height: "6rem", cursor: "crosshair", touchAction: "none" }}/>
       </Box>
       <TextField placeholder="Full name" value={name} onChange={e => {

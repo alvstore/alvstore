@@ -30,8 +30,7 @@ const PUBLIC_READ = new Set([
   "delivery_challan_items",
 ]);
 const PUBLIC_WRITE = new Set([
-  // signature capture / view tracking / delivery confirmation
-  "quotations",
+  // signature capture / view tracking / delivery confirmation (quotations use /functions/public-quotation-*)
   "job_sheets",
   "job_sheet_audit_log",
 ]);
@@ -49,6 +48,14 @@ const WRITE_ROLES: Record<string, string[]> = {
   system_audit_log: ["admin"],
   business_settings: ["admin"],
   templates: ["admin", "staff"],
+  quotations: ["admin", "staff", "technician"],
+  quotation_items: ["admin", "staff", "technician"],
+  invoices: ["admin", "staff", "technician"],
+  invoice_items: ["admin", "staff", "technician"],
+  delivery_challans: ["admin", "staff", "technician"],
+  delivery_challan_items: ["admin", "staff", "technician"],
+  products: ["admin", "staff", "technician"],
+  stock_movements: ["admin", "staff", "technician"],
   hikvision_devices: ["admin"],
   hikvision_employee_mapping: ["admin"],
   hikvision_sync_log: ["admin"],

@@ -1,21 +1,23 @@
 "use client";
 
 import {
-    Autocomplete, Box, Button, Card, CardContent, Divider, FormLabel,
-    IconButton, MenuItem, Switch, TableBody, TableCell, TableHead,
-    TableRow, TextField, Tooltip, Typography, createFilterOptions
+    Alert, Autocomplete, Box, Button, Card, CardContent, Divider, FormLabel,
+    IconButton, MenuItem, Stack, Switch, TextField, Tooltip, Typography, createFilterOptions
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { AnimatedPage, DataTable, PageHeader, toast } from "@/components/mui";
+import { AnimatedPage, PageHeader, toast } from "@/components/mui";
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Send, Eye, Save, Trash2, Plus, Copy, UserPlus } from "lucide-react";
+import { ArrowLeft, Send, Eye, Save, Copy, Plus, UserPlus } from "lucide-react";
 import { type DocumentItem, calcItemTotal } from "@/components/documents/ItemsTable";
 import { DocumentItemAdder } from "@/components/documents/DocumentItemAdder";
 import { calculateTotals } from "@/components/documents/TotalsPanel";
-import { CustomerQuickDialog, type CustomerData } from "@/components/customers/CustomerQuickDialog";
+import { SortableLineItemsEditor, type EditableLineItem } from "@/components/documents/SortableLineItemsEditor";
+import { DocumentPreview } from "@/components/documents/DocumentPreview";
+import { SendDocumentDrawer } from "@/components/documents/SendDocumentDrawer";
+import { CustomerQuickDialog } from "@/components/customers/CustomerQuickDialog";
 import { recordSystemAudit } from "@/lib/audit";
 interface Product {
     id: string;
@@ -66,6 +68,9 @@ export default function QuotationAdd() {
     const [business, setBusiness] = useState<BusinessSettings | null>(null);
     const [saving, setSaving] = useState(false);
     const isEditing = !!editId;
+    const [quotationStatus, setQuotationStatus] = useState<string>("draft");
+    const [quotationNumber, setQuotationNumber] = useState<string>("");
+    const [quotationPublicToken, setQuotationPublicToken] = useState<string | null>(null);
     const [customerId, setCustomerId] = useState("");
     const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
     const [customerSearchInput, setCustomerSearchInput] = useState("");
@@ -77,10 +82,20 @@ export default function QuotationAdd() {
     const [paymentTerms, setPaymentTerms] = useState("");
     const [items, setItems] = useState<DocumentItem[]>([]);
     const [gstInclusive, setGstInclusive] = useState(false);
+    const [showItemImages, setShowItemImages] = useState(true);
     const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
     const [discountValue, setDiscountValue] = useState(0);
     const [showTerms, setShowTerms] = useState(true);
     const [showClientNotes, setShowClientNotes] = useState(true);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [sendDrawerTarget, setSendDrawerTarget] = useState<{
+        id: string;
+        docNumber: string;
+        publicToken: string | null;
+    } | null>(null);
+
+    const isLockedAccepted = isEditing && quotationStatus === "accepted";
+    const willResetApproval = isEditing && (quotationStatus === "rejected" || quotationStatus === "expired");
 
     const customerFilter = useMemo(
       () =>
@@ -104,7 +119,7 @@ export default function QuotationAdd() {
             supabase.from("customers").select("id, name, email, phone, address, gst_number, shipping_address, shipping_city, shipping_state, shipping_pincode").order("name"),
             supabase.from("products").select("id, name, description, selling_price, gst_percentage, image_url").order("name"),
             supabase.from("business_settings").select("company_name, company_address, company_phone, company_email, gst_number, logo_url, bank_name, bank_account_number, bank_ifsc, bank_branch, bank_upi_id").limit(1).single(),
-            supabase.from("employees").select("id, name").in("role", ["admin", "staff"]).eq("status", "active").order("name"),
+            supabase.from("employees").select("id, name").in("role", ["admin", "staff", "technician"]).eq("status", "active").order("name"),
         ]).then(([c, p, b, e]) => {
             setCustomers(c.data || []);
             setProducts(p.data || []);
@@ -113,12 +128,13 @@ export default function QuotationAdd() {
             setEmployees(e.data || []);
         });
     }, []);
-    // Load existing quotation for editing
+    // Load existing quotation for editing or cloning via ?duplicateFrom=
+    const sourceQuoteId = editId || searchParams?.get("duplicateFrom") || "";
     useEffect(() => {
-        if (!editId)
+        if (!sourceQuoteId)
             return;
         const loadQuotation = async () => {
-            const { data: q } = await supabase.from("quotations").select("*").eq("id", editId).single();
+            const { data: q } = await supabase.from("quotations").select("*").eq("id", sourceQuoteId).single();
             if (q) {
                 setCustomerId(q.customer_id || "");
                 setValidUntil(q.valid_until || "");
@@ -127,23 +143,45 @@ export default function QuotationAdd() {
                 setGstInclusive(q.gst_inclusive || false);
                 setDiscountType((q.discount_type as "percentage" | "fixed") || "percentage");
                 setDiscountValue(q.discount_value || 0);
+                setSalesperson(q.salesperson_id || "");
+                setPaymentTerms(q.payment_terms || "");
+                setShowItemImages(q.show_item_images !== false);
+                if (editId) {
+                    setQuotationStatus(q.status || "draft");
+                    setQuotationNumber(q.quotation_number || "");
+                    setQuotationPublicToken(q.public_token || null);
+                }
             }
-            const { data: itms } = await supabase.from("quotation_items").select("*").eq("quotation_id", editId);
+            const { data: itms } = await supabase
+                .from("quotation_items")
+                .select("*")
+                .eq("quotation_id", sourceQuoteId)
+                .order("sort_order", { ascending: true });
             if (itms) {
-                setItems(itms.map((i: any) => ({
-                    id: i.id, product_id: i.product_id, product_name: i.product_name,
-                    description: i.description || "", hsn_code: i.hsn_code || "",
-                    quantity: i.quantity, unit_price: i.unit_price,
-                    discount_type: i.discount_type || "percentage", discount_value: i.discount_value || 0,
-                    gst_percentage: i.gst_percentage || 18, gst_enabled: true, total: i.total,
+                setItems(itms.map((i: any, idx: number) => ({
+                    id: editId ? i.id : undefined,
+                    product_id: i.product_id,
+                    product_name: i.product_name,
+                    description: i.description || "",
+                    hsn_code: i.hsn_code || "",
+                    quantity: i.quantity,
+                    unit_price: i.unit_price,
+                    discount_type: (i.discount_type as "percentage" | "fixed") || "percentage",
+                    discount_value: i.discount_value || 0,
+                    gst_percentage: i.gst_percentage ?? 18,
+                    gst_enabled: true,
+                    total: i.total,
+                    image_url: i.image_url || null,
+                    sort_order: i.sort_order ?? idx,
                 })));
             }
         };
         loadQuotation();
-    }, [editId]);
+    }, [sourceQuoteId, editId]);
     const selectedCustomer = customerId ? customers.find(c => c.id === customerId) : null;
     const totals = calculateTotals(items, gstInclusive, discountType, discountValue);
     const addItem = (productId: string) => {
+        if (isLockedAccepted) return;
         const product = products.find(p => p.id === productId);
         if (!product)
             return;
@@ -152,12 +190,14 @@ export default function QuotationAdd() {
                 description: product.description || "", hsn_code: "",
                 quantity: 1, unit_price: product.selling_price || 0,
                 discount_type: "percentage", discount_value: 0,
-                gst_percentage: product.gst_percentage || 18, gst_enabled: true,
+                gst_percentage: product.gst_percentage ?? 18, gst_enabled: true,
                 total: product.selling_price || 0,
                 image_url: product.image_url || null,
+                sort_order: items.length,
             }]);
     };
     const addCustomItem = () => {
+        if (isLockedAccepted) return;
         setItems([...items, {
                 product_id: null, product_name: "Custom Service / Item",
                 description: "", hsn_code: "",
@@ -166,19 +206,35 @@ export default function QuotationAdd() {
                 gst_percentage: 18, gst_enabled: true,
                 total: 0,
                 image_url: null,
+                sort_order: items.length,
             }]);
     };
-    const updateItem = (idx: number, updates: Partial<DocumentItem>) => {
-        setItems(items.map((item, i) => {
-            if (i !== idx)
-                return item;
-            const updated = { ...item, ...updates };
-            updated.total = calcItemTotal(updated);
-            return updated;
+    const handleEditorItemsChange = (nextItems: EditableLineItem[]) => {
+        setItems(nextItems.map((it, idx) => {
+            const docItem: DocumentItem = {
+                product_id: it.product_id,
+                product_name: it.product_name,
+                description: it.description,
+                hsn_code: it.hsn_code,
+                quantity: Number(it.quantity || 1),
+                unit_price: Number(it.unit_price || 0),
+                discount_type: it.discount_type === "fixed" ? "fixed" : "percentage",
+                discount_value: Number(it.discount_value || 0),
+                gst_percentage: Number(it.gst_percentage ?? 18),
+                gst_enabled: true,
+                total: 0,
+                image_url: it.image_url || null,
+                sort_order: it.sort_order ?? idx,
+            };
+            docItem.total = calcItemTotal(docItem);
+            return docItem;
         }));
     };
-    const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-    const handleSave = async () => {
+    const persistQuotation = async (openSendAfter = false) => {
+        if (isLockedAccepted) {
+            toast.error("Accepted quotations are locked. Duplicate as a new quotation to make changes.");
+            return;
+        }
         if (!customerId) {
             toast.error("Select a customer");
             return;
@@ -188,62 +244,105 @@ export default function QuotationAdd() {
             return;
         }
         setSaving(true);
-        if (isEditing) {
-            // Update existing quotation
-            const { error: qErr } = await supabase.from("quotations").update({
-                customer_id: customerId, subtotal: totals.itemSubtotal,
-                gst_amount: totals.gstAmount, total: totals.grandTotal,
-                notes: notes || null, terms: terms || null, valid_until: validUntil || null,
-                discount_type: discountType, discount_value: discountValue, gst_inclusive: gstInclusive,
+        const targetId = isEditing ? editId : sendDrawerTarget?.id;
+        if (targetId) {
+            const updatePayload: Record<string, unknown> = {
+                customer_id: customerId,
+                subtotal: totals.itemSubtotal,
+                gst_amount: totals.gstAmount,
+                total: totals.grandTotal,
+                notes: showClientNotes ? (notes || null) : null,
+                terms: showTerms ? (terms || null) : null,
+                valid_until: validUntil || null,
+                discount_type: discountType,
+                discount_value: discountValue,
+                gst_inclusive: gstInclusive,
                 payment_terms: paymentTerms || null,
-            } as any).eq("id", editId);
+                salesperson_id: salesperson || null,
+                show_item_images: showItemImages,
+            };
+            if (willResetApproval) {
+                updatePayload.status = "draft";
+                updatePayload.rejection_reason = null;
+                updatePayload.responded_at = null;
+                updatePayload.signature_data = null;
+                updatePayload.signature_name = null;
+                updatePayload.signed_at = null;
+                updatePayload.signed_ip = null;
+            }
+            const { data: updatedQ, error: qErr } = await supabase
+                .from("quotations")
+                .update(updatePayload as any)
+                .eq("id", targetId)
+                .select("id, quotation_number, public_token, status")
+                .single();
             if (qErr) {
                 toast.error(qErr.message);
                 setSaving(false);
                 return;
             }
-            // Delete old items and insert new
-            await supabase.from("quotation_items").delete().eq("quotation_id", editId);
-            const qItems = items.map(i => ({
-                quotation_id: editId, product_id: i.product_id, product_name: i.product_name,
+            await supabase.from("quotation_items").delete().eq("quotation_id", targetId);
+            const qItems = items.map((i, idx) => ({
+                quotation_id: targetId, product_id: i.product_id, product_name: i.product_name,
                 quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
                 total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
                 discount_type: i.discount_type, discount_value: i.discount_value,
-                image_url: i.image_url || null,
+                image_url: i.image_url || null, sort_order: i.sort_order ?? idx,
             }));
-            await supabase.from("quotation_items").insert(qItems);
+            const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
+            if (iErr) {
+                toast.error(iErr.message);
+                setSaving(false);
+                return;
+            }
             await recordSystemAudit({
                 action: "quotation_updated",
                 module: "sales",
                 entityType: "quotation",
-                entityId: editId,
+                entityId: targetId,
                 details: `Updated quotation (${items.length} items, ₹${totals.grandTotal.toFixed(2)})`,
             });
             setSaving(false);
-            toast.success("Quotation updated");
-            navigate(`/sales/${editId}`);
+            if (updatedQ) {
+                setQuotationStatus(updatedQ.status || "draft");
+                setQuotationNumber(updatedQ.quotation_number || quotationNumber);
+                setQuotationPublicToken(updatedQ.public_token || quotationPublicToken);
+            }
+            if (openSendAfter) {
+                setSendDrawerTarget({
+                    id: targetId,
+                    docNumber: updatedQ?.quotation_number || quotationNumber || "Quotation",
+                    publicToken: updatedQ?.public_token || quotationPublicToken,
+                });
+                return;
+            }
+            toast.success(willResetApproval ? "Quotation updated and reset to Draft" : "Quotation updated");
+            navigate(`/sales/${targetId}`);
         }
         else {
-            // Create new
             const { data: q, error: qErr } = await supabase.from("quotations").insert({
                 quotation_number: "", customer_id: customerId,
                 subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount, total: totals.grandTotal,
-                notes: notes || null, terms: terms || null, valid_until: validUntil || null,
+                notes: showClientNotes ? (notes || null) : null,
+                terms: showTerms ? (terms || null) : null,
+                valid_until: validUntil || null,
                 discount_type: discountType, discount_value: discountValue,
                 gst_inclusive: gstInclusive, created_by: user?.id,
                 payment_terms: paymentTerms || null,
+                salesperson_id: salesperson || null,
+                show_item_images: showItemImages,
             } as any).select().single();
             if (qErr) {
                 toast.error(qErr.message);
                 setSaving(false);
                 return;
             }
-            const qItems = items.map(i => ({
+            const qItems = items.map((i, idx) => ({
                 quotation_id: q.id, product_id: i.product_id, product_name: i.product_name,
                 quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
                 total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
                 discount_type: i.discount_type, discount_value: i.discount_value,
-                image_url: i.image_url || null,
+                image_url: i.image_url || null, sort_order: i.sort_order ?? idx,
             }));
             const { error: iErr } = await supabase.from("quotation_items").insert(qItems);
             if (!iErr) {
@@ -256,18 +355,93 @@ export default function QuotationAdd() {
                 });
             }
             setSaving(false);
-            if (iErr)
+            if (iErr) {
                 toast.error(iErr.message);
-            else {
-                toast.success("Quotation created — " + q.quotation_number);
-                navigate(`/sales/${q.id}`);
+                return;
             }
+            setQuotationNumber(q.quotation_number);
+            setQuotationPublicToken(q.public_token || null);
+            setQuotationStatus(q.status || "draft");
+            if (openSendAfter) {
+                toast.success("Quotation saved — " + q.quotation_number);
+                setSendDrawerTarget({
+                    id: q.id,
+                    docNumber: q.quotation_number,
+                    publicToken: q.public_token || null,
+                });
+                return;
+            }
+            toast.success("Quotation created — " + q.quotation_number);
+            navigate(`/sales/${q.id}`);
         }
     };
+    const handleDuplicateAsNew = async () => {
+        if (!customerId || items.length === 0) return;
+        setSaving(true);
+        const { data: q, error: qErr } = await supabase.from("quotations").insert({
+            quotation_number: "", customer_id: customerId, status: "draft",
+            subtotal: totals.itemSubtotal, gst_amount: totals.gstAmount, total: totals.grandTotal,
+            notes: showClientNotes ? (notes || null) : null,
+            terms: showTerms ? (terms || null) : null,
+            valid_until: validUntil || null,
+            discount_type: discountType, discount_value: discountValue,
+            gst_inclusive: gstInclusive, created_by: user?.id,
+            payment_terms: paymentTerms || null,
+            salesperson_id: salesperson || null,
+            show_item_images: showItemImages,
+        } as any).select().single();
+        if (qErr || !q) {
+            toast.error(qErr?.message || "Failed to duplicate quotation");
+            setSaving(false);
+            return;
+        }
+        const qItems = items.map((i, idx) => ({
+            quotation_id: q.id, product_id: i.product_id, product_name: i.product_name,
+            quantity: i.quantity, unit_price: i.unit_price, gst_percentage: i.gst_percentage,
+            total: i.total, description: i.description || null, hsn_code: i.hsn_code || null,
+            discount_type: i.discount_type, discount_value: i.discount_value,
+            image_url: i.image_url || null, sort_order: i.sort_order ?? idx,
+        }));
+        await supabase.from("quotation_items").insert(qItems);
+        await recordSystemAudit({
+            action: "quotation_duplicated",
+            module: "sales",
+            entityType: "quotation",
+            entityId: q.id,
+            details: `Duplicated ${quotationNumber || editId} as fresh quotation ${q.quotation_number}`,
+        });
+        setSaving(false);
+        toast.success(`Duplicated as new quotation ${q.quotation_number}`);
+        navigate(`/sales/${q.id}/edit`);
+    };
     return <AnimatedPage><Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1.5rem" } }}>
-      <PageHeader title={isEditing ? "Edit Quotation" : "Add Quotation"} subtitle={isEditing ? "Update quotation details" : "Create a professional quotation"} actions={<><IconButton onClick={() => navigate("/sales")} aria-label={"Arrow Left"}>
+      <PageHeader title={isEditing ? `Edit Quotation${quotationNumber ? ` · ${quotationNumber}` : ""}` : "Add Quotation"} subtitle={isLockedAccepted ? "Accepted by customer — signed audit trail locked" : isEditing ? "Update quotation details, line item order, or thumbnails" : "Create a detailed quotation with optional product images"} actions={<><IconButton onClick={() => navigate("/sales")} aria-label={"Arrow Left"}>
           <Box component={ArrowLeft} sx={{ height: "1.25rem", width: "1.25rem" }}/>
         </IconButton></>}/>
+
+      {isLockedAccepted && (
+        <Alert
+          severity="info"
+          action={
+            <Button
+              size="small"
+              variant="contained"
+              disabled={saving}
+              onClick={() => void handleDuplicateAsNew()}
+              startIcon={<Copy size={14} />}
+            >
+              Duplicate as New Quotation
+            </Button>
+          }
+        >
+          This quotation has already been accepted and digitally signed by the customer. Edits are disabled to protect the signed audit trail.
+        </Alert>
+      )}
+      {willResetApproval && (
+        <Alert severity="warning">
+          This quotation is currently marked <strong>{quotationStatus}</strong>. Saving edits resets it to <strong>Draft</strong> so it can be sent again cleanly.
+        </Alert>
+      )}
 
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 1024px)": { gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }, gap: "1.5rem" }}>
         {/* Left Column */}
@@ -298,7 +472,7 @@ export default function QuotationAdd() {
                   </Box>
                   <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                    <TextField type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} label={"Valid Until"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
+                    <TextField type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} disabled={isLockedAccepted} label={"Valid Until"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/>
                   </Box>
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
@@ -310,6 +484,7 @@ export default function QuotationAdd() {
                       <Button
                         size="small"
                         variant="text"
+                        disabled={isLockedAccepted}
                         startIcon={<Box component={UserPlus} sx={{ width: 14, height: 14 }} />}
                         onClick={() => setQuickCustomerOpen(true)}
                         sx={{ fontSize: "11px", py: 0, px: 0.75, minHeight: "auto", fontWeight: 600 }}
@@ -320,6 +495,7 @@ export default function QuotationAdd() {
                     <Autocomplete
                       size="small"
                       fullWidth
+                      disabled={isLockedAccepted}
                       options={customers}
                       value={selectedCustomer}
                       getOptionLabel={(option) => {
@@ -515,57 +691,24 @@ export default function QuotationAdd() {
 
               {/* Items */}
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
-                <DocumentItemAdder
-                  products={products}
-                  onSelectProduct={addItem}
-                  onAddCustomItem={addCustomItem}
-                  selectLabel="Line Items"
-                  emptyPlaceholder="+ Add Item"
-                />
+                {!isLockedAccepted && (
+                  <DocumentItemAdder
+                    products={products}
+                    onSelectProduct={addItem}
+                    onAddCustomItem={addCustomItem}
+                    selectLabel="Line Items"
+                    emptyPlaceholder="+ Add Item"
+                  />
+                )}
 
-                {items.length === 0 ? (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "2px", borderStyle: "dashed", borderColor: "hsl(var(--border))", padding: "2rem", textAlign: "center" }}>
-                    <Box component={Plus} sx={{ height: "2rem", width: "2rem", marginLeft: "auto", marginRight: "auto", color: "color-mix(in srgb, hsl(var(--muted-foreground)) 40%, transparent)", marginBottom: "0.5rem" }}/>
-                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", color: "hsl(var(--muted-foreground))", marginBottom: "0.75rem" }}>Add catalog or custom items to your quotation</Typography>
-                    <Button type="button" variant="outlined" size="small" onClick={addCustomItem} startIcon={<Box component={Plus} sx={{ width: 14, height: 14 }} />}>
-                      Add Custom Item
-                    </Button>
-                  </Box>) : (<Box sx={{ borderRadius: "var(--radius)", borderWidth: "1px", borderColor: "hsl(var(--border))", overflow: "hidden" }}>
-                    <DataTable columnsCount={5} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
-                      <TableHead>
-                        <TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", borderBottomWidth: "1px", borderColor: "hsl(var(--border))" }}>
-                          <TableCell sx={{ textAlign: "left", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em" }}>Item</TableCell>
-                          <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "6rem" }}>Cost</TableCell>
-                          <TableCell sx={{ textAlign: "right", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "5rem" }}>Qty</TableCell>
-                          <TableCell sx={{ textAlign: "right", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.05em", width: "6rem" }}>Price</TableCell>
-                          <TableCell sx={{ width: "2.5rem" }}/>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {items.map((item, idx) => (<TableRow key={idx} sx={{ borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "&:last-child": { borderWidth: "0px" } }}>
-                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              {item.product_id ? (
-                                <Typography component="p" variant="body1" sx={{ fontWeight: "500", color: "hsl(var(--foreground))" }}>{item.product_name}</Typography>
-                              ) : (
-                                <TextField placeholder="Item name *" value={item.product_name} onChange={e => updateItem(idx, { product_name: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Custom item name" } }} sx={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: "0.25rem" }}/>
-                              )}
-                              <TextField placeholder="Description" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Description" } }} sx={{ height: "1.75rem", fontSize: "0.75rem", lineHeight: "1rem", marginTop: "0.25rem", borderWidth: "0px", paddingLeft: "0px", paddingRight: "0px", backgroundColor: "transparent", "--alv-shadow": "0 0 #0000", "--alv-shadow-colored": "0 0 #0000", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", "&:focus-visible": { "--alv-ring-offset-shadow": "var(--alv-ring-inset) 0 0 0 var(--alv-ring-offset-width) var(--alv-ring-offset-color)", "--alv-ring-shadow": "var(--alv-ring-inset) 0 0 0 calc(0px + var(--alv-ring-offset-width)) var(--alv-ring-color)", boxShadow: "var(--alv-ring-offset-shadow), var(--alv-ring-shadow), var(--alv-shadow, 0 0 #0000)" } }}/>
-                            </TableCell>
-                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              <TextField type="number" value={item.unit_price} onChange={e => updateItem(idx, { unit_price: parseFloat(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/>
-                            </TableCell>
-                            <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              <TextField type="number" value={item.quantity} onChange={e => updateItem(idx, { quantity: parseInt(e.target.value) || 0 })} size="small" fullWidth slotProps={{ htmlInput: { min: "1", "aria-label": "Input" } }} sx={{ height: "2rem", fontSize: "0.875rem", lineHeight: "1.25rem", textAlign: "right" }}/>
-                            </TableCell>
-                            <TableCell sx={{ paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", textAlign: "right", fontWeight: "600", color: "hsl(var(--foreground))" }}>₹{item.total.toFixed(2)}</TableCell>
-                            <TableCell sx={{ paddingRight: "0.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                              <IconButton onClick={() => removeItem(idx)} aria-label={"Trash2"} sx={{ height: "1.75rem", width: "1.75rem", color: "hsl(var(--muted-foreground))", "&:hover": { color: "hsl(var(--destructive))" } }}>
-                                <Box component={Trash2} sx={{ height: "0.875rem", width: "0.875rem" }}/>
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>))}
-                      </TableBody>
-                    </DataTable>
-                  </Box>)}
+                <SortableLineItemsEditor
+                  items={items}
+                  onChange={handleEditorItemsChange}
+                  allowImages
+                  showImages={showItemImages}
+                  readOnly={isLockedAccepted}
+                  uploadFolder="quotation-items"
+                />
               </Box>
 
               <Divider />
@@ -573,13 +716,13 @@ export default function QuotationAdd() {
               <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, gap: "1rem" }}>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField value={salesperson} label={"Salesperson"} select size="small" fullWidth onChange={event => setSalesperson(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select salesperson"}</MenuItem>
-                      {employees.map(e => <MenuItem key={e.id} value={e.name}>{e.name}</MenuItem>)}
+                  <TextField value={salesperson} label={"Salesperson"} select size="small" fullWidth disabled={isLockedAccepted} onChange={event => setSalesperson(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="">{"Unassigned"}</MenuItem>
+                      {employees.map(e => <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>)}
                     </TextField>
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField value={paymentTerms} label={"Payment Terms"} select size="small" fullWidth onChange={event => setPaymentTerms(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select terms"}</MenuItem>
+                  <TextField value={paymentTerms} label={"Payment Terms"} select size="small" fullWidth disabled={isLockedAccepted} onChange={event => setPaymentTerms(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select terms"}</MenuItem>
                       <MenuItem value="due_on_receipt">Due on Receipt</MenuItem>
                       <MenuItem value="net_7">Net 7</MenuItem>
                       <MenuItem value="net_15">Net 15</MenuItem>
@@ -590,13 +733,13 @@ export default function QuotationAdd() {
                 </Box>
                 <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField placeholder="Internal notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} label={"Notes"} size="small" fullWidth multiline/>
+                  <TextField placeholder="Internal notes..." value={notes} disabled={isLockedAccepted} onChange={e => setNotes(e.target.value)} rows={2} label={"Notes"} size="small" fullWidth multiline/>
                 </Box>
               </Box>
 
               {showTerms && (<Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                  <TextField value={terms} onChange={e => setTerms(e.target.value)} rows={3} label={"Terms & Conditions"} size="small" fullWidth multiline/>
+                  <TextField value={terms} disabled={isLockedAccepted} onChange={e => setTerms(e.target.value)} rows={3} label={"Terms & Conditions"} size="small" fullWidth multiline/>
                 </Box>)}
 
               {/* Totals */}
@@ -609,8 +752,8 @@ export default function QuotationAdd() {
                   <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
                     <Box component="span" sx={{ color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem" }}>Discount</Box>
                     <Box sx={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
-                      <TextField type="number" value={discountValue} onChange={e => setDiscountValue(parseFloat(e.target.value) || 0)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "1.75rem", width: "4rem", fontSize: "0.75rem", lineHeight: "1rem", textAlign: "right" }}/>
-                      <TextField value={discountType} select size="small" fullWidth onChange={event => (v => setDiscountType(v as "percentage" | "fixed"))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ height: "1.75rem", width: "3rem", fontSize: "0.75rem", lineHeight: "1rem", paddingLeft: "0.25rem", paddingRight: "0.25rem" }}>
+                      <TextField type="number" disabled={isLockedAccepted} value={discountValue} onChange={e => setDiscountValue(parseFloat(e.target.value) || 0)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ height: "1.75rem", width: "4rem", fontSize: "0.75rem", lineHeight: "1rem", textAlign: "right" }}/>
+                      <TextField value={discountType} disabled={isLockedAccepted} select size="small" fullWidth onChange={event => (v => setDiscountType(v as "percentage" | "fixed"))(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }} sx={{ height: "1.75rem", width: "3rem", fontSize: "0.75rem", lineHeight: "1rem", paddingLeft: "0.25rem", paddingRight: "0.25rem" }}>
                           <MenuItem value="percentage" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>%</MenuItem>
                           <MenuItem value="fixed" sx={{ fontSize: "0.75rem", lineHeight: "1rem" }}>₹</MenuItem>
                         </TextField>
@@ -649,32 +792,49 @@ export default function QuotationAdd() {
         <Box sx={{ "@media (min-width: 1024px)": { gridColumn: "span 4 / span 4" }, "& > :not([hidden]) ~ :not([hidden])": { marginTop: "1rem" } }}>
           <Card sx={{ borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", "--alv-shadow": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "--alv-shadow-colored": "0 1px 2px 0 var(--alv-shadow-color)", boxShadow: "var(--alv-ring-offset-shadow, 0 0 #0000), var(--alv-ring-shadow, 0 0 #0000), var(--alv-shadow)", position: "sticky", top: "1.5rem" }}>
             <CardContent sx={{ padding: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-              <Button onClick={handleSave} disabled={saving} variant="contained" sx={{ width: "100%" }}>
-                <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>{saving ? "Saving..." : "Send Quotation"}
-              </Button>
-              <Button onClick={() => navigate("/sales")} variant="outlined" sx={{ width: "100%" }}>
-                <Box component={Eye} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Preview
-              </Button>
-              <Button onClick={handleSave} disabled={saving} variant="outlined" sx={{ width: "100%" }}>
-                <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Save
-              </Button>
+              {!isLockedAccepted ? (
+                <>
+                  <Button onClick={() => void persistQuotation(true)} disabled={saving} variant="contained" sx={{ width: "100%" }}>
+                    <Box component={Send} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>{saving ? "Saving..." : "Send Quotation"}
+                  </Button>
+                  <Button onClick={() => setPreviewOpen(true)} variant="outlined" sx={{ width: "100%" }}>
+                    <Box component={Eye} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Preview
+                  </Button>
+                  <Button onClick={() => void persistQuotation(false)} disabled={saving} variant="outlined" sx={{ width: "100%" }}>
+                    <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>{isEditing ? "Save Changes" : "Save Draft"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button onClick={() => void handleDuplicateAsNew()} disabled={saving} variant="contained" sx={{ width: "100%" }}>
+                    <Box component={Copy} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Duplicate as New Quotation
+                  </Button>
+                  <Button onClick={() => setPreviewOpen(true)} variant="outlined" sx={{ width: "100%" }}>
+                    <Box component={Eye} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>Preview
+                  </Button>
+                </>
+              )}
 
               <Divider />
 
-              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+              <Stack spacing={0.75}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Show Item Images</FormLabel>
+                  <Switch checked={showItemImages} disabled={isLockedAccepted} onChange={(_, checked) => setShowItemImages(checked)}/>
+                </Box>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>GST Inclusive</FormLabel>
-                  <Switch checked={gstInclusive} onChange={(event, checked) => setGstInclusive(checked)}/>
+                  <Switch checked={gstInclusive} disabled={isLockedAccepted} onChange={(_, checked) => setGstInclusive(checked)}/>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Terms & Conditions</FormLabel>
-                  <Switch checked={showTerms} onChange={(event, checked) => setShowTerms(checked)}/>
+                  <Switch checked={showTerms} disabled={isLockedAccepted} onChange={(_, checked) => setShowTerms(checked)}/>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <FormLabel sx={{ fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--muted-foreground))" }}>Client Notes</FormLabel>
-                  <Switch checked={showClientNotes} onChange={(event, checked) => setShowClientNotes(checked)}/>
+                  <Switch checked={showClientNotes} disabled={isLockedAccepted} onChange={(_, checked) => setShowClientNotes(checked)}/>
                 </Box>
-              </Box>
+              </Stack>
             </CardContent>
           </Card>
         </Box>
@@ -690,5 +850,61 @@ export default function QuotationAdd() {
           setCustomerSearchInput("");
         }}
       />
+
+      <DocumentPreview
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        type="quotation"
+        docId={editId || sendDrawerTarget?.id || null}
+        publicToken={quotationPublicToken}
+        number={quotationNumber || "Draft"}
+        status={quotationStatus}
+        customer={selectedCustomer ? {
+          name: selectedCustomer.name,
+          email: selectedCustomer.email,
+          phone: selectedCustomer.phone,
+          address: selectedCustomer.address,
+          gstNumber: selectedCustomer.gst_number,
+        } : null}
+        items={items}
+        showImages={showItemImages}
+        gstInclusive={gstInclusive}
+        globalDiscountType={discountType}
+        globalDiscountValue={discountValue}
+        notes={showClientNotes ? notes : null}
+        terms={showTerms ? terms : null}
+        validUntil={validUntil || null}
+        paymentTerms={paymentTerms || null}
+        salespersonName={employees.find((e) => e.id === salesperson)?.name || null}
+        createdAt={dateIssued}
+        onSendClick={isLockedAccepted ? undefined : () => {
+          setPreviewOpen(false);
+          void persistQuotation(true);
+        }}
+      />
+
+      {sendDrawerTarget && (
+        <SendDocumentDrawer
+          open={Boolean(sendDrawerTarget)}
+          onClose={() => {
+            const savedId = sendDrawerTarget.id;
+            setSendDrawerTarget(null);
+            navigate(`/sales/${savedId}`);
+          }}
+          docType="quotation"
+          docId={sendDrawerTarget.id}
+          docNumber={sendDrawerTarget.docNumber}
+          customerName={selectedCustomer?.name}
+          defaultEmail={selectedCustomer?.email}
+          defaultPhone={selectedCustomer?.phone}
+          publicUrl={
+            sendDrawerTarget.publicToken
+              ? `${window.location.origin}/sales/public/${sendDrawerTarget.publicToken}`
+              : null
+          }
+          totalLabel={`₹${totals.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          onEmailSent={() => setQuotationStatus((s) => (s === "draft" ? "sent" : s))}
+        />
+      )}
     </Box></AnimatedPage>;
 }

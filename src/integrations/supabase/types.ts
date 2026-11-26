@@ -576,37 +576,52 @@ export type Database = {
       delivery_challan_items: {
         Row: {
           challan_id: string
+          description: string | null
+          discount_type: string | null
+          discount_value: number | null
           gst_amount: number | null
           gst_percentage: number | null
           hsn_code: string | null
           id: string
+          image_url: string | null
           product_id: string | null
           product_name: string
           quantity: number | null
+          sort_order: number | null
           total: number | null
           unit_price: number | null
         }
         Insert: {
           challan_id: string
+          description?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_amount?: number | null
           gst_percentage?: number | null
           hsn_code?: string | null
           id?: string
+          image_url?: string | null
           product_id?: string | null
           product_name?: string
           quantity?: number | null
+          sort_order?: number | null
           total?: number | null
           unit_price?: number | null
         }
         Update: {
           challan_id?: string
+          description?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           gst_amount?: number | null
           gst_percentage?: number | null
           hsn_code?: string | null
           id?: string
+          image_url?: string | null
           product_id?: string | null
           product_name?: string
           quantity?: number | null
+          sort_order?: number | null
           total?: number | null
           unit_price?: number | null
         }
@@ -623,55 +638,124 @@ export type Database = {
       delivery_challans: {
         Row: {
           challan_number: string
+          challan_type: string
+          courier_name: string | null
           created_at: string | null
           created_by: string | null
           customer_id: string | null
+          deduct_stock: boolean
+          delivered_at: string | null
           delivery_person: string | null
+          discount_type: string | null
+          discount_value: number | null
+          dispatched_at: string | null
+          eway_bill_number: string | null
+          expected_delivery_at: string | null
           gst_amount: number | null
           gst_inclusive: boolean | null
           id: string
           invoice_id: string | null
+          job_sheet_id: string | null
           notes: string | null
+          pod_photo_url: string | null
+          public_token: string | null
+          quotation_id: string | null
+          receiver_name: string | null
+          receiver_phone: string | null
           receiver_signature: string | null
+          shipping_address: string | null
+          show_item_images: boolean
+          show_pricing: boolean
           status: string
+          stock_deducted_at: string | null
+          stock_reversed_at: string | null
           subtotal: number | null
+          timeline: Json
           total: number | null
+          tracking_number: string | null
+          tracking_url: string | null
           updated_at: string | null
           vehicle_number: string | null
         }
         Insert: {
           challan_number?: string
+          challan_type?: string
+          courier_name?: string | null
           created_at?: string | null
           created_by?: string | null
           customer_id?: string | null
+          deduct_stock?: boolean
+          delivered_at?: string | null
           delivery_person?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
+          dispatched_at?: string | null
+          eway_bill_number?: string | null
+          expected_delivery_at?: string | null
           gst_amount?: number | null
           gst_inclusive?: boolean | null
           id?: string
           invoice_id?: string | null
+          job_sheet_id?: string | null
           notes?: string | null
+          pod_photo_url?: string | null
+          public_token?: string | null
+          quotation_id?: string | null
+          receiver_name?: string | null
+          receiver_phone?: string | null
           receiver_signature?: string | null
+          shipping_address?: string | null
+          show_item_images?: boolean
+          show_pricing?: boolean
           status?: string
+          stock_deducted_at?: string | null
+          stock_reversed_at?: string | null
           subtotal?: number | null
+          timeline?: Json
           total?: number | null
+          tracking_number?: string | null
+          tracking_url?: string | null
           updated_at?: string | null
           vehicle_number?: string | null
         }
         Update: {
           challan_number?: string
+          challan_type?: string
+          courier_name?: string | null
           created_at?: string | null
           created_by?: string | null
           customer_id?: string | null
+          deduct_stock?: boolean
+          delivered_at?: string | null
           delivery_person?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
+          dispatched_at?: string | null
+          eway_bill_number?: string | null
+          expected_delivery_at?: string | null
           gst_amount?: number | null
           gst_inclusive?: boolean | null
           id?: string
           invoice_id?: string | null
+          job_sheet_id?: string | null
           notes?: string | null
+          pod_photo_url?: string | null
+          public_token?: string | null
+          quotation_id?: string | null
+          receiver_name?: string | null
+          receiver_phone?: string | null
           receiver_signature?: string | null
+          shipping_address?: string | null
+          show_item_images?: boolean
+          show_pricing?: boolean
           status?: string
+          stock_deducted_at?: string | null
+          stock_reversed_at?: string | null
           subtotal?: number | null
+          timeline?: Json
           total?: number | null
+          tracking_number?: string | null
+          tracking_url?: string | null
           updated_at?: string | null
           vehicle_number?: string | null
         }
@@ -1333,6 +1417,7 @@ export type Database = {
           product_id: string | null
           product_name: string
           quantity: number | null
+          sort_order: number | null
           total: number | null
           unit_price: number | null
         }
@@ -1347,6 +1432,7 @@ export type Database = {
           product_id?: string | null
           product_name: string
           quantity?: number | null
+          sort_order?: number | null
           total?: number | null
           unit_price?: number | null
         }
@@ -1361,6 +1447,7 @@ export type Database = {
           product_id?: string | null
           product_name?: string
           quantity?: number | null
+          sort_order?: number | null
           total?: number | null
           unit_price?: number | null
         }
@@ -1386,6 +1473,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_id: string | null
+          deduct_stock: boolean
           discount_type: string | null
           discount_value: number | null
           due_date: string | null
@@ -1405,6 +1493,8 @@ export type Database = {
           signature_name: string | null
           signed_at: string | null
           status: string | null
+          stock_deducted_at: string | null
+          stock_reversed_at: string | null
           subtotal: number | null
           total: number | null
           updated_at: string
@@ -1413,6 +1503,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          deduct_stock?: boolean
           discount_type?: string | null
           discount_value?: number | null
           due_date?: string | null
@@ -1432,6 +1523,8 @@ export type Database = {
           signature_name?: string | null
           signed_at?: string | null
           status?: string | null
+          stock_deducted_at?: string | null
+          stock_reversed_at?: string | null
           subtotal?: number | null
           total?: number | null
           updated_at?: string
@@ -1440,6 +1533,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          deduct_stock?: boolean
           discount_type?: string | null
           discount_value?: number | null
           due_date?: string | null
@@ -1459,6 +1553,8 @@ export type Database = {
           signature_name?: string | null
           signed_at?: string | null
           status?: string | null
+          stock_deducted_at?: string | null
+          stock_reversed_at?: string | null
           subtotal?: number | null
           total?: number | null
           updated_at?: string
@@ -2706,6 +2802,7 @@ export type Database = {
           product_name: string
           quantity: number
           quotation_id: string
+          sort_order: number | null
           total: number
           unit_price: number
         }
@@ -2722,6 +2819,7 @@ export type Database = {
           product_name: string
           quantity?: number
           quotation_id: string
+          sort_order?: number | null
           total?: number
           unit_price?: number
         }
@@ -2738,6 +2836,7 @@ export type Database = {
           product_name?: string
           quantity?: number
           quotation_id?: string
+          sort_order?: number | null
           total?: number
           unit_price?: number
         }
@@ -2774,8 +2873,11 @@ export type Database = {
           payment_terms: string | null
           public_token: string
           quotation_number: string
+          rejection_reason: string | null
           reminder_sent_at: string | null
+          responded_at: string | null
           salesperson_id: string | null
+          show_item_images: boolean
           signature_data: string | null
           signature_name: string | null
           signed_at: string | null
@@ -2802,9 +2904,12 @@ export type Database = {
           notes?: string | null
           payment_terms?: string | null
           public_token?: string
-          quotation_number: string
+          quotation_number?: string
+          rejection_reason?: string | null
           reminder_sent_at?: string | null
+          responded_at?: string | null
           salesperson_id?: string | null
+          show_item_images?: boolean
           signature_data?: string | null
           signature_name?: string | null
           signed_at?: string | null
@@ -2832,8 +2937,11 @@ export type Database = {
           payment_terms?: string | null
           public_token?: string
           quotation_number?: string
+          rejection_reason?: string | null
           reminder_sent_at?: string | null
+          responded_at?: string | null
           salesperson_id?: string | null
+          show_item_images?: boolean
           signature_data?: string | null
           signature_name?: string | null
           signed_at?: string | null
