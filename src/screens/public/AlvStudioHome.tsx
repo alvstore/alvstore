@@ -165,7 +165,7 @@ export default function AlvStudioHome() {
                   }}
                 >
                   <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                    <Typography sx={{ ...TYPE.label, color: STUDIO.slate, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    <Typography component="h2" sx={{ ...TYPE.label, color: STUDIO.slate, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                       Authorised Cinema Partners
                     </Typography>
                     <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.62rem" }}>
@@ -209,7 +209,7 @@ export default function AlvStudioHome() {
                               color: STUDIO.brass,
                               boxShadow: "0 0 12px rgba(156,123,73,0.25)",
                             },
-                            "& h4": { color: STUDIO.brass },
+                            "& h3": { color: STUDIO.brass },
                           },
                         }}
                       >
@@ -264,7 +264,7 @@ export default function AlvStudioHome() {
                         {/* Bottom: Brand Name & Specialty */}
                         <Box sx={{ mt: "auto" }}>
                           <Typography
-                            component="h4"
+                            component="h3"
                             sx={{
                               fontFamily: FONT.display,
                               fontSize: { xs: "0.95rem", sm: "1.02rem" },
@@ -311,6 +311,69 @@ export default function AlvStudioHome() {
 
           <CollectionSection />
           <ProcessSection />
+
+          {/* Architectural Planning Questions & Engineering Reference (Answer-first for clarity & search citability) */}
+          <Box
+            component="section"
+            id="engineering-notes"
+            aria-label="Engineering specifications and planning answers"
+            sx={{ bgcolor: STUDIO.plaster, borderTop: `1px solid ${STUDIO.hairStrong}`, borderBottom: `1px solid ${STUDIO.hairStrong}` }}
+          >
+            <Box sx={{ mx: "auto", maxWidth: 1520, px: { xs: 2.5, sm: 4, lg: 6 }, py: { xs: 7, md: 10 } }}>
+              <Box sx={{ maxWidth: "56ch", mb: { xs: 4, md: 6 } }}>
+                <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.1em", mb: 1.25 }}>
+                  Engineering Reference
+                </Typography>
+                <Typography component="h2" sx={{ ...TYPE.section, color: STUDIO.graphite, textWrap: "balance" }}>
+                  Planning a private cinema
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "repeat(2, 1fr)" },
+                  gap: { xs: 3, md: 4 },
+                }}
+              >
+                {[
+                  {
+                    q: "What room dimensions work for a dedicated home theater?",
+                    a: "Dedicated ALVStore rooms start around 14 × 11 ft for single-row 5.1.2 cinemas up to 110 inches diagonal, while 18 × 14 ft and larger spaces comfortably support dual-row stadium risers, acoustically transparent 135–180 inch screens, dual subwoofers, and 7.2.4 Dolby Atmos arrays.",
+                  },
+                  {
+                    q: "Which projectors, AV receivers, and speakers are supported?",
+                    a: "ALVStore is an authorised Indian integration partner for Sony SXRD and JVC D-ILA native 4K laser projectors, Denon AVC and Marantz Cinema separates, Arcam Class G amplification, and JBL Synthesis, Bowers & Wilkins, KEF, and Polk Audio loudspeakers with official warranty coverage.",
+                  },
+                  {
+                    q: "Why does ALVStore calibrate with Dirac Live and ISF tools?",
+                    a: "Raw speakers interact heavily with walls, ceilings, and glass surfaces. Our engineers pair measured broadband acoustic absorption and bass trapping with Dirac Live room correction and ISF color calibration so dialogue stays anchored to the screen and bass stays tight across every seat.",
+                  },
+                  {
+                    q: "Does ALVStore handle projects and after-sales outside Udaipur?",
+                    a: "Yes. From our flagship studio at Sector 11, Hiran Magri in Udaipur, Rajasthan, our team conducts pan-India site surveys across Delhi NCR, Gujarat, and Maharashtra, managing CAD blueprints, turnkey acoustic installation, and periodic optical and calibration care nationwide.",
+                  },
+                ].map(entry => (
+                  <Box
+                    key={entry.q}
+                    sx={{
+                      p: { xs: 2.5, md: 3 },
+                      bgcolor: "rgba(246,244,238,0.72)",
+                      border: `1px solid ${STUDIO.hair}`,
+                      borderRadius: "3px",
+                    }}
+                  >
+                    <Typography component="h3" sx={{ fontFamily: FONT.text, fontSize: "1.14rem", fontWeight: 500, color: STUDIO.graphite, mb: 1 }}>
+                      {entry.q}
+                    </Typography>
+                    <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, fontSize: "0.9rem", lineHeight: 1.6 }}>
+                      {entry.a}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </Box>
+
           <VisitSection />
         </Box>
         <StudioFooter />

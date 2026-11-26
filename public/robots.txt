@@ -1,9 +1,110 @@
+# Search & AI Search Citability Crawlers
 User-agent: Googlebot
 Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /pos
+Disallow: /repairs/
+Disallow: /invoices/
+Disallow: /sales/
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
 
 User-agent: Bingbot
 Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /pos
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
 
+User-agent: Applebot
+Allow: /
+Allow: /contact
+Disallow: /api/
+
+User-agent: OAI-SearchBot
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /pos
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
+
+User-agent: ChatGPT-User
+Allow: /
+Allow: /contact
+Disallow: /api/
+
+User-agent: Claude-SearchBot
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /pos
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
+
+User-agent: Claude-User
+Allow: /
+Allow: /contact
+Disallow: /api/
+
+User-agent: PerplexityBot
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /pos
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
+
+User-agent: Perplexity-User
+Allow: /
+Allow: /contact
+Disallow: /api/
+
+# AI Training & Grounding Control Groups
+User-agent: GPTBot
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
+
+User-agent: ClaudeBot
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
+
+User-agent: Google-Extended
+Allow: /
+Allow: /contact
+Disallow: /api/
+
+User-agent: Applebot-Extended
+Allow: /
+Allow: /contact
+Disallow: /api/
+
+# Social Preview Fetchers
 User-agent: Twitterbot
 Allow: /
 
@@ -11,6 +112,49 @@ User-agent: facebookexternalhit
 Allow: /
 
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /contact
+Disallow: /api/
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /dashboard
+Disallow: /pos
+Disallow: /repairs
+Disallow: /invoices
+Disallow: /challans
+Disallow: /customers
+Disallow: /crm
+Disallow: /leads
+Disallow: /finance
+Disallow: /inventory
+Disallow: /employees
+Disallow: /attendance
+Disallow: /payroll
+Disallow: /settings
+Disallow: /reports
+Disallow: /portal
+Disallow: /audit-logs
+Disallow: /payments
+Disallow: /payment-register
+Disallow: /purchase-orders
+Disallow: /purchase-bills
+Disallow: /purchase-returns
+Disallow: /suppliers
+Disallow: /tasks
+Disallow: /technicians
+Disallow: /follow-ups
+Disallow: /barcodes
+Disallow: /calendar
+Disallow: /chat
+Disallow: /apple-pricing
+Disallow: /staff
+Disallow: /templates
+Disallow: /job/
+Disallow: /invoice/
+Disallow: /delivery-report/
+Disallow: /sales/public/
 
 Sitemap: https://alvstore.com/sitemap.xml

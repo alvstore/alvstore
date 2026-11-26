@@ -1,14 +1,18 @@
-"use client";
+import AlvStudioContact from "@/screens/public/AlvStudioContact";
+import { CONTACT_METADATA, buildContactJsonLd } from "@/lib/seo-metadata";
 
-import dynamic from "next/dynamic";
-import { Suspense } from "react";
-
-const Page = dynamic(() => import("@/screens/public/AlvStudioContact"), { ssr: false });
+export const metadata = CONTACT_METADATA;
 
 export default function RoutePage() {
+  const jsonLd = buildContactJsonLd();
   return (
-    <Suspense fallback={null}>
-      <Page />
-    </Suspense>
+    <>
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <AlvStudioContact />
+    </>
   );
 }

@@ -126,7 +126,7 @@ export default function AlvStudioContact() {
             sx={{ mt: { xs: 5, md: 7 }, display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: { xs: 4, md: 8 } }}
           >
             <Box>
-              <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.64rem", mb: 1 }}>Studio &amp; engineering office</Typography>
+              <Typography component="h2" sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.68rem", mb: 1 }}>Studio &amp; engineering office</Typography>
               <Typography sx={{ fontFamily: FONT.text, fontSize: "1.15rem", color: STUDIO.graphite, lineHeight: 1.5 }}>{STUDIO_INFO.address}</Typography>
               <Typography sx={{ ...TYPE.placard, color: STUDIO.slate, mt: 1.5, maxWidth: "42ch" }}>
                 Flagship engineering studio located in Udaipur, Rajasthan with pan-India deployment. In-person cinema consultations, room blueprints,
@@ -134,7 +134,7 @@ export default function AlvStudioContact() {
               </Typography>
             </Box>
             <Box>
-              <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.64rem", mb: 1 }}>In-home consultation &amp; after-sales</Typography>
+              <Typography component="h2" sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.68rem", mb: 1 }}>In-home consultation &amp; after-sales</Typography>
               <Typography sx={{ fontFamily: FONT.text, fontSize: "1.15rem", color: STUDIO.graphite, lineHeight: 1.5 }}>
                 Site surveys &amp; ongoing calibration
               </Typography>

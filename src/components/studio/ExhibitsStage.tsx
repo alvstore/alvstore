@@ -186,6 +186,21 @@ export function ExhibitsStage() {
                   nowhere else.
                 </Box>
               </Typography>
+              <Typography
+                sx={{
+                  ...TYPE.placard,
+                  color: STUDIO.slate,
+                  fontSize: { xs: "0.92rem", sm: "1rem" },
+                  lineHeight: 1.55,
+                  mt: 2,
+                  maxWidth: "42ch",
+                  animation: `${rise} 900ms ${EASE} both`,
+                  animationDelay: "380ms",
+                  "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+                }}
+              >
+                ALVStore designs, engineers, and calibrates bespoke private cinemas across India with native 4K Sony &amp; JVC laser projection, Denon &amp; Marantz amplification, and JBL Synthesis, KEF, and Bowers &amp; Wilkins acoustics.
+              </Typography>
               <Box
                 sx={{
                   display: "flex",

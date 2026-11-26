@@ -1,14 +1,18 @@
-"use client";
+import AlvStudioHome from "@/screens/public/AlvStudioHome";
+import { HOME_METADATA, buildHomeJsonLd } from "@/lib/seo-metadata";
 
-import dynamic from "next/dynamic";
-import { Suspense } from "react";
-
-const Page = dynamic(() => import("@/screens/public/AlvStudioHome"), { ssr: false });
+export const metadata = HOME_METADATA;
 
 export default function RoutePage() {
+  const jsonLd = buildHomeJsonLd();
   return (
-    <Suspense fallback={null}>
-      <Page />
-    </Suspense>
+    <>
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <AlvStudioHome />
+    </>
   );
 }
