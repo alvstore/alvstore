@@ -5,7 +5,10 @@ const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 test("Public SSR marketing routes render complete SEO, Schema.org, and GEO metadata with clean visuals", async ({ page, request }) => {
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
-  page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
+  page.on("console", m => {
+    if (m.type() === "error") errors.push(m.text());
+    if (m.type() === "warning" && m.text().includes("THREE.")) errors.push(m.text());
+  });
 
   // 1. Raw SSR checks without JS execution (what OAI-SearchBot / PerplexityBot / Claude-SearchBot see)
   const homeHtml = await (await request.get(`${baseURL}/`)).text();
@@ -36,6 +39,8 @@ test("Public SSR marketing routes render complete SEO, Schema.org, and GEO metad
   await expect(page.getByRole("heading", { name: "Planning a private cinema", exact: true })).toBeVisible();
   await page.screenshot({ path: "test-results/seo-home-hero.png" });
 
+  await page.getByRole("heading", { name: "Cinema architectures", exact: false }).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
   await page.getByRole("heading", { name: "Planning a private cinema", exact: true }).scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
   await page.screenshot({ path: "test-results/seo-home-faq.png" });

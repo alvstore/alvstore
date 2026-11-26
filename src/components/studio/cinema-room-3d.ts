@@ -177,7 +177,7 @@ export function createCinemaRoomScene(
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const screenTexture = createCinemaScreenTexture();
 
@@ -818,7 +818,8 @@ export function createCinemaRoomScene(
 
   // Main Animation Loop & Scratch Vectors (zero per-frame heap churn)
   let animId = 0;
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
+  if (typeof document !== "undefined") timer.connect(document);
   const scratchOffset = new THREE.Vector3();
   const scratchGoalPos = new THREE.Vector3();
   const scratchGoalTarget = new THREE.Vector3();
@@ -826,7 +827,7 @@ export function createCinemaRoomScene(
   const scratchDesiredTarget = new THREE.Vector3();
 
   function renderFrame(delta: number) {
-    const elapsed = clock.elapsedTime;
+    const elapsed = timer.getElapsed();
 
     // 1. Animate Lights On <-> Cinema Dark Mode transition (frame-rate independent)
     const desiredLit = targetLightsOn ? 1 : 0;
@@ -909,19 +910,20 @@ export function createCinemaRoomScene(
     renderer.render(scene, camera);
   }
 
-  function animate() {
+  function animate(timestamp?: number) {
     if (isPaused) {
       animId = 0;
       return;
     }
     animId = requestAnimationFrame(animate);
-    const delta = Math.min(0.1, clock.getDelta());
+    timer.update(timestamp);
+    const delta = Math.max(0, Math.min(0.1, timer.getDelta()));
     renderFrame(delta);
   }
 
   function wakeRenderLoop() {
     if (!isPaused && animId === 0) {
-      clock.getDelta();
+      timer.reset();
       animate();
     } else if (isPaused) {
       renderFrame(0.05);
@@ -1014,6 +1016,7 @@ export function createCinemaRoomScene(
     },
     destroy() {
       isPaused = true;
+      timer.dispose();
       cancelAnimationFrame(animId);
       animId = 0;
       canvas.removeEventListener("mousedown", onPointerDown);

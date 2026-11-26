@@ -558,7 +558,7 @@ export function createGallery(canvas: HTMLCanvasElement, initial: { reduced: boo
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.02;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(PLASTER);
@@ -741,14 +741,16 @@ export function createGallery(canvas: HTMLCanvasElement, initial: { reduced: boo
     render();
   }
 
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
+  if (typeof document !== "undefined") timer.connect(document);
   let raf = 0;
   let disposed = false;
 
-  function frame() {
+  function frame(timestamp?: number) {
     if (disposed) return;
-    const dt = Math.min(clock.getDelta(), 0.05);
-    const t = clock.elapsedTime;
+    timer.update(timestamp);
+    const dt = Math.max(0, Math.min(timer.getDelta(), 0.05));
+    const t = timer.getElapsed();
 
     state.current += (state.target - state.current) * (1 - Math.exp(-dt * 5.5));
 
@@ -774,7 +776,7 @@ export function createGallery(canvas: HTMLCanvasElement, initial: { reduced: boo
 
   function start() {
     if (disposed || state.paused || state.reduced || raf) return;
-    clock.getDelta();
+    timer.reset();
     raf = requestAnimationFrame(frame);
   }
   function stop() {
@@ -815,6 +817,7 @@ export function createGallery(canvas: HTMLCanvasElement, initial: { reduced: boo
     resize: onResize,
     dispose() {
       disposed = true;
+      timer.dispose();
       stop();
       window.removeEventListener("resize", onResize);
       scene.traverse(object => {
