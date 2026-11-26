@@ -89,4 +89,11 @@ test("robots.txt, llms.txt, sitemap.xml, and private noindex layouts protect int
     const src = fs.readFileSync(path.join(root, layout), "utf8");
     assert.match(src, /PRIVATE_NOINDEX_METADATA/);
   }
+
+  const nextConfig = fs.readFileSync(path.join(root, "next.config.mjs"), "utf8");
+  assert.match(nextConfig, /www\.alvstore\.com/);
+  assert.match(nextConfig, /Strict-Transport-Security/);
+  assert.match(nextConfig, /X-Content-Type-Options/);
+  assert.match(nextConfig, /X-Frame-Options/);
+  assert.match(nextConfig, /Referrer-Policy/);
 });
