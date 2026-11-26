@@ -58,6 +58,12 @@ test("Customers avatar_url exists in Prisma schema, schema-meta, Supabase types,
 
   const sidebarSrc = fs.readFileSync(path.join(root, "src/components/layout/AppSidebar.tsx"), "utf8");
   assert.match(sidebarSrc, /<Avatar\s+src=\{avatarUrl\}/);
+  assert.doesNotMatch(sidebarSrc, /ALV workspace/);
+  assert.doesNotMatch(sidebarSrc, /\{role\}\s+access/);
+  assert.match(settingsSrc, /Appearance/);
+  assert.match(settingsSrc, /Upload Photo/);
+  assert.match(settingsSrc, /Upload Logo/);
+  assert.match(settingsSrc, /Add User/);
 
   const custProfileSrc = fs.readFileSync(path.join(root, "src/screens/CustomerProfile.tsx"), "utf8");
   assert.match(custProfileSrc, /<AvatarUpload[\s\S]*folder="customers"/);

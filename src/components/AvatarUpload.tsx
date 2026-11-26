@@ -33,8 +33,9 @@ export function AvatarUpload({ currentUrl, name, folder, entityId, onUploaded, s
         }
         setUploading(true);
         try {
-            const ext = file.name.split(".").pop();
-            const path = `${folder}/${entityId || Date.now()}_avatar.${ext}`;
+            const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+            const safeEntity = (entityId || "user").replace(/[^a-zA-Z0-9_-]/g, "");
+            const path = `${folder}/${safeEntity}_${Date.now()}_avatar.${ext}`;
             const { error } = await supabase.storage.from("uploads").upload(path, file, { upsert: true });
             if (error)
                 throw error;

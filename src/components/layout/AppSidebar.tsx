@@ -193,13 +193,6 @@ function SidebarContent({ compact = false, mobile = false, expanded, onToggleCat
     </Box>
 
     <Box sx={{ px: compact ? 1 : 1.75, pb: 1.75, flexShrink: 0 }}>
-      {!compact && <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5, px: 1.25, py: 1, borderRadius: "11px", bgcolor: "hsl(var(--sidebar-muted) / .35)", border: "1px solid", borderColor: "divider" }}>
-        <Box sx={{ width: 25, height: 25, display: "grid", placeItems: "center", borderRadius: "7px", bgcolor: "background.paper", color: muted, border: "1px solid", borderColor: "divider", flexShrink: 0 }}><Building2 size={14} /></Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: 11.5, fontWeight: 650, lineHeight: 1.4 }} noWrap>ALV workspace</Typography>
-          <Typography sx={{ fontSize: 10, color: muted, lineHeight: 1.4 }} noWrap>{role} access</Typography>
-        </Box>
-      </Box>}
       <Tooltip title={compact ? `Find pages and actions · ${shortcut}` : ""} placement="right">
         <ButtonBase onClick={onSearch} aria-label="Find pages and actions" aria-haspopup="dialog"
           sx={{ display: "flex", width: "100%", minHeight: 40, justifyContent: compact ? "center" : "flex-start", gap: 1, px: compact ? 0 : 1.25, borderRadius: "10px", border: "1px solid", borderColor: "divider", color: muted, bgcolor: "background.paper", transition: reduced ? "none" : "background-color 160ms ease, border-color 160ms ease", "&:hover": { bgcolor: "action.hover", borderColor: alpha(theme.palette.primary.main, .3) } }}>

@@ -16,7 +16,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const reduced = useReducedMotion();
   const desktop = useMediaQuery((theme: Theme) => theme.breakpoints.up("md"));
-  useEffect(() => { try { setCollapsed(localStorage.getItem("sidebarCollapsed") === "true"); } catch {} }, []);
+  useEffect(() => {
+    const syncCollapsed = () => {
+      try { setCollapsed(localStorage.getItem("sidebarCollapsed") === "true"); } catch {}
+    };
+    syncCollapsed();
+    window.addEventListener("alv-sidebar-collapsed", syncCollapsed);
+    return () => window.removeEventListener("alv-sidebar-collapsed", syncCollapsed);
+  }, []);
   useEffect(() => { setMobileOpen(false); }, [pathname, desktop]);
   const showSearch = useCallback(() => {
     // A mobile drawer search is requested only after its exit/focus trap ends.
