@@ -1419,6 +1419,72 @@
       ],
       "relations": []
     },
+    "device_models": {
+      "model": "DeviceModels",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "brand",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "device_type",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "name",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "series",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "color_options",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "storage_options",
+          "udt": "jsonb",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "sort_order",
+          "udt": "int4",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "is_active",
+          "udt": "bool",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": []
+    },
     "employees": {
       "model": "Employees",
       "columns": [

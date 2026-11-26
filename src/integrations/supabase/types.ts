@@ -745,6 +745,45 @@ export type Database = {
         }
         Relationships: []
       }
+      device_models: {
+        Row: {
+          brand: string
+          color_options: Json | null
+          created_at: string
+          device_type: string
+          id: string
+          is_active: boolean
+          name: string
+          series: string | null
+          sort_order: number
+          storage_options: Json | null
+        }
+        Insert: {
+          brand: string
+          color_options?: Json | null
+          created_at?: string
+          device_type: string
+          id?: string
+          is_active?: boolean
+          name: string
+          series?: string | null
+          sort_order?: number
+          storage_options?: Json | null
+        }
+        Update: {
+          brand?: string
+          color_options?: Json | null
+          created_at?: string
+          device_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          series?: string | null
+          sort_order?: number
+          storage_options?: Json | null
+        }
+        Relationships: []
+      }
       device_types: {
         Row: {
           created_at: string

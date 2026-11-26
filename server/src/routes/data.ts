@@ -55,6 +55,7 @@ const WRITE_ROLES: Record<string, string[]> = {
   hikvision_attendance_logs: ["admin"],
   device_brands: ["admin", "staff"],
   device_types: ["admin", "staff"],
+  device_models: ["admin", "staff"],
   apple_products: ["admin", "staff"],
   apple_offers: ["admin", "staff"],
   apple_pricing_rules: ["admin", "staff"],

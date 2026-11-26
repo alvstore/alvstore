@@ -2,12 +2,28 @@
 
 import { Accordion, AccordionDetails, AccordionSummary, Box, Button, ButtonBase, Card, CardContent, Divider, FormLabel, IconButton, InputAdornment, LinearProgress, MenuItem, Radio, RadioGroup, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { AnimatedPage, DataTable, PageHeader, StatusChip, mergeSx, toast } from "@/components/mui";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2, Check, User, Smartphone, IndianRupee, ClipboardCheck, FileText, Trash2, Tag, UserPlus } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ArrowLeft, Upload, Plus, X, ChevronDown, Eye, EyeOff, AlertTriangle, CheckCircle2, Check, User, Smartphone, IndianRupee, ClipboardCheck, FileText, Trash2, Tag, UserPlus, PowerOff, Search, Palette, HardDrive, ShieldCheck } from "lucide-react";
 import { CustomerQuickDialog } from "@/components/customers/CustomerQuickDialog";
+import { JobSheetConfirmDrawer } from "@/components/repairs/JobSheetConfirmDrawer";
+import {
+    type ChecklistItem,
+    type DeviceModelOption,
+    applyPowerStateToChecklist,
+    getChecklistForDevice,
+    inferAppleDeviceTypeFromModel,
+    isDevicePoweredOffChecklist,
+    isPowerDependentChecklistItem,
+    normalizeColorOptions,
+    normalizeStorageOptions,
+    resolveColorSwatchHex,
+    summarizeChecklist,
+} from "@/lib/repair-catalog";
+import { fadeUp, motionTokens } from "@/lib/motion-presets";
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 const STEPS = [
     { label: "Customer", icon: User },
@@ -16,12 +32,6 @@ const STEPS = [
     { label: "Checklist", icon: ClipboardCheck },
     { label: "Review", icon: FileText },
 ];
-interface ChecklistItem {
-    category: string;
-    item: string;
-    value: "yes" | "no" | "na" | "";
-    autoSet?: boolean;
-}
 interface ServiceLineItem {
     id: string;
     name: string;
@@ -31,122 +41,6 @@ interface ServiceLineItem {
     quantity: number;
     discount_type: "none" | "percentage" | "fixed";
     discount_value: number;
-}
-// Device-specific checklists (fallback when no issue category selected)
-const DEVICE_CHECKLISTS: Record<string, ChecklistItem[]> = {
-    Mobile: [
-        { category: "Power", item: "Device turns ON", value: "" },
-        { category: "Power", item: "Device turns OFF", value: "" },
-        { category: "Display", item: "Display working", value: "" },
-        { category: "Display", item: "Touch working", value: "" },
-        { category: "Display", item: "Display damaged / scratches", value: "" },
-        { category: "Audio", item: "Earpiece speaker working", value: "" },
-        { category: "Audio", item: "Loudspeaker working", value: "" },
-        { category: "Audio", item: "Microphone working", value: "" },
-        { category: "Camera", item: "Front camera working", value: "" },
-        { category: "Camera", item: "Rear camera working", value: "" },
-        { category: "Camera", item: "Flash working", value: "" },
-        { category: "Network", item: "WiFi working", value: "" },
-        { category: "Network", item: "Cellular signal working", value: "" },
-        { category: "Network", item: "Bluetooth working", value: "" },
-        { category: "Hardware", item: "Volume buttons working", value: "" },
-        { category: "Hardware", item: "Power button working", value: "" },
-        { category: "Hardware", item: "Charging port working", value: "" },
-        { category: "Hardware", item: "Fingerprint sensor working", value: "" },
-        { category: "Hardware", item: "Face ID / Face unlock working", value: "" },
-        { category: "Hardware", item: "Vibration motor working", value: "" },
-        { category: "Accessories", item: "Charger received", value: "" },
-        { category: "Accessories", item: "Cable received", value: "" },
-        { category: "Accessories", item: "Cover / Case received", value: "" },
-        { category: "Accessories", item: "SIM card received", value: "" },
-        { category: "Accessories", item: "Memory card received", value: "" },
-    ],
-    Laptop: [
-        { category: "Power", item: "Device turns ON", value: "" },
-        { category: "Power", item: "Battery charges", value: "" },
-        { category: "Power", item: "Battery health acceptable", value: "" },
-        { category: "Display", item: "Display working", value: "" },
-        { category: "Display", item: "Display hinge intact", value: "" },
-        { category: "Display", item: "Display damaged / scratches", value: "" },
-        { category: "Input", item: "Keyboard working (all keys)", value: "" },
-        { category: "Input", item: "Trackpad working", value: "" },
-        { category: "Input", item: "Trackpad buttons working", value: "" },
-        { category: "Audio", item: "Speaker working", value: "" },
-        { category: "Audio", item: "Microphone working", value: "" },
-        { category: "Audio", item: "Headphone jack working", value: "" },
-        { category: "Camera", item: "Webcam working", value: "" },
-        { category: "Network", item: "WiFi working", value: "" },
-        { category: "Network", item: "Ethernet port working", value: "" },
-        { category: "Network", item: "Bluetooth working", value: "" },
-        { category: "Ports", item: "USB ports working", value: "" },
-        { category: "Ports", item: "HDMI / Display port working", value: "" },
-        { category: "Ports", item: "Charging port working", value: "" },
-        { category: "Ports", item: "SD card slot working", value: "" },
-        { category: "Cooling", item: "Fan noise normal", value: "" },
-        { category: "Cooling", item: "No overheating", value: "" },
-        { category: "Accessories", item: "Charger / Adapter received", value: "" },
-        { category: "Accessories", item: "Laptop bag received", value: "" },
-        { category: "Accessories", item: "Mouse received", value: "" },
-    ],
-    Tablet: [
-        { category: "Power", item: "Device turns ON", value: "" },
-        { category: "Power", item: "Device turns OFF", value: "" },
-        { category: "Power", item: "Battery charges", value: "" },
-        { category: "Display", item: "Display working", value: "" },
-        { category: "Display", item: "Touch working", value: "" },
-        { category: "Display", item: "Display damaged / scratches", value: "" },
-        { category: "Audio", item: "Speaker working", value: "" },
-        { category: "Audio", item: "Microphone working", value: "" },
-        { category: "Camera", item: "Front camera working", value: "" },
-        { category: "Camera", item: "Rear camera working", value: "" },
-        { category: "Network", item: "WiFi working", value: "" },
-        { category: "Network", item: "Cellular signal working", value: "" },
-        { category: "Network", item: "Bluetooth working", value: "" },
-        { category: "Hardware", item: "Volume buttons working", value: "" },
-        { category: "Hardware", item: "Power button working", value: "" },
-        { category: "Hardware", item: "Charging port working", value: "" },
-        { category: "Hardware", item: "Stylus / Pen support working", value: "" },
-        { category: "Accessories", item: "Charger received", value: "" },
-        { category: "Accessories", item: "Cable received", value: "" },
-        { category: "Accessories", item: "Cover / Case received", value: "" },
-        { category: "Accessories", item: "Stylus / Pen received", value: "" },
-        { category: "Accessories", item: "SIM card received", value: "" },
-    ],
-    Desktop: [
-        { category: "Power", item: "Device turns ON", value: "" },
-        { category: "Power", item: "Device turns OFF", value: "" },
-        { category: "Power", item: "PSU fan working", value: "" },
-        { category: "Display", item: "Monitor output working", value: "" },
-        { category: "Display", item: "Monitor included (physical damage)", value: "" },
-        { category: "Input", item: "Keyboard working", value: "" },
-        { category: "Input", item: "Mouse working", value: "" },
-        { category: "Audio", item: "Speaker / Audio output working", value: "" },
-        { category: "Network", item: "Ethernet port working", value: "" },
-        { category: "Network", item: "WiFi adapter working", value: "" },
-        { category: "Ports", item: "USB ports working", value: "" },
-        { category: "Ports", item: "HDMI / VGA / DP ports working", value: "" },
-        { category: "Ports", item: "Audio jack working", value: "" },
-        { category: "Cooling", item: "CPU fan working", value: "" },
-        { category: "Cooling", item: "Case fan working", value: "" },
-        { category: "Cooling", item: "No overheating", value: "" },
-        { category: "Accessories", item: "Power cable received", value: "" },
-        { category: "Accessories", item: "Keyboard received", value: "" },
-        { category: "Accessories", item: "Mouse received", value: "" },
-        { category: "Accessories", item: "Monitor received", value: "" },
-    ],
-};
-const POWER_DEPENDENT_CATEGORIES = ["Display", "Audio", "Camera", "Network", "Hardware", "Input", "Ports", "Cooling"];
-function getChecklistForDevice(deviceType: string): ChecklistItem[] {
-    if (DEVICE_CHECKLISTS[deviceType])
-        return DEVICE_CHECKLISTS[deviceType].map(c => ({ ...c }));
-    const lower = deviceType.toLowerCase();
-    if (lower.includes("laptop") || lower.includes("notebook"))
-        return DEVICE_CHECKLISTS.Laptop.map(c => ({ ...c }));
-    if (lower.includes("tablet") || lower.includes("ipad"))
-        return DEVICE_CHECKLISTS.Tablet.map(c => ({ ...c }));
-    if (lower.includes("desktop") || lower.includes("pc") || lower.includes("computer"))
-        return DEVICE_CHECKLISTS.Desktop.map(c => ({ ...c }));
-    return DEVICE_CHECKLISTS.Mobile.map(c => ({ ...c }));
 }
 interface ServiceCategory {
     id: string;
@@ -238,6 +132,11 @@ export default function JobSheetCreate() {
         google_account_password: "",
         device_lock_code: "",
     });
+    const [deviceModels, setDeviceModels] = useState<DeviceModelOption[]>([]);
+    const [modelSearch, setModelSearch] = useState("");
+    const [showSkippedDiagnostics, setShowSkippedDiagnostics] = useState(false);
+    const [confirmDrawerOpen, setConfirmDrawerOpen] = useState(false);
+    const reduced = useReducedMotion();
     const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
 
     useEffect(() => {
@@ -254,12 +153,24 @@ export default function JobSheetCreate() {
             supabase.from("customers").select("id, name, phone, email, gst_number, address").order("name"),
             supabase.from("service_charge_categories").select("*").order("name"),
             supabase.from("issue_categories").select("id, name, description").eq("status", "active").order("name"),
-        ]).then(([bRes, tRes, cRes, scRes, icRes]) => {
+            supabase.from("device_models").select("*").eq("is_active", true).order("sort_order"),
+        ]).then(([bRes, tRes, cRes, scRes, icRes, mRes]) => {
             setBrands(bRes.data || []);
             setDeviceTypes(tRes.data || []);
             setCustomers(cRes.data || []);
             setServiceCategories((scRes.data as ServiceCategory[]) || []);
             setIssueCategories((icRes.data as any[]) || []);
+            const normalizedModels: DeviceModelOption[] = (mRes.data || []).map((row: any) => ({
+                id: row.id,
+                brand: row.brand,
+                device_type: row.device_type,
+                name: row.name,
+                series: row.series,
+                color_options: normalizeColorOptions(row.color_options),
+                storage_options: normalizeStorageOptions(row.storage_options),
+                sort_order: row.sort_order ?? 0,
+            }));
+            setDeviceModels(normalizedModels);
         });
     }, []);
     // Load dynamic checklist when issue category changes
@@ -274,14 +185,24 @@ export default function JobSheetCreate() {
             .then(({ data }) => {
             if (data && data.length > 0) {
                 const dynamicChecklist: ChecklistItem[] = data.map((t: any) => ({
-                    category: t.type === "boolean" ? "Checks" : "Details",
+                    category: t.type === "boolean" ? "Issue Diagnostics" : "Issue Details",
                     item: t.title,
                     value: "" as const,
+                    powerDependent: t.type === "boolean",
                 }));
-                // Merge with device-specific checklist
                 const deviceType = form.device_type === "__other__" ? form.custom_type : form.device_type;
-                const deviceChecklist = deviceType ? getChecklistForDevice(deviceType) : [];
-                setChecklist([...deviceChecklist, ...dynamicChecklist]);
+                const deviceChecklist = getChecklistForDevice(deviceType || "Mobile");
+                setChecklist(prev => {
+                    const merged = [...deviceChecklist, ...dynamicChecklist];
+                    const gate = prev.find(p => p.item === "Device turns ON");
+                    if (gate?.value) {
+                        const withGate = merged.map(c => c.item === "Device turns ON" ? { ...c, value: gate.value } : c);
+                        const synced = applyPowerStateToChecklist(withGate);
+                        setDeviceIsOff(synced.deviceIsOff);
+                        return synced.checklist;
+                    }
+                    return merged;
+                });
                 setDynamicChecklistLoaded(true);
             }
         });
@@ -341,7 +262,12 @@ export default function JobSheetCreate() {
                     }]);
             }
             if (data.pre_repair_checklist && (data.pre_repair_checklist as any[]).length > 0) {
-                setChecklist(data.pre_repair_checklist as unknown as ChecklistItem[]);
+                const loadedChecklist = data.pre_repair_checklist as unknown as ChecklistItem[];
+                setChecklist(loadedChecklist);
+                setDeviceIsOff(isDevicePoweredOffChecklist(loadedChecklist));
+                const openMap: Record<string, boolean> = {};
+                [...new Set(loadedChecklist.map(c => c.category))].forEach(c => { openMap[c] = true; });
+                setOpenCategories(openMap);
             }
             setSelectedCustomer(data.customers || null);
             setEditLoading(false);
@@ -354,17 +280,20 @@ export default function JobSheetCreate() {
         const type = form.device_type === "__other__" ? form.custom_type : form.device_type;
         if (!type)
             return;
+        const freshChecklist = getChecklistForDevice(type);
         if (!dynamicChecklistLoaded) {
-            const newChecklist = getChecklistForDevice(type);
-            setChecklist(newChecklist);
+            setChecklist(freshChecklist);
         }
         setDeviceIsOff(false);
-        const cats = [...new Set(checklist.map(c => c.category))];
+        setShowSkippedDiagnostics(false);
+        const cats = [...new Set(freshChecklist.map(c => c.category))];
         const openMap: Record<string, boolean> = {};
         cats.forEach(c => { openMap[c] = true; });
         setOpenCategories(openMap);
-        const matchCat = serviceCategories.find(sc => sc.name.toLowerCase() === type.toLowerCase() ||
-            type.toLowerCase().includes(sc.name.toLowerCase()));
+        const lowerType = type.trim().toLowerCase();
+        const matchCat =
+            serviceCategories.find(sc => sc.name.toLowerCase() === lowerType) ||
+            serviceCategories.find(sc => lowerType.includes(sc.name.toLowerCase()) && sc.name.toLowerCase() !== "other");
         if (matchCat && serviceItems.length > 0) {
             setServiceItems(prev => {
                 const updated = [...prev];
@@ -372,7 +301,7 @@ export default function JobSheetCreate() {
                 return updated;
             });
         }
-    }, [form.device_type, form.custom_type, serviceCategories]);
+    }, [form.device_type, form.custom_type, serviceCategories, dynamicChecklistLoaded, isEditMode]);
     useEffect(() => {
         if (form.customer_id) {
             const cust = customers.find(c => c.id === form.customer_id);
@@ -382,25 +311,57 @@ export default function JobSheetCreate() {
             setSelectedCustomer(null);
         }
     }, [form.customer_id, customers]);
-    const updateField = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
+    useEffect(() => {
+        if (!isEditMode) return;
+        if (form.device_brand && form.device_brand !== "__other__" && brands.length > 0) {
+            const match = brands.find(b => b.name.toLowerCase() === form.device_brand.toLowerCase());
+            if (match && match.name !== form.device_brand) {
+                setForm(prev => ({ ...prev, device_brand: match.name }));
+            } else if (!match && !form.custom_brand) {
+                setForm(prev => ({ ...prev, custom_brand: prev.device_brand, device_brand: "__other__" }));
+            }
+        }
+        if (form.device_type && form.device_type !== "__other__" && deviceTypes.length > 0) {
+            const match = deviceTypes.find(t => t.name.toLowerCase() === form.device_type.toLowerCase());
+            if (match && match.name !== form.device_type) {
+                setForm(prev => ({ ...prev, device_type: match.name }));
+            } else if (!match && !form.custom_type) {
+                setForm(prev => ({ ...prev, custom_type: prev.device_type, device_type: "__other__" }));
+            }
+        }
+    }, [isEditMode, brands, deviceTypes, form.device_brand, form.device_type, form.custom_brand, form.custom_type]);
+    const updateField = (field: string, value: string) => {
+        if (field === "device_type") {
+            const appleExclusive = ["iphone", "ipad", "macbook", "imac", "mac mini / studio", "apple watch"];
+            const shouldDefaultApple = appleExclusive.includes(value.trim().toLowerCase()) && brands.some(b => b.name.toLowerCase() === "apple");
+            setModelSearch("");
+            setForm(prev => ({
+                ...prev,
+                device_type: value,
+                device_brand: shouldDefaultApple && !prev.device_brand ? (brands.find(b => b.name.toLowerCase() === "apple")?.name || "Apple") : prev.device_brand,
+            }));
+            return;
+        }
+        if (field === "device_brand") {
+            setModelSearch("");
+        }
+        setForm(prev => ({ ...prev, [field]: value }));
+    };
     const updateChecklist = useCallback((index: number, value: "yes" | "no" | "na") => {
         setChecklist(prev => {
             const updated = prev.map((c, i) => i === index ? { ...c, value, autoSet: false } : c);
-            const powerOnItem = updated.find(c => c.item === "Device turns ON");
-            if (powerOnItem && powerOnItem.value === "no") {
-                setDeviceIsOff(true);
-                return updated.map(c => {
-                    if (POWER_DEPENDENT_CATEGORIES.includes(c.category) && !c.autoSet && c.value === "") {
-                        return { ...c, value: "na" as const, autoSet: true };
-                    }
-                    return c;
-                });
-            }
-            else if (powerOnItem && powerOnItem.value !== "no") {
-                setDeviceIsOff(false);
-                return updated.map(c => c.autoSet ? { ...c, value: "" as const, autoSet: false } : c);
-            }
-            return updated;
+            const { checklist: synced, deviceIsOff: isOff } = applyPowerStateToChecklist(updated);
+            setDeviceIsOff(isOff);
+            if (!isOff) setShowSkippedDiagnostics(false);
+            return synced;
+        });
+    }, []);
+    const markCategoryValue = useCallback((category: string, value: "yes" | "na") => {
+        setChecklist(prev => {
+            const updated = prev.map(c => c.category === category ? { ...c, value, autoSet: false } : c);
+            const { checklist: synced, deviceIsOff: isOff } = applyPowerStateToChecklist(updated);
+            setDeviceIsOff(isOff);
+            return synced;
         });
     }, []);
     const addTag = () => {
@@ -486,13 +447,21 @@ export default function JobSheetCreate() {
         try {
             let finalBrand = form.device_brand;
             if (form.device_brand === "__other__" && form.custom_brand.trim()) {
-                finalBrand = form.custom_brand.trim();
-                await supabase.from("device_brands").insert({ name: finalBrand });
+                const rawBrand = form.custom_brand.trim();
+                const existingBrand = brands.find(b => b.name.toLowerCase() === rawBrand.toLowerCase());
+                finalBrand = existingBrand ? existingBrand.name : rawBrand;
+                if (!existingBrand) {
+                    await supabase.from("device_brands").insert({ name: finalBrand });
+                }
             }
             let finalType = form.device_type;
             if (form.device_type === "__other__" && form.custom_type.trim()) {
-                finalType = form.custom_type.trim();
-                await supabase.from("device_types").insert({ name: finalType });
+                const rawType = form.custom_type.trim();
+                const existingType = deviceTypes.find(t => t.name.toLowerCase() === rawType.toLowerCase());
+                finalType = existingType ? existingType.name : rawType;
+                if (!existingType) {
+                    await supabase.from("device_types").insert({ name: finalType });
+                }
             }
             const totalServiceCharge = serviceItems.reduce((s, i) => s + i.price * i.quantity, 0);
             const totalDiscount = serviceTotals.discount;
@@ -569,7 +538,53 @@ export default function JobSheetCreate() {
             setSaving(false);
         }
     };
+    const openConfirmDrawer = () => {
+        if (!validateStep(2) || !validateStep(4)) return;
+        setConfirmDrawerOpen(true);
+    };
+    const resolvedBrand = (form.device_brand === "__other__" ? form.custom_brand : form.device_brand).trim();
+    const resolvedType = (form.device_type === "__other__" ? form.custom_type : form.device_type).trim();
+    const matchingModels = useMemo(() => {
+        return deviceModels.filter(m =>
+            (!resolvedBrand || m.brand.toLowerCase() === resolvedBrand.toLowerCase()) &&
+            (!resolvedType || m.device_type.toLowerCase() === resolvedType.toLowerCase()),
+        );
+    }, [deviceModels, resolvedBrand, resolvedType]);
+    const filteredModels = useMemo(() => {
+        const q = modelSearch.trim().toLowerCase();
+        if (!q) return matchingModels;
+        return matchingModels.filter(m =>
+            m.name.toLowerCase().includes(q) || (m.series || "").toLowerCase().includes(q),
+        );
+    }, [matchingModels, modelSearch]);
+    const selectedCatalogModel = useMemo(
+        () => matchingModels.find(m => m.name.toLowerCase() === form.device_model.trim().toLowerCase()) || null,
+        [matchingModels, form.device_model],
+    );
+    const availableColorSwatches = useMemo(() => {
+        if (selectedCatalogModel?.color_options?.length) return selectedCatalogModel.color_options;
+        const map = new Map<string, string>();
+        matchingModels.forEach(m => m.color_options.forEach(c => {
+            if (!map.has(c.name)) map.set(c.name, c.hex);
+        }));
+        return Array.from(map.entries()).map(([name, hex]) => ({ name, hex }));
+    }, [selectedCatalogModel, matchingModels]);
+    const availableStorageOptions = useMemo(() => {
+        if (selectedCatalogModel?.storage_options?.length) return selectedCatalogModel.storage_options;
+        const set = new Set<string>();
+        matchingModels.forEach(m => m.storage_options.forEach(s => set.add(s)));
+        return Array.from(set);
+    }, [selectedCatalogModel, matchingModels]);
+    const checklistSummary = useMemo(() => summarizeChecklist(checklist), [checklist]);
     const categories = [...new Set(checklist.map(c => c.category))];
+    const isPowerCategory = (cat: string) => {
+        const items = checklist.filter(c => c.category === cat);
+        return items.length > 0 && items.every(c => isPowerDependentChecklistItem(c));
+    };
+    const visibleCategories = deviceIsOff && !showSkippedDiagnostics
+        ? categories.filter(cat => !isPowerCategory(cat))
+        : categories;
+    const collapsedPowerCategories = deviceIsOff ? categories.filter(isPowerCategory) : [];
     const imageTypes = ["front", "back", "side", "damage"];
     const getCategoryProgress = (cat: string) => {
         const items = checklist.filter(c => c.category === cat);
@@ -680,24 +695,309 @@ export default function JobSheetCreate() {
                   {form.device_brand === "__other__" && (<TextField placeholder="Enter brand name" value={form.custom_brand} onChange={e => updateField("custom_brand", e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Enter brand name" } }} sx={{ marginTop: "0.5rem" }}/>)}
                 </Box>
               </Box>
+
+              {matchingModels.length > 0 && (
+                <Box
+                  component={motion.div}
+                  initial={reduced ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: motionTokens.base }}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: "var(--radius)",
+                    border: "1px solid color-mix(in srgb, hsl(var(--primary)) 22%, hsl(var(--border)))",
+                    backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 3%, hsl(var(--card)))",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1.25,
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 650, display: "flex", alignItems: "center", gap: 0.75 }}>
+                      <Box component={Smartphone} sx={{ width: 15, height: 15, color: "hsl(var(--primary))" }} />
+                      {resolvedBrand || "Apple"} {resolvedType} Model Catalog ({matchingModels.length})
+                    </Typography>
+                    {matchingModels.length > 6 && (
+                      <TextField
+                        size="small"
+                        placeholder={`Filter ${resolvedType} models...`}
+                        value={modelSearch}
+                        onChange={e => setModelSearch(e.target.value)}
+                        slotProps={{
+                          htmlInput: { "aria-label": "Filter device models" },
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Box component={Search} sx={{ width: 14, height: 14, color: "hsl(var(--muted-foreground))" }} />
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                        sx={{ minWidth: { xs: "100%", sm: 220 } }}
+                      />
+                    )}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 0.75,
+                      maxHeight: 168,
+                      overflowY: "auto",
+                      pr: 0.5,
+                    }}
+                  >
+                    {filteredModels.map(m => {
+                      const active = form.device_model.trim().toLowerCase() === m.name.toLowerCase();
+                      return (
+                        <ButtonBase
+                          key={m.id || m.name}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => {
+                            const inferredType = inferAppleDeviceTypeFromModel(m.name);
+                            const colorNames = m.color_options.map(c => c.name.toLowerCase());
+                            const storageNames = m.storage_options.map(s => s.toLowerCase());
+                            setForm(prev => ({
+                              ...prev,
+                              device_model: m.name,
+                              device_type: !prev.device_type && inferredType ? inferredType : prev.device_type,
+                              device_color:
+                                m.color_options.length === 1
+                                  ? m.color_options[0].name
+                                  : colorNames.includes(prev.device_color.trim().toLowerCase())
+                                    ? prev.device_color
+                                    : "",
+                              storage_capacity: storageNames.includes(prev.storage_capacity.trim().toLowerCase())
+                                ? prev.storage_capacity
+                                : "",
+                            }));
+                          }}
+                          sx={mergeSx(
+                            {
+                              minHeight: 36,
+                              px: 1.25,
+                              py: 0.5,
+                              borderRadius: "var(--radius)",
+                              border: "1px solid hsl(var(--border))",
+                              backgroundColor: "hsl(var(--background))",
+                              fontSize: "0.8125rem",
+                              fontWeight: 500,
+                              color: "hsl(var(--foreground))",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 0.75,
+                              transition: "all 150ms ease",
+                            },
+                            active
+                              ? {
+                                  borderColor: "hsl(var(--primary))",
+                                  backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--background)))",
+                                  color: "hsl(var(--primary))",
+                                  fontWeight: 650,
+                                  boxShadow: "0 0 0 1px hsl(var(--primary))",
+                                }
+                              : {
+                                  "&:hover": {
+                                    borderColor: "color-mix(in srgb, hsl(var(--primary)) 45%, hsl(var(--border)))",
+                                    backgroundColor: "hsl(var(--muted))",
+                                  },
+                                },
+                          )}
+                        >
+                          {m.name}
+                        </ButtonBase>
+                      );
+                    })}
+                    {filteredModels.length === 0 && (
+                      <Typography variant="caption" sx={{ color: "hsl(var(--muted-foreground))" }}>
+                        No catalog match — enter custom model name below.
+                      </Typography>
+                    )}
+                  </Box>
+
+                  {availableColorSwatches.length > 0 && (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+                      <Typography variant="caption" sx={{ color: "hsl(var(--muted-foreground))", fontWeight: 600, display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Box component={Palette} sx={{ width: 13, height: 13 }} />
+                        Finish / Color Options {selectedCatalogModel ? `for ${selectedCatalogModel.name}` : ""}
+                      </Typography>
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                        {availableColorSwatches.map(swatch => {
+                          const active = form.device_color.trim().toLowerCase() === swatch.name.toLowerCase();
+                          return (
+                            <ButtonBase
+                              key={swatch.name}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => updateField("device_color", swatch.name)}
+                              sx={mergeSx(
+                                {
+                                  minHeight: 34,
+                                  px: 1.15,
+                                  py: 0.4,
+                                  borderRadius: "9999px",
+                                  border: "1px solid hsl(var(--border))",
+                                  backgroundColor: "hsl(var(--background))",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 500,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 0.75,
+                                  transition: "all 150ms ease",
+                                },
+                                active
+                                  ? {
+                                      borderColor: "hsl(var(--primary))",
+                                      backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--background)))",
+                                      color: "hsl(var(--primary))",
+                                      fontWeight: 650,
+                                    }
+                                  : {
+                                      "&:hover": { backgroundColor: "hsl(var(--muted))" },
+                                    },
+                              )}
+                            >
+                              <Box
+                                component="span"
+                                sx={{
+                                  width: 13,
+                                  height: 13,
+                                  borderRadius: "9999px",
+                                  backgroundColor: swatch.hex,
+                                  border: "1px solid rgba(15, 23, 42, 0.25)",
+                                  flexShrink: 0,
+                                }}
+                              />
+                              {swatch.name}
+                            </ButtonBase>
+                          );
+                        })}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {availableStorageOptions.length > 0 && (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+                      <Typography variant="caption" sx={{ color: "hsl(var(--muted-foreground))", fontWeight: 600, display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Box component={HardDrive} sx={{ width: 13, height: 13 }} />
+                        Storage Capacity
+                      </Typography>
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                        {availableStorageOptions.map(cap => {
+                          const active = form.storage_capacity.trim().toLowerCase() === cap.toLowerCase();
+                          return (
+                            <ButtonBase
+                              key={cap}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => updateField("storage_capacity", cap)}
+                              sx={mergeSx(
+                                {
+                                  minHeight: 32,
+                                  px: 1.15,
+                                  py: 0.35,
+                                  borderRadius: "0.375rem",
+                                  border: "1px solid hsl(var(--border))",
+                                  backgroundColor: "hsl(var(--background))",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 500,
+                                  transition: "all 150ms ease",
+                                },
+                                active
+                                  ? {
+                                      borderColor: "hsl(var(--primary))",
+                                      backgroundColor: "hsl(var(--primary))",
+                                      color: "hsl(var(--primary-foreground))",
+                                      fontWeight: 650,
+                                    }
+                                  : {
+                                      "&:hover": { backgroundColor: "hsl(var(--muted))" },
+                                    },
+                              )}
+                            >
+                              {cap}
+                            </ButtonBase>
+                          );
+                        })}
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
               <Box sx={{ display: "grid", gridTemplateColumns: "repeat(1, minmax(0, 1fr))", "@media (min-width: 640px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, gap: "1rem" }}>
                 {[
-                { field: "device_model", label: "Model Name" },
-                { field: "serial_number", label: "Serial Number" },
-                { field: "imei_number", label: "IMEI Number" },
-                { field: "device_color", label: "Color" },
-                { field: "storage_capacity", label: "Storage Capacity" },
-            ].map(({ field, label }) => (<Box key={field} sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
-
-                    <TextField value={(form as any)[field]} onChange={e => updateField(field, e.target.value)} label={label} size="small" fullWidth/>
-                  </Box>))}
+                { field: "device_model", label: "Model Name", placeholder: "e.g. iPhone 16 Pro Max / MacBook Pro 14\"" },
+                { field: "serial_number", label: "Serial Number", placeholder: "Hardware serial number" },
+                { field: "imei_number", label: "IMEI Number", placeholder: "15-digit IMEI (if cellular)" },
+                { field: "device_color", label: "Color / Finish", placeholder: "e.g. Desert Titanium" },
+                { field: "storage_capacity", label: "Storage Capacity", placeholder: "e.g. 256 GB" },
+            ].map(({ field, label, placeholder }) => {
+                    const colorHex = field === "device_color"
+                        ? resolveColorSwatchHex(form.device_color, availableColorSwatches)
+                        : null;
+                    return (
+                      <Box key={field} sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
+                        <TextField
+                          value={(form as any)[field]}
+                          onChange={e => updateField(field, e.target.value)}
+                          label={label}
+                          placeholder={placeholder}
+                          size="small"
+                          fullWidth
+                          slotProps={
+                            colorHex
+                              ? {
+                                  input: {
+                                    startAdornment: (
+                                      <InputAdornment position="start">
+                                        <Box
+                                          sx={{
+                                            width: 12,
+                                            height: 12,
+                                            borderRadius: "9999px",
+                                            backgroundColor: colorHex,
+                                            border: "1px solid rgba(15,23,42,0.25)",
+                                          }}
+                                        />
+                                      </InputAdornment>
+                                    ),
+                                  },
+                                }
+                              : undefined
+                          }
+                        />
+                      </Box>
+                    );
+                })}
               </Box>
 
               {/* Issue Category Selector */}
               <Divider />
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
 
-                <TextField value={selectedIssueCategory} label={<><Box component={Tag} sx={{ height: "1rem", width: "1rem" }}/> Issue Category</>} select size="small" fullWidth onChange={event => (v => { setSelectedIssueCategory(v); setDynamicChecklistLoaded(false); })(event.target.value)} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}><MenuItem value="" disabled>{"Select issue category (optional)"}</MenuItem>
+                <TextField
+                  value={selectedIssueCategory}
+                  label="Issue Category"
+                  select
+                  size="small"
+                  fullWidth
+                  onChange={event => (v => { setSelectedIssueCategory(v); setDynamicChecklistLoaded(false); })(event.target.value)}
+                  slotProps={{
+                    select: { displayEmpty: true },
+                    inputLabel: { shrink: true },
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Box component={Tag} sx={{ height: "0.95rem", width: "0.95rem", color: "hsl(var(--muted-foreground))" }} />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                >
+                  <MenuItem value="">{"None / General Repair"}</MenuItem>
                     {issueCategories.map(ic => (<MenuItem key={ic.id} value={ic.id}>
                         {ic.name}
                         {ic.description && <Box component="span" sx={{ color: "hsl(var(--muted-foreground))", marginLeft: "0.5rem", fontSize: "0.75rem", lineHeight: "1rem" }}>— {ic.description}</Box>}
@@ -914,19 +1214,65 @@ export default function JobSheetCreate() {
                 </Box>
               </Box>
               <LinearProgress value={overallProgress.percent} variant="determinate" sx={{ height: "0.5rem", marginTop: "0.5rem" }}/>
-              {deviceIsOff && (<Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.75rem", lineHeight: "1rem", color: "hsl(var(--warning))", marginTop: "0.5rem" }}>
-                  <Box component={AlertTriangle} sx={{ height: "0.875rem", width: "0.875rem" }}/>
-                  <Box component="span">Device is OFF — dependent checks auto-set to N/A. You can override manually.</Box>
-                </Box>)}
+              <AnimatePresence initial={false}>
+                {deviceIsOff && (
+                  <Box
+                    component={motion.div}
+                    variants={reduced ? undefined : fadeUp}
+                    initial={reduced ? false : "hidden"}
+                    animate={reduced ? undefined : "show"}
+                    exit={reduced ? undefined : "exit"}
+                    sx={{
+                      display: "flex",
+                      alignItems: { xs: "flex-start", sm: "center" },
+                      justifyContent: "space-between",
+                      flexDirection: { xs: "column", sm: "row" },
+                      gap: 1.25,
+                      p: 1.5,
+                      mt: 1.25,
+                      borderRadius: "var(--radius)",
+                      backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 12%, transparent)",
+                      border: "1px solid color-mix(in srgb, hsl(var(--warning)) 38%, transparent)",
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+                      <Box component={PowerOff} sx={{ height: "1.1rem", width: "1.1rem", color: "hsl(var(--warning))", mt: 0.15, flexShrink: 0 }}/>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 650, color: "hsl(var(--foreground))" }}>
+                          Device does not power on — {checklistSummary.autoSkippedCount} powered checks skipped (Auto N/A)
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: "hsl(var(--muted-foreground))", display: "block" }}>
+                          Physical condition, moisture checks, and received accessories remain active below so damage is documented before repair.
+                        </Typography>
+                      </Box>
+                    </Box>
+                    {collapsedPowerCategories.length > 0 && (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setShowSkippedDiagnostics(s => !s)}
+                        sx={{ flexShrink: 0, minHeight: 34, fontSize: "0.75rem" }}
+                      >
+                        {showSkippedDiagnostics ? "Hide Skipped Diagnostics" : `Override Skipped (${collapsedPowerCategories.length} groups)`}
+                      </Button>
+                    )}
+                  </Box>
+                )}
+              </AnimatePresence>
             </Box>
             <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.5rem" } }}>
-              {categories.map(cat => {
+              {visibleCategories.map(cat => {
                 const progress = getCategoryProgress(cat);
+                const powerOnly = isPowerCategory(cat);
                 return (<Accordion key={cat} expanded={openCategories[cat] ?? true} onChange={(event, expanded) => ((open) => setOpenCategories(prev => ({ ...prev, [cat]: open })))(expanded)}>
                     <AccordionSummary sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.625rem", paddingBottom: "0.625rem", borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 50%, transparent)", "&:hover": { backgroundColor: "hsl(var(--muted))" }, transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                           <Box component={ChevronDown} sx={mergeSx({ height: "1rem", width: "1rem", transitionProperty: "transform", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, openCategories[cat] ? {} : { "--alv-rotate": "-90deg", transform: "translate(var(--alv-translate-x), var(--alv-translate-y)) rotate(var(--alv-rotate)) skewX(var(--alv-skew-x)) skewY(var(--alv-skew-y)) scaleX(var(--alv-scale-x)) scaleY(var(--alv-scale-y))" })}/>
                           <Box component="span" sx={{ fontWeight: "500" }}>{cat}</Box>
+                          {!powerOnly && cat !== "Power & Charging" && (
+                            <StatusChip label="Always Required" sx={{ fontSize: "10px", height: 20 }} />
+                          )}
                         </Box>
                         <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                           <LinearProgress value={progress.percent} variant="determinate" sx={{ height: "0.375rem", width: "4rem" }}/>
@@ -936,20 +1282,32 @@ export default function JobSheetCreate() {
                         </Box>
                       </AccordionSummary>
                     <AccordionDetails sx={{ marginTop: "0.25rem" }}>
+                      {cat !== "Power & Charging" && (
+                        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.75, mb: 0.75 }}>
+                          <Button type="button" size="small" variant="text" onClick={() => markCategoryValue(cat, "yes")} sx={{ fontSize: "0.75rem", minHeight: 28 }}>
+                            Mark Group Yes
+                          </Button>
+                          {cat === "Accessories & Locks" && (
+                            <Button type="button" size="small" variant="text" onClick={() => markCategoryValue(cat, "na")} sx={{ fontSize: "0.75rem", minHeight: 28 }}>
+                              Mark Group N/A
+                            </Button>
+                          )}
+                        </Box>
+                      )}
                       <Box sx={{ borderWidth: "1px", borderRadius: "var(--radius)", overflow: "hidden" }}>
                         <DataTable columnsCount={2} sx={{ width: "100%", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
-                          <TableHead><TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}><TableCell sx={{ textAlign: "left", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", fontWeight: "500", color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem" }}>Item</TableCell><TableCell sx={{ textAlign: "center", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", fontWeight: "500", color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem", width: "140px" }}>Status</TableCell></TableRow></TableHead>
+                          <TableHead><TableRow sx={{ backgroundColor: "color-mix(in srgb, hsl(var(--muted)) 30%, transparent)" }}><TableCell sx={{ textAlign: "left", paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", fontWeight: "500", color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem" }}>Item</TableCell><TableCell sx={{ textAlign: "center", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.5rem", paddingBottom: "0.5rem", fontWeight: "500", color: "hsl(var(--muted-foreground))", fontSize: "0.75rem", lineHeight: "1rem", width: "160px" }}>Status</TableCell></TableRow></TableHead>
                           <TableBody>
                             {checklist.map((item, idx) => item.category !== cat ? null : (<TableRow key={idx} sx={{ borderTopWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
                                 <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.5rem", paddingBottom: "0.5rem" }}>
                                   <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                                     <Box component="span">{item.item}</Box>
-                                    {item.autoSet && <Box component="span" sx={{ fontSize: "9px", fontWeight: "500", color: "hsl(var(--warning))", backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", paddingLeft: "0.375rem", paddingRight: "0.375rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "9999px" }}>Auto</Box>}
+                                    {item.autoSet && <Box component="span" sx={{ fontSize: "9px", fontWeight: "500", color: "hsl(var(--warning))", backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 10%, transparent)", paddingLeft: "0.375rem", paddingRight: "0.375rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "9999px" }}>Auto N/A</Box>}
                                   </Box>
                                 </TableCell>
                                 <TableCell sx={{ paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.5rem", paddingBottom: "0.5rem" }}>
                                   <Box sx={{ display: "flex", gap: "0.25rem", justifyContent: "center" }}>
-                                    {(["yes", "no", "na"] as const).map(v => (<ButtonBase key={v} type="button" onClick={() => updateChecklist(idx, v)} sx={mergeSx({ paddingLeft: "0.625rem", paddingRight: "0.625rem", paddingTop: "0.25rem", paddingBottom: "0.25rem", borderRadius: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, item.value === v
+                                    {(["yes", "no", "na"] as const).map(v => (<ButtonBase key={v} type="button" onClick={() => updateChecklist(idx, v)} sx={mergeSx({ minHeight: 30, minWidth: 42, paddingLeft: "0.625rem", paddingRight: "0.625rem", paddingTop: "0.25rem", paddingBottom: "0.25rem", borderRadius: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", transitionProperty: "color, background-color, border-color, text-decoration-color, fill, stroke", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }, item.value === v
                             ? v === "yes" ? { backgroundColor: "hsl(var(--success))", color: "hsl(var(--success-foreground))" } : v === "no" ? { backgroundColor: "hsl(var(--destructive))", color: "hsl(var(--destructive-foreground))" } : { backgroundColor: "hsl(var(--muted-foreground))", color: "hsl(var(--background))" }
                             : mergeSx({ backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }, v === "yes" ? { "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 20%, transparent)", color: "hsl(var(--success))" } } : v === "no" ? { "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 20%, transparent)", color: "hsl(var(--destructive))" } } : { "&:hover": { backgroundColor: "color-mix(in srgb, hsl(var(--muted-foreground)) 20%, transparent)" } }))}>{v === "na" ? "N/A" : v.charAt(0).toUpperCase() + v.slice(1)}</ButtonBase>))}
                                   </Box>
@@ -1004,6 +1362,18 @@ export default function JobSheetCreate() {
               <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Type:</Box> {form.device_type === "__other__" ? form.custom_type : form.device_type}</Typography>
               <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Brand:</Box> {form.device_brand === "__other__" ? form.custom_brand : form.device_brand}</Typography>
               <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Model:</Box> {form.device_model || "—"}</Typography>
+              <Typography component="p" variant="body1" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Color:</Box>
+                {form.device_color ? (
+                  <>
+                    {resolveColorSwatchHex(form.device_color, availableColorSwatches) && (
+                      <Box component="span" sx={{ width: 10, height: 10, borderRadius: "9999px", display: "inline-block", backgroundColor: resolveColorSwatchHex(form.device_color, availableColorSwatches)!, border: "1px solid rgba(15,23,42,0.22)" }} />
+                    )}
+                    {form.device_color}
+                  </>
+                ) : "—"}
+              </Typography>
+              <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Storage:</Box> {form.storage_capacity || "—"}</Typography>
               <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Serial:</Box> {form.serial_number || "—"}</Typography>
               <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>IMEI:</Box> {form.imei_number || "—"}</Typography>
               <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Problem:</Box> {form.problem_description.slice(0, 50)}{form.problem_description.length > 50 ? "..." : ""}</Typography>
@@ -1047,11 +1417,45 @@ export default function JobSheetCreate() {
         </Box>
         <Box sx={{ display: "flex", gap: "0.75rem" }}>
           <Button onClick={() => navigate(isEditMode ? `/repairs/${editId}` : "/repairs")} variant="outlined">Cancel</Button>
-          {currentStep < 5 ? (<Button onClick={nextStep} variant="contained">Next</Button>) : (<Button onClick={handleSave} disabled={saving} variant="contained">
-              {saving ? "Saving..." : isEditMode ? "Update Job Sheet" : "Save Job Sheet"}
-            </Button>)}
+          {currentStep < 5 ? (<Button onClick={nextStep} variant="contained">Next</Button>) : (
+            <Button onClick={openConfirmDrawer} disabled={saving} variant="contained" sx={{ fontWeight: 600 }}>
+              <Box component={ShieldCheck} sx={{ height: "1rem", width: "1rem", marginRight: "0.4rem" }} />
+              {saving ? "Saving..." : isEditMode ? "Review & Update Job Sheet" : "Review & Save Job Sheet"}
+            </Button>
+          )}
         </Box>
       </Box>
+
+      <JobSheetConfirmDrawer
+        open={confirmDrawerOpen}
+        onClose={() => !saving && setConfirmDrawerOpen(false)}
+        onConfirm={handleSave}
+        saving={saving}
+        isEditMode={isEditMode}
+        customer={selectedCustomer}
+        device={{
+          brand: resolvedBrand || "—",
+          deviceType: resolvedType || "—",
+          model: form.device_model,
+          color: form.device_color,
+          colorHex: resolveColorSwatchHex(form.device_color, availableColorSwatches),
+          storage: form.storage_capacity,
+          serial: form.serial_number,
+          imei: form.imei_number,
+          problemDescription: form.problem_description,
+          issueCategoryName: issueCategories.find(c => c.id === selectedIssueCategory)?.name || null,
+          priority: form.priority,
+          estimatedCompletion: form.estimated_completion,
+          estimatedCost: form.estimated_cost,
+          staffNotes: form.staff_notes,
+          photoCount: imageFiles.length,
+        }}
+        checklist={checklist}
+        serviceItems={serviceItems}
+        gstMode={gstMode}
+        grandTotal={grandTotal}
+        effectiveGst={effectiveGst}
+      />
 
       <CustomerQuickDialog
         open={quickCustomerOpen}

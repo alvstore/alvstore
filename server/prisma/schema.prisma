@@ -436,6 +436,23 @@ model DeviceTypes {
   @@schema("public")
 }
 
+model DeviceModels {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brand           String
+  device_type     String
+  name            String
+  series          String?
+  color_options   Json?    @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  storage_options Json?    @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  sort_order      Int      @default(0)
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([brand, device_type, name])
+  @@map("device_models")
+  @@schema("public")
+}
+
 model Employees {
   id                                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id                                  String?                    @db.Uuid

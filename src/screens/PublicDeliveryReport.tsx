@@ -174,8 +174,8 @@ export default function PublicDeliveryReport() {
             <CardContent>
               <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem" }}>
                 {postChecklist.map((item: any, idx: number) => (<Box key={idx} sx={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                    {item.value === "yes" ? <Box component={CheckCircle} sx={{ height: "0.75rem", width: "0.75rem", color: "hsl(var(--success))", flexShrink: "0" }}/> : <Box component={XCircle} sx={{ height: "0.75rem", width: "0.75rem", color: "hsl(var(--destructive))", flexShrink: "0" }}/>}
-                    <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.item}</Box>
+                    {item.value === "yes" ? <Box component={CheckCircle} sx={{ height: "0.75rem", width: "0.75rem", color: "hsl(var(--success))", flexShrink: "0" }}/> : item.value === "no" ? <Box component={XCircle} sx={{ height: "0.75rem", width: "0.75rem", color: "hsl(var(--destructive))", flexShrink: "0" }}/> : <Box sx={{ height: "0.75rem", width: "0.75rem", borderRadius: "9999px", backgroundColor: "hsl(var(--muted))", flexShrink: "0" }}/>}
+                    <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.item}{item.value === "na" ? " (N/A)" : ""}</Box>
                   </Box>))}
               </Box>
             </CardContent>

@@ -10,6 +10,12 @@ import { ArrowLeft, Copy, Loader2, User, Smartphone, ClipboardCheck, History, Sh
 import { createNotification } from "@/lib/notifications";
 import { computeRepairBillingSummary } from "@/lib/repair-billing";
 import { recordSystemAudit } from "@/lib/audit";
+import {
+    getPostRepairChecklistForDevice,
+    isDevicePoweredOffChecklist,
+    resolveColorSwatchHex,
+    summarizeChecklist,
+} from "@/lib/repair-catalog";
 const JOB_STATUSES = [
     "created", "pending_approval", "approved", "rejected", "assigned",
     "in_progress", "waiting_parts", "repair_completed", "quality_check",
@@ -49,11 +55,7 @@ const TIMELINE_STEPS = [
     { key: "ready_for_delivery", label: "Ready for Delivery", icon: Truck },
     { key: "delivered", label: "Delivered", icon: Truck },
 ];
-const POST_REPAIR_ITEMS = [
-    "Device powers ON", "Display working", "Touch working", "Speaker working",
-    "Microphone working", "Camera working", "Network working", "Charging working",
-    "Repaired parts verified", "Device cleaned", "Final condition verified",
-];
+const DEFAULT_POST_REPAIR_ITEMS = getPostRepairChecklistForDevice("Mobile");
 function fmt(n: number) {
     return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
 }
@@ -73,7 +75,7 @@ export default function JobSheetDetail() {
     const [postChecklist, setPostChecklist] = useState<{
         item: string;
         value: string;
-    }[]>(POST_REPAIR_ITEMS.map(item => ({ item, value: "" })));
+    }[]>(DEFAULT_POST_REPAIR_ITEMS);
     const [techPaySheetOpen, setTechPaySheetOpen] = useState(false);
     const [techPayForm, setTechPayForm] = useState({ amount: "", method: "cash", notes: "" });
     const [actualCost, setActualCost] = useState("");
@@ -116,6 +118,9 @@ export default function JobSheetDetail() {
         setWarrantyTerms((jobRes.data as any).warranty_terms || "");
         if (jobRes.data.post_repair_checklist && (jobRes.data.post_repair_checklist as any[]).length > 0) {
             setPostChecklist(jobRes.data.post_repair_checklist as any);
+        }
+        else {
+            setPostChecklist(getPostRepairChecklistForDevice(jobRes.data.device_type));
         }
         // Auto-set upload stage based on status
         const status = jobRes.data.status;
@@ -761,7 +766,17 @@ export default function JobSheetDetail() {
                   <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "0.875rem", lineHeight: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Smartphone} sx={{ height: "1rem", width: "1rem" }}/> Device</Typography></Box>
                   <CardContent sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}>
                     <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Brand:</Box> {job.device_brand} · <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Type:</Box> {job.device_type}</Typography>
-                    <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Model:</Box> {job.device_model || "—"} · <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Color:</Box> {job.device_color || "—"}</Typography>
+                    <Typography component="p" variant="body1" sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
+                      <Box component="span"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Model:</Box> {job.device_model || "—"} · <Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Color:</Box></Box>
+                      {job.device_color ? (
+                        <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                          {resolveColorSwatchHex(job.device_color) && (
+                            <Box component="span" sx={{ width: 10, height: 10, borderRadius: "9999px", display: "inline-block", backgroundColor: resolveColorSwatchHex(job.device_color)!, border: "1px solid rgba(15,23,42,0.22)" }} />
+                          )}
+                          {job.device_color}
+                        </Box>
+                      ) : "—"}
+                    </Typography>
                     <Typography component="p" variant="body1" sx={{ fontWeight: "500" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Serial #:</Box> {job.serial_number || "—"}</Typography>
                     <Typography component="p" variant="body1" sx={{ fontWeight: "500" }}><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>IMEI:</Box> {job.imei_number || "—"}</Typography>
                     <Typography component="p" variant="body1"><Box component="span" sx={{ color: "hsl(var(--muted-foreground))" }}>Storage:</Box> {job.storage_capacity || "—"}</Typography>
@@ -797,6 +812,12 @@ export default function JobSheetDetail() {
               <Card>
                 <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "0.875rem", lineHeight: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={ClipboardCheck} sx={{ height: "1rem", width: "1rem" }}/> Pre-Repair Checklist</Typography></Box>
                 <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
+                  {isDevicePoweredOffChecklist(preChecklist as any) && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 1.25, borderRadius: "var(--radius)", backgroundColor: "color-mix(in srgb, hsl(var(--warning)) 12%, transparent)", border: "1px solid color-mix(in srgb, hsl(var(--warning)) 35%, transparent)", fontSize: 12 }}>
+                      <Box component={PowerOff} sx={{ width: 15, height: 15, color: "hsl(var(--warning))", flexShrink: 0 }} />
+                      <Box component="span">Device was Powered OFF at intake — {summarizeChecklist(preChecklist as any).naCount} power-dependent checks recorded as N/A; physical condition & accessories verified.</Box>
+                    </Box>
+                  )}
                   {checklistCategories.map(cat => (<Box key={cat as string}>
                       <Typography component="p" variant="body1" sx={{ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500", color: "hsl(var(--muted-foreground))", marginBottom: "0.25rem" }}>{cat as string}</Typography>
                       <Box sx={{ borderWidth: "1px", borderRadius: "var(--radius)", overflow: "hidden" }}>
@@ -819,10 +840,22 @@ export default function JobSheetDetail() {
               {(job.status === "repair_completed" || job.status === "qc_failed") && canWorkRepair && (<Card>
                   <Box sx={mergeSx({ padding: "1.5rem", paddingBottom: "0.75rem" }, { paddingBottom: "0.5rem" })}><Typography variant="h6" component="h3" sx={mergeSx({ fontSize: "1rem", fontWeight: 650 }, { fontSize: "0.875rem", lineHeight: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem" })}><Box component={Shield} sx={{ height: "1rem", width: "1rem" }}/> Post-Repair Quality Check</Typography></Box>
                   <CardContent sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
-                    {postChecklist.map((item, idx) => (<Box key={idx} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem" }}>
+                    {postChecklist.map((item, idx) => (<Box key={idx} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.875rem", lineHeight: "1.25rem", gap: 1 }}>
                         <Box component="span">{item.item}</Box>
-                        <Box sx={{ display: "flex", gap: "0.25rem" }}>
-                          {(["yes", "no"] as const).map(v => (<Button key={v} type="button" onClick={() => setPostChecklist(prev => prev.map((c, i) => i === idx ? { ...c, value: v } : c))} variant={item.value === v ? "contained" : "outlined"} size="small" sx={{ height: "1.75rem", paddingLeft: "0.625rem", paddingRight: "0.625rem", fontSize: "0.75rem", lineHeight: "1rem" }}>{v === "yes" ? "Pass" : "Fail"}</Button>))}
+                        <Box sx={{ display: "flex", gap: "0.25rem", flexShrink: 0 }}>
+                          {(["yes", "no", "na"] as const).map(v => (
+                            <Button
+                              key={v}
+                              type="button"
+                              onClick={() => setPostChecklist(prev => prev.map((c, i) => i === idx ? { ...c, value: v } : c))}
+                              variant={item.value === v ? "contained" : "outlined"}
+                              color={item.value === v ? (v === "yes" ? "success" : v === "no" ? "error" : "inherit") : "primary"}
+                              size="small"
+                              sx={{ height: "1.75rem", minWidth: "46px", paddingLeft: "0.5rem", paddingRight: "0.5rem", fontSize: "0.75rem", lineHeight: "1rem" }}
+                            >
+                              {v === "yes" ? "Pass" : v === "no" ? "Fail" : "N/A"}
+                            </Button>
+                          ))}
                         </Box>
                       </Box>))}
                     <Button onClick={savePostChecklist} variant="contained" sx={{ width: "100%" }}><Box component={CheckCircle} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/> Submit Quality Check</Button>
@@ -838,8 +871,8 @@ export default function JobSheetDetail() {
                           {(job.post_repair_checklist as any[]).map((item: any, idx: number) => (<TableRow key={idx} sx={{ borderTopWidth: "1px", "&:first-child": { borderTopWidth: "0px" }, borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
                               <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem" }}>{item.item}</TableCell>
                               <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", textAlign: "right" }}>
-                                <Box component="span" sx={mergeSx({ display: "inline-block", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500" }, item.value === "yes" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 15%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 15%, transparent)", color: "hsl(var(--destructive))" })}>
-                                  {item.value === "yes" ? "Pass" : "Fail"}
+                                <Box component="span" sx={mergeSx({ display: "inline-block", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500" }, item.value === "yes" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 15%, transparent)", color: "hsl(var(--success))" } : item.value === "no" ? { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 15%, transparent)", color: "hsl(var(--destructive))" } : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" })}>
+                                  {item.value === "yes" ? "Pass" : item.value === "no" ? "Fail" : "N/A"}
                                 </Box>
                               </TableCell>
                             </TableRow>))}
@@ -861,8 +894,8 @@ export default function JobSheetDetail() {
                         {(job.post_repair_checklist as any[]).map((item: any, idx: number) => (<TableRow key={idx} sx={{ borderTopWidth: "1px", "&:first-child": { borderTopWidth: "0px" }, borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)" }}>
                             <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem" }}>{item.item}</TableCell>
                             <TableCell sx={{ paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingTop: "0.375rem", paddingBottom: "0.375rem", textAlign: "right" }}>
-                              <Box component="span" sx={mergeSx({ display: "inline-block", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500" }, item.value === "yes" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 15%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 15%, transparent)", color: "hsl(var(--destructive))" })}>
-                                {item.value === "yes" ? "Pass" : "Fail"}
+                              <Box component="span" sx={mergeSx({ display: "inline-block", paddingLeft: "0.5rem", paddingRight: "0.5rem", paddingTop: "0.125rem", paddingBottom: "0.125rem", borderRadius: "0.25rem", fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "500" }, item.value === "yes" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 15%, transparent)", color: "hsl(var(--success))" } : item.value === "no" ? { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 15%, transparent)", color: "hsl(var(--destructive))" } : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" })}>
+                                {item.value === "yes" ? "Pass" : item.value === "no" ? "Fail" : "N/A"}
                               </Box>
                             </TableCell>
                           </TableRow>))}
