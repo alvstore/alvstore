@@ -347,7 +347,7 @@ export default function Settings() {
             integ.whatsapp_token
         ),
         razorpay: Boolean(integ.razorpay_key_id),
-        hikvision: Boolean((hikRes.count || 0) > 0 || integ.hikvision_app_key),
+        hikvision: Boolean((hikRes.count || 0) > 0 || integ.hik_partner_app_key || integ.hikvision_app_key),
       });
     });
   }, [isAdmin, activeSection]);
@@ -3095,7 +3095,11 @@ function HikvisionTab() {
       });
       if (error) throw error;
       setSyncResults((prev) => ({ ...prev, [`${deviceId}-${action}`]: data }));
-      if (data?.success) toast.success(`${action.replace(/-/g, " ")} completed — ${data.records_synced || 0} records`);
+      const syncedCount =
+        data?.records_synced ??
+        ((data?.results?.["sync-attendance"]?.records_synced || 0) +
+          (data?.results?.["sync-employees"]?.records_synced || 0));
+      if (data?.success) toast.success(`${action.replace(/-/g, " ")} completed — ${syncedCount} records`);
       else toast.error(data?.error || "Failed");
     } catch (e: any) {
       toast.error(e.message);

@@ -5,7 +5,7 @@ import { AnimatedPage, DataTable, PageHeader, StatCard, StatusChip, TabBar, TabP
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Clock, Calendar, Users, Download, ChevronLeft, ChevronRight, UserCheck, UserX, AlertTriangle, Save, Loader2, } from "lucide-react";
+import { Clock, Calendar, Users, Download, ChevronLeft, ChevronRight, UserCheck, UserX, AlertTriangle, RefreshCw, Save, Loader2, } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, getDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import { calculateEmployeePayroll, classifyAttendanceRecord, DEFAULT_PAYROLL_POLICY, matchesEmployeeAttendance } from "@/lib/payroll-calculator";
 import { normalizeCashDate } from "@/lib/finance-sync";
@@ -58,12 +58,14 @@ export default function Attendance() {
 }
 // ── Admin Daily Marking ──
 function AdminDailyTab() {
-    const { user } = useAuth();
+    const { user, hasRole } = useAuth();
+    const isAdmin = hasRole("admin");
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
     const [dateFilter, setDateFilter] = useState(format(new Date(), "yyyy-MM-dd"));
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [syncingBiometric, setSyncingBiometric] = useState(false);
     const [markings, setMarkings] = useState<Record<string, {
         status: AttendanceStatus;
         checkIn: string;
@@ -151,6 +153,34 @@ function AdminDailyTab() {
         setSaving(false);
         fetchData();
     };
+    const syncBiometricPunches = async () => {
+        setSyncingBiometric(true);
+        try {
+            const { data: devs, error: devErr } = await supabase
+                .from("hikvision_devices")
+                .select("id, device_serial, ip_address, status")
+                .eq("status", "active");
+            if (devErr) throw devErr;
+            if (!devs || devs.length === 0) {
+                toast.error("No active Hikvision biometric device found. Import your device in Settings -> Hikvision.");
+                return;
+            }
+            let totalSynced = 0;
+            for (const d of devs) {
+                const { data, error } = await supabase.functions.invoke("hikvision-sync", {
+                    body: { action: "full-sync", device_id: d.id, device_serial: d.device_serial || d.ip_address },
+                });
+                if (error) throw error;
+                totalSynced += Number(data?.results?.["sync-attendance"]?.records_synced || 0);
+            }
+            toast.success(`Biometric sync complete (${totalSynced} new punch${totalSynced === 1 ? "" : "es"})`);
+            await fetchData();
+        } catch (err: any) {
+            toast.error(err?.message || "Biometric sync failed");
+        } finally {
+            setSyncingBiometric(false);
+        }
+    };
     const presentCount = Object.values(markings).filter(m => m.status === "present").length;
     const halfDayCount = Object.values(markings).filter(m => m.status === "half_day").length;
     const absentCount = Object.values(markings).filter(m => m.status === "absent" || m.status === "unpaid_leave").length;
@@ -171,10 +201,22 @@ function AdminDailyTab() {
           <Box component={Calendar} sx={{ height: "1rem", width: "1rem", color: "hsl(var(--muted-foreground))" }}/>
           <TextField type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} size="small" fullWidth slotProps={{ htmlInput: { "aria-label": "Input" } }} sx={{ width: "auto" }}/>
         </Box>
-        <Button onClick={saveAll} disabled={saving} variant="contained">
-          {saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}
-          Save All
-        </Button>
+        <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          {isAdmin && (
+            <Button
+              onClick={() => void syncBiometricPunches()}
+              disabled={syncingBiometric || saving}
+              variant="outlined"
+              startIcon={<RefreshCw size={15} />}
+            >
+              {syncingBiometric ? "Syncing..." : "Sync Biometric"}
+            </Button>
+          )}
+          <Button onClick={saveAll} disabled={saving || syncingBiometric} variant="contained">
+            {saving ? <Box component={Loader2} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem", animation: "spin 1s linear infinite" }}/> : <Box component={Save} sx={{ height: "1rem", width: "1rem", marginRight: "0.5rem" }}/>}
+            Save All
+          </Button>
+        </Box>
       </Box>
 
       {/* Attendance grid */}

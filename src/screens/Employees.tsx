@@ -26,7 +26,7 @@ interface Employee {
 }
 const emptyForm = {
     name: "", email: "", phone: "", role: "staff", department: "", designation: "",
-    salary: "0", joining_date: "", password: "", employee_type: "internal", createLogin: true,
+    salary: "0", joining_date: "", device_employee_code: "", password: "", employee_type: "internal", createLogin: true,
 };
 const roleColors = {
     admin: { backgroundColor: "color-mix(in srgb, hsl(var(--destructive)) 10%, transparent)", color: "hsl(var(--destructive))" },
@@ -68,7 +68,9 @@ export default function Employees() {
         setForm({
             name: e.name, email: e.email || "", phone: e.phone || "", role: e.role,
             department: e.department || "", designation: e.designation || "",
-            salary: String(e.salary), joining_date: e.joining_date || "", password: "",
+            salary: String(e.salary), joining_date: e.joining_date || "",
+            device_employee_code: e.device_employee_code || "",
+            password: "",
             employee_type: (e as any).employee_type || "internal",
             createLogin: false, // editing — no login toggle needed
         });
@@ -131,6 +133,7 @@ export default function Employees() {
         }
         setSaving(true);
         try {
+            const cleanDeviceCode = form.device_employee_code.trim() || null;
             if (editId) {
                 const { error } = await supabase.from("employees").update({
                     name: form.name, phone: form.phone || null, email: form.email || null,
@@ -138,6 +141,7 @@ export default function Employees() {
                     designation: form.designation || null,
                     salary: parseFloat(form.salary) || 0,
                     joining_date: form.joining_date || null,
+                    device_employee_code: cleanDeviceCode,
                     employee_type: form.employee_type,
                 } as any).eq("id", editId);
                 if (error)
@@ -153,6 +157,11 @@ export default function Employees() {
                         body: { action: "update", user_id: emp.user_id, full_name: form.name, phone: form.phone, role: form.role as AppRole },
                     });
                 }
+                if (cleanDeviceCode) {
+                    void supabase.functions.invoke("hikvision-sync", {
+                        body: { action: "manual-add-employee", employee_code: cleanDeviceCode, employee_name: form.name, erp_employee_id: editId },
+                    }).catch(() => null);
+                }
                 toast.success("Employee updated");
             }
             else {
@@ -167,14 +176,20 @@ export default function Employees() {
                         throw new Error(data.error);
                     userId = data?.user_id || null;
                 }
-                const { error } = await supabase.from("employees").insert({
+                const { data: insertedEmp, error } = await supabase.from("employees").insert({
                     user_id: userId, name: form.name, phone: form.phone || null, email: form.email || null,
                     role: form.role, department: form.department || null, designation: form.designation || null,
                     salary: parseFloat(form.salary) || 0, joining_date: form.joining_date || null,
+                    device_employee_code: cleanDeviceCode,
                     employee_type: form.employee_type,
-                } as any);
+                } as any).select("id").single();
                 if (error)
                     throw error;
+                if (cleanDeviceCode && insertedEmp?.id) {
+                    void supabase.functions.invoke("hikvision-sync", {
+                        body: { action: "manual-add-employee", employee_code: cleanDeviceCode, employee_name: form.name, erp_employee_id: insertedEmp.id },
+                    }).catch(() => null);
+                }
                 toast.success("Employee created");
             }
             setSheetOpen(false);
@@ -329,6 +344,14 @@ export default function Employees() {
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="date" value={form.joining_date} onChange={e => setForm(p => ({ ...p, joining_date: e.target.value }))} label={"Joining Date"} size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }}/></Box>
               <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField type="number" value={form.salary} onChange={e => setForm(p => ({ ...p, salary: e.target.value }))} label={"Salary"} size="small" fullWidth/></Box>
             </Box>
+            <TextField
+              value={form.device_employee_code}
+              onChange={e => setForm(p => ({ ...p, device_employee_code: e.target.value }))}
+              label="Biometric Device Employee ID"
+              placeholder="e.g. 1 (matches Hikvision user ID on DS-K1T343EFWX)"
+              size="small"
+              fullWidth
+            />
 
             {/* Create with Login toggle - only for new employees */}
             {!editId && (<Box sx={{ borderRadius: "0.75rem", borderWidth: "1px", borderColor: "hsl(var(--border))", padding: "1rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
