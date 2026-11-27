@@ -1919,19 +1919,25 @@ async function runDemoTest(deviceId: string | null): Promise<HikAny> {
 
   const deviceSerial = "DEMO-DEVICE-001";
   let logsCreated = 0;
+  let logsDeduped = 0;
   for (const evt of mockEvents) {
-    const stored = await storeAttendanceLog({
-      deviceId, employeeCode: testEmployeeCode, employeeName: testEmployeeName, erpEmployeeId: testEmployeeId,
-      deviceSerial, deviceName: "Demo Device", eventTime: evt.time, eventType: "attendance",
-      rawData: { demo: true, AccessControllerEvent: { employeeNoString: testEmployeeCode, attendanceStatus: evt.status, serialNo: evt.serial } },
-      dedupeKey: buildDedupeKey(deviceSerial, evt.serial), sourceMode: "demo-test",
-      attStatus: evt.status, verifyMode: "faceRecognition", serialNo: evt.serial,
-    });
-    if (stored) logsCreated++;
-    else results.errors.push("Log insert error (see server console)");
+    try {
+      const res = await persistAttendanceLog(pool, {
+        deviceId, employeeCode: testEmployeeCode, employeeName: testEmployeeName, erpEmployeeId: testEmployeeId,
+        deviceSerial, deviceName: "Demo Device", eventTime: evt.time, eventType: "attendance",
+        rawData: { demo: true, AccessControllerEvent: { employeeNoString: testEmployeeCode, attendanceStatus: evt.status, serialNo: evt.serial } },
+        dedupeKey: buildDedupeKey(deviceSerial, evt.serial), sourceMode: "demo-test",
+        attStatus: evt.status, verifyMode: "faceRecognition", serialNo: evt.serial,
+      });
+      if (res.stored) logsCreated++;
+      else if (res.duplicate) logsDeduped++;
+    } catch (e) {
+      if (isDatabaseUnavailable(e)) throw e;
+      results.errors.push(`Log insert error: ${(e as Error).message}`);
+    }
   }
   results.attendance_logs_created = logsCreated;
-  results.steps.push(`Inserted ${logsCreated}/5 attendance logs (deduped)`);
+  results.steps.push(`Inserted ${logsCreated}/5 attendance logs (${logsDeduped} already deduped)`);
 
   if (testEmployeeId) {
     const existing = await pool.query(

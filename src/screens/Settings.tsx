@@ -3198,6 +3198,8 @@ function HikvisionTab() {
             </Alert>
             <TextField
               label="Hik-Partner App Key (HIK_PARTNER_APP_KEY)"
+              name="hik_partner_app_key"
+              autoComplete="off"
               value={integrations["hik_partner_app_key"] || ""}
               onChange={(e) => updateField("hik_partner_app_key", e.target.value)}
               size="small"
@@ -3205,6 +3207,8 @@ function HikvisionTab() {
             />
             <TextField
               label="Hik-Partner Secret Key (HIK_PARTNER_SECRET_KEY)"
+              name="hik_partner_secret_key"
+              autoComplete="new-password"
               type={showSecretKey ? "text" : "password"}
               value={integrations["hik_partner_secret_key"] || ""}
               onChange={(e) => updateField("hik_partner_secret_key", e.target.value)}
@@ -3229,6 +3233,8 @@ function HikvisionTab() {
             />
             <TextField
               label="Webhook Signing Secret (Optional)"
+              name="hik_webhook_sign_secret"
+              autoComplete="new-password"
               type={showWebhookSecret ? "text" : "password"}
               value={integrations["hik_webhook_sign_secret"] || ""}
               onChange={(e) => updateField("hik_webhook_sign_secret", e.target.value)}
