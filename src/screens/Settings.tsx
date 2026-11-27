@@ -41,6 +41,21 @@ import { getBackendAuthHeaders, supabase } from "@/integrations/supabase/client"
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { primaryUserRole, sidebarRoleLabel, type AppRole } from "@/lib/sidebar-state";
+
+/** Coerce any thrown error or API error payload into a plain string so toast.error never triggers React #31. */
+function toErrorMessage(err: unknown, fallback = "Request failed"): string {
+  if (typeof err === "string" && err.trim()) return err;
+  if (err && typeof err === "object") {
+    const rec = err as Record<string, unknown>;
+    if (typeof rec.message === "string" && rec.message.trim()) return rec.message;
+    if (typeof rec.error === "string" && rec.error.trim()) return rec.error;
+    if (rec.error && typeof rec.error === "object") {
+      const nested = (rec.error as Record<string, unknown>).message;
+      if (typeof nested === "string" && nested.trim()) return nested;
+    }
+  }
+  return fallback;
+}
 import { AvatarUpload } from "@/components/AvatarUpload";
 import {
   Building2,
@@ -2147,7 +2162,7 @@ function WhatsAppTab() {
         error?: string;
       };
       if (!res.ok) {
-        if (!silent) toast.error(data?.error || "Could not reach WhatsApp gateway");
+        if (!silent) toast.error(toErrorMessage(data?.error, "Could not reach WhatsApp gateway"));
         return;
       }
       if (data?.success) {
@@ -2804,7 +2819,7 @@ function WhatsAppAutomationSection() {
       });
       if (result.data?.success) toast.success(`Test sent via ${result.data.channel}`);
       else if (result.data?.skipped) toast.info("No template configured for this event");
-      else toast.error(result.data?.error || "Test failed");
+      else toast.error(toErrorMessage(result.data?.error, "Test failed"));
     } catch {
       toast.error("Failed to test automation");
     }
@@ -3017,15 +3032,16 @@ function HikvisionTab() {
         toast.success("Hik-Partner Pro credentials verified!");
         setStep(2);
       } else {
-        const errMsg = typeof data?.error === "string" ? data.error : data?.error?.message || "Invalid credentials";
+        const errMsg = toErrorMessage(data?.error, "Invalid credentials");
         setCredentialStatus("invalid");
         setCredentialError(errMsg);
         toast.error(errMsg);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const errMsg = toErrorMessage(e, "Credential test failed");
       setCredentialStatus("invalid");
-      setCredentialError(e?.message || "Credential test failed");
-      toast.error(e.message || "Credential test failed");
+      setCredentialError(errMsg);
+      toast.error(errMsg);
     }
     setTestingCredentials(false);
   };
@@ -3038,9 +3054,9 @@ function HikvisionTab() {
       if (data?.success) {
         setSites(data.sites || []);
         toast.success(`Found ${data.sites?.length || 0} sites`);
-      } else toast.error(data?.error || "Failed");
-    } catch (e: any) {
-      toast.error(e.message);
+      } else toast.error(toErrorMessage(data?.error, "Failed to discover sites"));
+    } catch (e: unknown) {
+      toast.error(toErrorMessage(e, "Failed to discover sites"));
     }
     setLoadingSites(false);
   };
@@ -3061,9 +3077,9 @@ function HikvisionTab() {
       if (data?.success) {
         setCloudDevices(data.devices || []);
         toast.success(`Found ${data.devices?.length || 0} devices`);
-      } else toast.error(data?.error || "Failed");
-    } catch (e: any) {
-      toast.error(e.message);
+      } else toast.error(toErrorMessage(data?.error, "Failed to discover devices"));
+    } catch (e: unknown) {
+      toast.error(toErrorMessage(e, "Failed to discover devices"));
     }
     setLoadingDevices(false);
   };
@@ -3080,9 +3096,9 @@ function HikvisionTab() {
         const { data: devs } = await supabase.from("hikvision_devices").select("*").order("created_at");
         setSavedDevices(devs || []);
         setStep(4);
-      } else toast.error(data?.error || "Failed");
-    } catch (e: any) {
-      toast.error(e.message);
+      } else toast.error(toErrorMessage(data?.error, "Failed to import devices"));
+    } catch (e: unknown) {
+      toast.error(toErrorMessage(e, "Failed to import devices"));
     }
     setImportingDevices(false);
   };
@@ -3100,9 +3116,9 @@ function HikvisionTab() {
         ((data?.results?.["sync-attendance"]?.records_synced || 0) +
           (data?.results?.["sync-employees"]?.records_synced || 0));
       if (data?.success) toast.success(`${action.replace(/-/g, " ")} completed — ${syncedCount} records`);
-      else toast.error(data?.error || "Failed");
-    } catch (e: any) {
-      toast.error(e.message);
+      else toast.error(toErrorMessage(data?.error, "Sync failed"));
+    } catch (e: unknown) {
+      toast.error(toErrorMessage(e, "Sync failed"));
     }
     setSyncingAction(null);
   };

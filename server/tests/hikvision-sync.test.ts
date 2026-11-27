@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractEventDateKey, planAttendancePunchUpdate } from "../src/lib/hikvision-sync.js";
+import {
+  extractEventDateKey,
+  persistAttendanceLog,
+  persistEmployeeMapping,
+  planAttendancePunchUpdate,
+} from "../src/lib/hikvision-sync.js";
 
 test("extractEventDateKey preserves IST local calendar date even past midnight UTC boundaries", () => {
   assert.equal(extractEventDateKey("2026-11-27T01:15:00+05:30"), "2026-11-27");
@@ -54,4 +59,88 @@ test("planAttendancePunchUpdate shifts check_in earlier when backfill punches ar
   assert.equal(res.action, "update_check_in");
   assert.equal(res.checkInIso, "2026-11-27T09:30:00+05:30");
   assert.equal(res.checkOutIso, "2026-11-27T12:30:00.000Z");
+});
+
+test("persistAttendanceLog uses schema unique constraint (device_id, employee_code, event_time) and dedupes by dedupe_key", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const fakeDb = {
+    async query(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      if (sql.includes("WHERE dedupe_key = $1")) return { rows: [], rowCount: 0 };
+      if (sql.includes("INSERT INTO public.hikvision_attendance_logs")) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+  };
+
+  const first = await persistAttendanceLog(fakeDb, {
+    deviceId: "dev-uuid-1",
+    employeeCode: "1",
+    employeeName: "Rajat Lekhari",
+    erpEmployeeId: "emp-uuid-1",
+    deviceSerial: "FF6426490",
+    deviceName: "DS-K1T343EFWX",
+    eventTime: "2026-11-27T15:26:27+05:30",
+    eventType: "access",
+    rawData: { employeeNoString: "1" },
+    dedupeKey: "FF6426490:101",
+    sourceMode: "polling",
+    attStatus: "checkIn",
+    verifyMode: "face",
+    serialNo: "101",
+  });
+
+  assert.equal(first.stored, true);
+  assert.equal(calls.length, 2);
+  assert.ok(calls[1].sql.includes("ON CONFLICT (device_id, employee_code, event_time) DO NOTHING"));
+  assert.ok(!calls[1].sql.includes("ON CONFLICT (dedupe_key)"));
+
+  const dupDb = {
+    async query(sql: string) {
+      if (sql.includes("WHERE dedupe_key = $1")) return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      throw new Error("Should skip INSERT when dedupe_key already exists");
+    },
+  };
+  const second = await persistAttendanceLog(dupDb, {
+    deviceId: null,
+    employeeCode: "1",
+    employeeName: "Rajat Lekhari",
+    erpEmployeeId: null,
+    deviceSerial: "FF6426490",
+    deviceName: "",
+    eventTime: "2026-11-27T15:26:27+05:30",
+    eventType: "attendance",
+    rawData: {},
+    dedupeKey: "FF6426490:101",
+    sourceMode: "webhook",
+  });
+  assert.deepEqual(second, { stored: false, duplicate: true });
+});
+
+test("persistEmployeeMapping avoids duplicate NULL-device_id conflicts and upserts concrete device_id", async () => {
+  const nullCalls: string[] = [];
+  await persistEmployeeMapping(
+    {
+      async query(sql: string) {
+        nullCalls.push(sql);
+        if (sql.includes("SELECT id")) return { rows: [{ id: "map-1" }], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      },
+    },
+    { code: "1", name: "Rajat Lekhari", deviceId: null, erpEmployeeId: "emp-1" }
+  );
+  assert.equal(nullCalls.length, 2);
+  assert.ok(nullCalls[1].includes("UPDATE public.hikvision_employee_mapping"));
+
+  const devCalls: string[] = [];
+  await persistEmployeeMapping(
+    {
+      async query(sql: string) {
+        devCalls.push(sql);
+        return { rows: [], rowCount: 1 };
+      },
+    },
+    { code: "1", name: "Rajat Lekhari", deviceId: "dev-1", erpEmployeeId: "emp-1" }
+  );
+  assert.equal(devCalls.length, 1);
+  assert.ok(devCalls[0].includes("ON CONFLICT (device_employee_code, device_id) DO UPDATE"));
 });

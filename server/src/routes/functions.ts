@@ -24,7 +24,7 @@ import { escapeHtml, renderBrandedEmailHtml, resolveSmtpConfig, sendMailWithConf
 import { syncDocumentStock } from "../lib/inventory-ledger.js";
 import { appendChallanTimeline, CHALLAN_POD_ALLOWED_STATUSES, validatePublicQuotationResponse } from "../lib/public-documents.js";
 import { resolveHikvisionCredentials } from "../lib/hikvision-config.js";
-import { planAttendancePunchUpdate } from "../lib/hikvision-sync.js";
+import { persistAttendanceLog, persistEmployeeMapping, planAttendancePunchUpdate } from "../lib/hikvision-sync.js";
 import { handlePublicLeadRequest } from "../lib/public-lead.js";
 import { convertLeadTx, deleteLeadsTx } from "../lib/lead-actions.js";
 import { isValidAppRole, replaceUserRole } from "../lib/user-roles.js";
@@ -1533,41 +1533,24 @@ async function resolveAndLinkEmployeeByDeviceCode(
 async function upsertEmployeeMapping(args: {
   code: string; name: string; deviceId: string | null; erpEmployeeId?: string | null; cardNumber?: string | null;
 }) {
-  await pool.query(
-    `INSERT INTO public.hikvision_employee_mapping (device_employee_code, device_employee_name, device_id, erp_employee_id, card_number, synced_at)
-     VALUES ($1, $2, $3, $4, $5, now())
-     ON CONFLICT (device_employee_code, device_id) DO UPDATE
-       SET device_employee_name = EXCLUDED.device_employee_name,
-           card_number = COALESCE(EXCLUDED.card_number, hikvision_employee_mapping.card_number),
-           erp_employee_id = COALESCE(EXCLUDED.erp_employee_id, hikvision_employee_mapping.erp_employee_id),
-           synced_at = now()`,
-    [args.code, args.name, args.deviceId, args.erpEmployeeId ?? null, args.cardNumber ?? null]
-  );
+  await persistEmployeeMapping(pool, args);
 }
 
-/** Insert/update a hikvision_attendance_logs row, deduped by dedupe_key. Returns true when stored. */
+/** Insert/update a hikvision_attendance_logs row, deduped cleanly by dedupe_key & schema unique constraint. */
 async function storeAttendanceLog(args: {
   deviceId: string | null; employeeCode: string; employeeName: string; erpEmployeeId: string | null;
   deviceSerial: string; deviceName: string; eventTime: string; eventType: string; rawData: unknown;
   dedupeKey: string; sourceMode: string; attStatus?: string; verifyMode?: string; serialNo?: string;
+  onError?: (message: string) => void;
 }): Promise<boolean> {
   try {
-    const r = await pool.query(
-      `INSERT INTO public.hikvision_attendance_logs
-         (device_id, employee_code, employee_name, employee_id, device_ip, device_name, event_time, event_type,
-          raw_data, dedupe_key, source_mode, attendance_status, verify_mode, event_serial_no)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       ON CONFLICT (dedupe_key) DO NOTHING`,
-      [
-        args.deviceId, args.employeeCode, args.employeeName, args.erpEmployeeId, args.deviceSerial, args.deviceName,
-        args.eventTime, args.eventType, JSON.stringify(args.rawData ?? {}), args.dedupeKey, args.sourceMode,
-        args.attStatus || null, args.verifyMode || null, args.serialNo || null,
-      ]
-    );
-    return (r.rowCount ?? 0) > 0;
+    const res = await persistAttendanceLog(pool, args);
+    return res.stored;
   } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
-    console.warn("[hikvision] attendance log insert error:", (e as Error).message);
+    const msg = (e as Error).message;
+    console.warn("[hikvision] attendance log insert error:", msg);
+    args.onError?.(msg);
     return false;
   }
 }
@@ -1658,6 +1641,7 @@ async function pollMqAttendance(
   let totalSynced = 0;
   let totalMessages = 0;
   let pollAttempts = 0;
+  let anyStorageError = false;
 
   while (pollAttempts < 5) {
     pollAttempts++;
@@ -1673,6 +1657,7 @@ async function pollMqAttendance(
         break;
       }
       totalMessages += messages.length;
+      let batchHadStorageError = false;
 
       for (const msg of messages) {
         try {
@@ -1706,7 +1691,9 @@ async function pollMqAttendance(
               "mq_poll"
             );
             await upsertEmployeeMapping({ code: employeeCode, name: employeeName, deviceId, erpEmployeeId: matchedEmpId });
-            const m = await pool.query("SELECT * FROM public.hikvision_employee_mapping WHERE device_employee_code = $1 AND device_id = $2", [employeeCode, deviceId]);
+            const m = deviceId
+              ? await pool.query("SELECT * FROM public.hikvision_employee_mapping WHERE device_employee_code = $1 AND device_id = $2", [employeeCode, deviceId])
+              : await pool.query("SELECT * FROM public.hikvision_employee_mapping WHERE device_employee_code = $1 AND device_id IS NULL", [employeeCode]);
             mapping = m.rows[0];
             if (mapping) mappingMap.set(employeeCode, mapping);
           } else if (mapping && !mapping.erp_employee_id) {
@@ -1724,6 +1711,10 @@ async function pollMqAttendance(
             deviceId, employeeCode, employeeName, erpEmployeeId: mapping?.erp_employee_id || null,
             deviceSerial: msgDevSerial || deviceSerial, deviceName, eventTime, eventType: "access",
             rawData: alarmData, dedupeKey, sourceMode: "polling", attStatus, verifyMode, serialNo,
+            onError: (errMsg) => {
+              batchHadStorageError = true;
+              details.push(`Log insert error: ${errMsg}`);
+            },
           });
           if (stored) {
             totalSynced++;
@@ -1731,12 +1722,19 @@ async function pollMqAttendance(
               await convertToAttendanceRecord(mapping.erp_employee_id, eventTime, msgDevSerial || deviceSerial, "mq_poll");
             }
           }
-        } catch { /* skip event */ }
+        } catch (evtErr) {
+          if (isDatabaseUnavailable(evtErr)) throw evtErr;
+          batchHadStorageError = true;
+          details.push(`Event error: ${(evtErr as Error).message}`);
+        }
       }
 
       const batchId = msgResult.data?.batchId;
-      if (batchId) {
+      if (batchId && !batchHadStorageError) {
         try { await cloudApi(areaDomain, accessToken, "/api/hpcgw/v1/mq/offset", { batchId }); details.push(`Acked batch ${batchId}`); } catch { /* ignore */ }
+      } else if (batchId && batchHadStorageError) {
+        anyStorageError = true;
+        details.push(`Skipped ack for batch ${batchId} due to storage error`);
       }
     } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
@@ -1745,9 +1743,11 @@ async function pollMqAttendance(
     }
   }
 
-  await pool.query("UPDATE public.hikvision_devices SET last_sync_at = now() WHERE id = $1", [deviceId]);
+  if (deviceId) {
+    await pool.query("UPDATE public.hikvision_devices SET last_sync_at = now() WHERE id = $1", [deviceId]);
+  }
   details.push(`Total: ${totalMessages} messages, ${totalSynced} synced`);
-  return { success: true, records_synced: totalSynced, method: "cloud_mq", details };
+  return { success: !anyStorageError, records_synced: totalSynced, method: "cloud_mq", details };
 }
 
 // ISAPI backfill: historical attendance from device AcsEvent search
@@ -2338,10 +2338,15 @@ functionsRouter.post("/hikvision-webhook", asyncHandler(async (req, res) => {
         // Resolve device + employee mapping
         const deviceRec = await pool.query("SELECT id, name FROM public.hikvision_devices WHERE device_serial = $1 LIMIT 1", [deviceSerial]);
         const deviceId = deviceRec.rows[0]?.id ?? null;
-        const mapping = await pool.query(
-          "SELECT erp_employee_id FROM public.hikvision_employee_mapping WHERE device_employee_code = $1 AND device_id = $2 LIMIT 1",
-          [employeeCode, deviceId ?? "00000000-0000-0000-0000-000000000000"]
-        );
+        const mapping = deviceId
+          ? await pool.query(
+              "SELECT erp_employee_id FROM public.hikvision_employee_mapping WHERE device_employee_code = $1 AND device_id = $2 LIMIT 1",
+              [employeeCode, deviceId]
+            )
+          : await pool.query(
+              "SELECT erp_employee_id FROM public.hikvision_employee_mapping WHERE device_employee_code = $1 AND device_id IS NULL LIMIT 1",
+              [employeeCode]
+            );
         let erpEmployeeId: string | null = mapping.rows[0]?.erp_employee_id ?? null;
         if (!erpEmployeeId && employeeCode) {
           erpEmployeeId = await resolveAndLinkEmployeeByDeviceCode(
