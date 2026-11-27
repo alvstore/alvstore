@@ -10,13 +10,46 @@ import { prisma, pool } from "../db.js";
 import { env } from "../env.js";
 import { publicUrl } from "./storage.js";
 import { buildBrandedDocumentPdf, type BrandedDocumentPdfInput, type BrandedDocumentType } from "../lib/document-pdf.js";
+import { buildCashflowAuditPdf, buildPayrollSlipPdf } from "../lib/report-pdf.js";
+import {
+  aggregateCashMovementsForDate,
+  auditCarryForwardChain,
+  computeCashDayExpectedClosing,
+  normalizeDateKey,
+  recordFinanceSync,
+  syncDailyCashForDate,
+  type FinanceEntrySource,
+} from "../lib/finance-sync.js";
 import { escapeHtml, renderBrandedEmailHtml, resolveSmtpConfig, sendMailWithConfig } from "../lib/mailer.js";
 import { syncDocumentStock } from "../lib/inventory-ledger.js";
 import { appendChallanTimeline, CHALLAN_POD_ALLOWED_STATUSES, validatePublicQuotationResponse } from "../lib/public-documents.js";
 import { resolveHikvisionCredentials } from "../lib/hikvision-config.js";
 import { handlePublicLeadRequest } from "../lib/public-lead.js";
+import { convertLeadTx, deleteLeadsTx } from "../lib/lead-actions.js";
 import { isValidAppRole, replaceUserRole } from "../lib/user-roles.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
+import {
+  connectGatewaySession,
+  disconnectGatewaySession,
+  getGatewaySessionStatus,
+  normalizePhoneLast10,
+  normalizeWhatsappNumber,
+  parseGatewayWebhookPayload,
+  readLocalStorageUploadBase64,
+  resolveWhatsappConfig,
+  sendGatewayMedia,
+  sendGatewayText,
+  verifyGatewayWebhook,
+  type NormalizedInboundMessage,
+  type NormalizedStatusUpdate,
+  type WhatsappProvider,
+} from "../lib/whatsapp-gateway.js";
+import {
+  promoteWhatsappChatToLead,
+  recordOutboundWhatsappChatMessage,
+  syncInboundWhatsappMessages,
+  syncWhatsappDeliveryStatuses,
+} from "../lib/whatsapp-sync.js";
 
 const DOC_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STAFF_ROLES = new Set(["admin", "staff", "technician"]);
@@ -476,15 +509,101 @@ async function sendWhatsAppMessage(args: {
   message?: string;
   template_name?: string;
   template_params?: Record<string, string> | string[];
-}): Promise<{ success: boolean; error?: string; waMessageId?: string | null; data?: unknown }> {
+  file_url?: string;
+  file_name?: string;
+  file_type?: string;
+  media_base64?: string;
+}): Promise<{
+  success: boolean;
+  error?: string;
+  waMessageId?: string | null;
+  provider?: WhatsappProvider;
+  data?: unknown;
+}> {
   const settings = await getSettings();
-  const apiUrl = (settings.whatsapp_api_url as string) || "";
-  const apiKey = (settings.whatsapp_api_key as string) || "";
-  const phoneId = (settings.whatsapp_phone_id as string) || "";
-  if (!apiUrl || !apiKey) {
-    return { success: false, error: "WhatsApp API not configured. Go to Settings > WhatsApp to configure." };
+  const cfg = resolveWhatsappConfig(
+    {
+      whatsapp_api_url: settings.whatsapp_api_url as string | null,
+      whatsapp_api_key: settings.whatsapp_api_key as string | null,
+      whatsapp_phone_id: settings.whatsapp_phone_id as string | null,
+      integrations: (settings.integrations as Record<string, unknown>) || null,
+    },
+    env
+  );
+
+  if (!cfg.configured) {
+    return {
+      success: false,
+      error: "WhatsApp not configured. Link a number or configure credentials in Settings -> WhatsApp.",
+    };
   }
-  const to = String(args.to).replace(/\D/g, "");
+
+  const normalizedTo = normalizeWhatsappNumber(args.to);
+  if (!normalizedTo) {
+    return { success: false, error: "Invalid recipient phone number" };
+  }
+
+  // Self-hosted Gateway path (OpenWA / Evolution API v2)
+  if (cfg.provider === "openwa" || cfg.provider === "evolution") {
+    if (args.media_base64 || args.file_url) {
+      let base64 = args.media_base64;
+      let mimeType = args.file_type || "application/octet-stream";
+      let mediaUrl: string | undefined;
+
+      if (!base64 && args.file_url) {
+        const localFile = await readLocalStorageUploadBase64(args.file_url, env.uploadsDir).catch(() => null);
+        if (localFile) {
+          base64 = localFile.base64;
+          if (!args.file_type) mimeType = localFile.mimeType;
+        } else if (args.file_url.startsWith("http://") || args.file_url.startsWith("https://")) {
+          mediaUrl = args.file_url;
+        } else {
+          mediaUrl = `${env.appOrigin.replace(/\/$/, "")}${args.file_url.startsWith("/") ? "" : "/"}${args.file_url}`;
+        }
+      }
+
+      const gwRes = await sendGatewayMedia(cfg, {
+        to: normalizedTo,
+        fileName: args.file_name || "attachment",
+        mimeType,
+        caption: args.message || "",
+        base64,
+        mediaUrl,
+      });
+      return {
+        success: gwRes.sent,
+        error: gwRes.error,
+        waMessageId: gwRes.messageId ?? null,
+        provider: gwRes.provider,
+      };
+    }
+
+    let textBody = (args.message || "").trim();
+    if (!textBody && args.template_name) {
+      const paramText = args.template_params
+        ? (Array.isArray(args.template_params) ? args.template_params : Object.values(args.template_params)).join(" — ")
+        : "";
+      textBody = paramText ? `${args.template_name}: ${paramText}` : args.template_name;
+    }
+    if (!textBody) return { success: false, error: "Message content required" };
+
+    const gwRes = await sendGatewayText(cfg, { to: normalizedTo, text: textBody });
+    return {
+      success: gwRes.sent,
+      error: gwRes.error,
+      waMessageId: gwRes.messageId ?? null,
+      provider: gwRes.provider,
+    };
+  }
+
+  // Meta Official Cloud API path
+  const baseUrl = (cfg.metaApiUrl || "https://graph.facebook.com/v21.0").replace(/\/+$/, "");
+  const endpointUrl = baseUrl.endsWith("/messages")
+    ? baseUrl
+    : cfg.metaPhoneId
+      ? `${baseUrl}/${cfg.metaPhoneId}/messages`
+      : `${baseUrl}/messages`;
+
   let payload: Record<string, unknown>;
   if (args.template_name) {
     const params = args.template_params
@@ -492,7 +611,7 @@ async function sendWhatsAppMessage(args: {
       : undefined;
     payload = {
       messaging_product: "whatsapp",
-      to,
+      to: normalizedTo,
       type: "template",
       template: {
         name: args.template_name,
@@ -500,21 +619,42 @@ async function sendWhatsAppMessage(args: {
         components: params ? [{ type: "body", parameters: params }] : undefined,
       },
     };
+  } else if (args.file_url && args.file_url.startsWith("https://")) {
+    const isPdf = (args.file_type || "").includes("pdf") || (args.file_name || "").endsWith(".pdf");
+    const isImg = (args.file_type || "").startsWith("image/");
+    if (isImg) {
+      payload = {
+        messaging_product: "whatsapp",
+        to: normalizedTo,
+        type: "image",
+        image: { link: args.file_url, caption: args.message || args.file_name || "" },
+      };
+    } else if (isPdf) {
+      payload = {
+        messaging_product: "whatsapp",
+        to: normalizedTo,
+        type: "document",
+        document: { link: args.file_url, filename: args.file_name || "document.pdf", caption: args.message || "" },
+      };
+    } else {
+      if (!args.message) return { success: false, error: "Message content required" };
+      payload = { messaging_product: "whatsapp", to: normalizedTo, type: "text", text: { body: args.message } };
+    }
   } else {
     if (!args.message) return { success: false, error: "Message content required" };
-    payload = { messaging_product: "whatsapp", to, type: "text", text: { body: args.message } };
+    payload = { messaging_product: "whatsapp", to: normalizedTo, type: "text", text: { body: args.message } };
   }
 
-  const waRes = await fetch(`${apiUrl}/${phoneId}/messages`, {
+  const waRes = await fetch(endpointUrl, {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${cfg.metaToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   const waData = (await waRes.json().catch(() => ({}))) as { messages?: { id?: string }[] } & Record<string, unknown>;
   if (!waRes.ok) {
-    return { success: false, error: `WhatsApp API error [${waRes.status}]: ${JSON.stringify(waData)}` };
+    return { success: false, provider: "meta", error: `WhatsApp API error [${waRes.status}]: ${JSON.stringify(waData)}` };
   }
-  return { success: true, waMessageId: waData?.messages?.[0]?.id ?? null, data: waData };
+  return { success: true, provider: "meta", waMessageId: waData?.messages?.[0]?.id ?? null, data: waData };
 }
 
 // ---------------------------------------------------------------------------
@@ -559,31 +699,60 @@ functionsRouter.get("/send-whatsapp", asyncHandler(async (req, res) => {
   res.status(200).send("OK");
 }));
 
-functionsRouter.post("/send-whatsapp", requireAuth, asyncHandler(async (req, res) => {
+functionsRouter.post("/send-whatsapp", requireStaff, asyncHandler(async (req, res) => {
   try {
-    const { to, message, template_name, template_params, conversation_id, sender_id } = req.body ?? {};
+    const {
+      to,
+      message,
+      template_name,
+      template_params,
+      conversation_id,
+      sender_id,
+      file_url,
+      file_name,
+      file_type,
+      customer_name,
+    } = req.body ?? {};
     if (!to) return fail(res, "Recipient phone number required");
-    const result = await sendWhatsAppMessage({ to, message, template_name, template_params });
+
+    const textContent = String(message || "").trim() || (file_name ? `📎 ${file_name}` : "");
+    const result = await sendWhatsAppMessage({
+      to: String(to),
+      message: textContent || undefined,
+      template_name,
+      template_params,
+      file_url: typeof file_url === "string" ? file_url : undefined,
+      file_name: typeof file_name === "string" ? file_name : undefined,
+      file_type: typeof file_type === "string" ? file_type : undefined,
+    });
     if (!result.success) return fail(res, result.error ?? "WhatsApp send failed");
 
-    // Record outbound message in the chat tables (as the original did)
-    if (conversation_id && message) {
+    let recordedConversationId: string | null = conversation_id ?? null;
+    if (textContent || file_url) {
       try {
-        await pool.query(
-          `INSERT INTO public.chat_messages (conversation_id, sender_id, content, channel, whatsapp_message_id, delivery_status)
-           VALUES ($1, $2, $3, 'whatsapp', $4, 'sent')`,
-          [conversation_id, sender_id ?? null, message, result.waMessageId]
-        );
-        await pool.query(
-          `UPDATE public.chat_conversations SET last_message = $1, last_message_at = now() WHERE id = $2`,
-          [message, conversation_id]
-        );
+        const rec = await recordOutboundWhatsappChatMessage(pool, {
+          phone: String(to),
+          conversationId: conversation_id ?? null,
+          senderId: req.user?.id ?? sender_id ?? null,
+          customerName: typeof customer_name === "string" ? customer_name : null,
+          content: textContent || (file_name ? `📎 ${file_name}` : "WhatsApp attachment"),
+          waMessageId: result.waMessageId ?? null,
+          fileUrl: typeof file_url === "string" ? file_url : null,
+          fileName: typeof file_name === "string" ? file_name : null,
+          fileType: typeof file_type === "string" ? file_type : null,
+        });
+        recordedConversationId = rec.conversationId;
       } catch (e) {
-    if (isDatabaseUnavailable(e)) throw e;
+        if (isDatabaseUnavailable(e)) throw e;
         console.warn("[send-whatsapp] failed to record chat message:", (e as Error).message);
       }
     }
-    return ok(res, { success: true, whatsapp_message_id: result.waMessageId });
+    return ok(res, {
+      success: true,
+      whatsapp_message_id: result.waMessageId,
+      conversation_id: recordedConversationId,
+      provider: result.provider,
+    });
   } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
     return fail(res, (e as Error).message, 500);
@@ -776,16 +945,32 @@ functionsRouter.post("/whatsapp-automation", requireAuth, asyncHandler(async (re
     let channel = "none";
     let waMessageId: string | null = null;
 
-    // Try WhatsApp first
+    // Try WhatsApp first (supports OpenWA, Evolution API v2, and Meta Official API)
     const settings = await getSettings();
-    if (settings.whatsapp_api_url && settings.whatsapp_api_key && settings.whatsapp_phone_id) {
+    const waCfg = resolveWhatsappConfig(
+      {
+        whatsapp_api_url: settings.whatsapp_api_url as string | null,
+        whatsapp_api_key: settings.whatsapp_api_key as string | null,
+        whatsapp_phone_id: settings.whatsapp_phone_id as string | null,
+        integrations: (settings.integrations as Record<string, unknown>) || null,
+      },
+      env
+    );
+    if (waCfg.configured) {
       const waResult = await sendWhatsAppMessage({ to: phone, message: messageBody });
       if (waResult.success) {
         sent = true;
         channel = "whatsapp";
         waMessageId = waResult.waMessageId ?? null;
+        await recordOutboundWhatsappChatMessage(pool, {
+          phone,
+          senderId: req.user?.id ?? null,
+          customerName: typeof variables?.customer_name === "string" ? variables.customer_name : null,
+          content: messageBody,
+          waMessageId,
+        }).catch(() => {});
       } else {
-        console.error("[whatsapp-automation] WhatsApp API error:", waResult.error);
+        console.error("[whatsapp-automation] WhatsApp error:", waResult.error);
       }
     }
 
@@ -829,100 +1014,107 @@ async function verifyMetaWebhook(req: Request, res: Response) {
 functionsRouter.get("/whatsapp-webhook", verifyMetaWebhook);
 
 functionsRouter.post("/whatsapp-webhook", asyncHandler(async (req, res) => {
-  // Always return 200 to Meta to prevent retries
   try {
-    const body = req.body as Record<string, unknown>;
-    const entries = (body?.entry as Record<string, unknown>[]) ?? [];
-    for (const entry of entries) {
-      const changes = (entry?.changes as Record<string, unknown>[]) ?? [];
-      for (const change of changes) {
-        const value = change?.value as Record<string, unknown> | undefined;
-        if (!value) continue;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const settings = await getSettings();
+    const cfg = resolveWhatsappConfig(
+      {
+        whatsapp_api_url: settings.whatsapp_api_url as string | null,
+        whatsapp_api_key: settings.whatsapp_api_key as string | null,
+        whatsapp_phone_id: settings.whatsapp_phone_id as string | null,
+        integrations: (settings.integrations as Record<string, unknown>) || null,
+      },
+      env
+    );
 
-        // Incoming messages
-        const messages = (value.messages as Record<string, unknown>[]) ?? [];
-        for (const msg of messages) {
-          const fromNumber = String(msg.from ?? "");
-          const messageType = (msg.type as string) || "text";
-          const messageBody =
-            ((msg.text as Record<string, unknown>)?.body as string) ||
-            (msg.caption as string) ||
-            `[${messageType}]`;
-          const waTimestamp = msg.timestamp
-            ? new Date(parseInt(msg.timestamp as string, 10) * 1000).toISOString()
-            : new Date().toISOString();
+    // Meta Official Cloud API webhook payload
+    if (body.object === "whatsapp_business_account" || Array.isArray(body.entry)) {
+      const entries = (body.entry as Record<string, unknown>[]) ?? [];
+      const inboundList: NormalizedInboundMessage[] = [];
+      const statusList: NormalizedStatusUpdate[] = [];
 
-          // Find open conversation
-          const convoRes = await pool.query(
-            `SELECT id, lead_id FROM public.whatsapp_conversations WHERE phone_number = $1 AND status = 'open' LIMIT 1`,
-            [fromNumber]
-          );
-          let convo = convoRes.rows[0] as { id: string; lead_id: string | null } | undefined;
+      for (const entry of entries) {
+        const changes = (entry?.changes as Record<string, unknown>[]) ?? [];
+        for (const change of changes) {
+          const value = change?.value as Record<string, unknown> | undefined;
+          if (!value) continue;
 
-          // Look up lead by phone, else create a draft lead
-          let leadId: string | null = null;
-          const leadRes = await pool.query("SELECT id FROM public.leads WHERE phone = $1 OR phone = $2 LIMIT 1", [fromNumber, `+${fromNumber}`]);
-          if (leadRes.rows.length) {
-            leadId = leadRes.rows[0].id;
-          } else {
-            const newLead = await pool.query(
-              `INSERT INTO public.leads (name, phone, source, status) VALUES ($1, $2, 'whatsapp', 'new') RETURNING id`,
-              [`WhatsApp ${fromNumber}`, fromNumber]
-            );
-            leadId = newLead.rows[0]?.id ?? null;
+          const contacts = Array.isArray(value.contacts)
+            ? (value.contacts as Record<string, unknown>[])
+            : [];
+          const contactNameByWaId = new Map<string, string>();
+          for (const c of contacts) {
+            const waId = String(c.wa_id ?? "");
+            const profName = String(((c.profile as Record<string, unknown>)?.name ?? "")).trim();
+            if (waId && profName) contactNameByWaId.set(waId, profName);
           }
 
-          if (!convo) {
-            const newConvo = await pool.query(
-              `INSERT INTO public.whatsapp_conversations (phone_number, lead_id, status) VALUES ($1, $2, 'open') RETURNING id`,
-              [fromNumber, leadId]
-            );
-            convo = { id: newConvo.rows[0].id, lead_id: leadId };
+          const messages = (value.messages as Record<string, unknown>[]) ?? [];
+          for (const msg of messages) {
+            const fromRaw = String(msg.from ?? "");
+            const fromPhone = normalizeWhatsappNumber(fromRaw);
+            const last10 = normalizePhoneLast10(fromPhone);
+            if (!last10 || last10.length < 7) continue;
+
+            const messageType = (msg.type as string) || "text";
+            const messageBody =
+              ((msg.text as Record<string, unknown>)?.body as string) ||
+              (msg.caption as string) ||
+              `[${messageType}]`;
+            const waTimestamp = msg.timestamp
+              ? new Date(parseInt(String(msg.timestamp), 10) * 1000).toISOString()
+              : new Date().toISOString();
+
+            inboundList.push({
+              externalId: String(msg.id ?? `meta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+              fromPhone,
+              last10,
+              senderName: contactNameByWaId.get(fromRaw),
+              text: messageBody,
+              timestampIso: waTimestamp,
+            });
           }
 
-          // Insert message
-          await pool.query(
-            `INSERT INTO public.whatsapp_messages (wa_message_id, conversation_id, lead_id, direction, type, body, media_url, status, timestamp)
-             VALUES ($1, $2, $3, 'inbound', $4, $5, $6, 'received', $7)`,
-            [
-              msg.id ?? null,
-              convo.id,
-              leadId,
-              messageType,
-              messageBody,
-              ((msg.image as Record<string, unknown>)?.url as string) ||
-                ((msg.document as Record<string, unknown>)?.url as string) ||
-                ((msg.video as Record<string, unknown>)?.url as string) ||
-                null,
-              waTimestamp,
-            ]
-          );
-
-          await pool.query("UPDATE public.whatsapp_conversations SET last_message_at = $1 WHERE id = $2", [waTimestamp, convo.id]);
-
-          // Notify admins
-          const admins = await pool.query("SELECT user_id FROM public.user_roles WHERE role = 'admin'");
-          for (const a of admins.rows) {
-            await pool.query(
-              `INSERT INTO public.notification_feed (user_id, type, title, body, metadata)
-               VALUES ($1, 'whatsapp', 'New WhatsApp Message', $2, $3)`,
-              [a.user_id, `From ${fromNumber}: ${messageBody.slice(0, 100)}`, JSON.stringify({ conversation_id: convo.id, lead_id: leadId })]
-            );
+          const statuses = (value.statuses as Record<string, unknown>[]) ?? [];
+          for (const s of statuses) {
+            const st = String(s.status ?? "").toLowerCase();
+            if ((st === "sent" || st === "delivered" || st === "read" || st === "failed") && s.id) {
+              statusList.push({ externalId: String(s.id), status: st });
+            }
           }
-        }
-
-        // Status updates (sent / delivered / read / failed)
-        const statuses = (value.statuses as Record<string, unknown>[]) ?? [];
-        for (const status of statuses) {
-          await pool.query("UPDATE public.whatsapp_messages SET status = $1 WHERE wa_message_id = $2", [status.status, status.id]);
         }
       }
+
+      if (inboundList.length > 0) await syncInboundWhatsappMessages(pool, inboundList);
+      if (statusList.length > 0) await syncWhatsappDeliveryStatuses(pool, statusList);
+      return res.json({ success: true, provider: "meta", processed: inboundList.length });
     }
-    res.json({ success: true });
+
+    // OpenWA / Evolution API v2 webhook payload — enforce configured HMAC / secret header
+    const verdict = verifyGatewayWebhook({
+      secret: cfg.webhookSecret,
+      headers: req.headers,
+      rawBody: (req as Request & { rawBody?: Buffer }).rawBody,
+      bodyText: JSON.stringify(body),
+    });
+    if (!verdict.ok) {
+      return res.status(401).json({ success: false, error: verdict.reason || "Invalid webhook signature" });
+    }
+
+    const parsed = parseGatewayWebhookPayload(body);
+    if (parsed.kind === "inbound_messages") {
+      const summary = await syncInboundWhatsappMessages(pool, parsed.messages);
+      return res.json({ success: true, provider: cfg.provider, ...summary });
+    }
+    if (parsed.kind === "status_updates") {
+      const updated = await syncWhatsappDeliveryStatuses(pool, parsed.updates);
+      return res.json({ success: true, provider: cfg.provider, updated });
+    }
+    return res.json({ success: true, provider: cfg.provider, kind: parsed.kind });
   } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
     console.error("[whatsapp-webhook] error:", e);
-    res.json({ success: true });
+    return res.json({ success: true });
   }
 }));
 
@@ -1034,6 +1226,30 @@ functionsRouter.post("/razorpay-webhook", asyncHandler(async (req, res) => {
          VALUES ('RAZORPAY_PAYMENT_RECEIVED', 'payment', $1, $2)`,
         [payment?.id ?? null, `Razorpay ${eventType}: ₹${amount} received. Invoice: ${invoiceId || "N/A"}`]
       ).catch((e) => console.warn("[razorpay-webhook] audit log failed:", (e as Error).message));
+
+      if (amount > 0) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await recordFinanceSync(client, {
+            entry_source: "razorpay",
+            source_id: `rzp:${payment?.id || paymentLinkId || Date.now()}`,
+            type: "income",
+            amount,
+            payment_mode: "razorpay",
+            category_name: "Invoice Sales",
+            reference: invoiceId || paymentLinkId || payment?.id || null,
+            description: `Razorpay ${eventType}${invoiceId ? ` · Invoice ${invoiceId}` : ""}`,
+            staff_name: "Razorpay Webhook",
+          });
+          await client.query("COMMIT");
+        } catch (syncErr) {
+          await client.query("ROLLBACK").catch(() => {});
+          console.warn("[razorpay-webhook] finance sync failed:", (syncErr as Error).message);
+        } finally {
+          client.release();
+        }
+      }
 
       console.log(`[razorpay-webhook] Processed ${eventType}: ₹${amount}`);
     }
@@ -2652,6 +2868,925 @@ functionsRouter.post("/public-challan-pod", asyncHandler(async (req, res) => {
   } catch (e) {
     if (isDatabaseUnavailable(e)) throw e;
     const status = (e as { httpStatus?: number }).httpStatus || 500;
+    return fail(res, (e as Error).message, status);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// finance-sync — idempotent multi-channel ledger & cash drawer synchronization
+// ---------------------------------------------------------------------------
+const ALLOWED_FIN_SOURCES = new Set<FinanceEntrySource>([
+  "manual",
+  "pos",
+  "invoice",
+  "payment",
+  "payment_register",
+  "repair",
+  "purchase_bill",
+  "supplier",
+  "technician",
+  "payroll",
+  "advance",
+  "advance_refund",
+  "razorpay",
+]);
+
+functionsRouter.post("/finance-sync", requireStaff, asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const amount = Number(body.amount);
+  const type = body.type === "expense" ? "expense" : body.type === "income" ? "income" : null;
+  if (!type) return fail(res, "type must be income or expense", 400);
+  if (!Number.isFinite(amount) || amount <= 0) return fail(res, "amount must be greater than zero", 400);
+
+  const entrySourceRaw = String(body.entry_source || "manual").trim() as FinanceEntrySource;
+  const entrySource: FinanceEntrySource = ALLOWED_FIN_SOURCES.has(entrySourceRaw) ? entrySourceRaw : "manual";
+  if (body.account_id && !DOC_UUID_RE.test(String(body.account_id))) return fail(res, "Invalid account_id", 400);
+  if (body.category_id && !DOC_UUID_RE.test(String(body.category_id))) return fail(res, "Invalid category_id", 400);
+  if (body.customer_id && !DOC_UUID_RE.test(String(body.customer_id))) return fail(res, "Invalid customer_id", 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await recordFinanceSync(client, {
+      entry_source: entrySource,
+      source_id: typeof body.source_id === "string" ? body.source_id : null,
+      type,
+      amount,
+      date: typeof body.date === "string" ? body.date : undefined,
+      payment_mode: typeof body.payment_mode === "string" ? body.payment_mode : "cash",
+      account_id: body.account_id || null,
+      category_name: typeof body.category_name === "string" ? body.category_name : null,
+      category_id: body.category_id || null,
+      customer_id: body.customer_id || null,
+      reference: typeof body.reference === "string" ? body.reference : null,
+      description: typeof body.description === "string" ? body.description : null,
+      staff_name: typeof body.staff_name === "string" ? body.staff_name : req.user?.email || null,
+      user_id: req.user?.id || null,
+      sync_cash_control: body.sync_cash_control !== false,
+    });
+    await client.query("COMMIT");
+    return ok(res, { success: true, ...result });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  } finally {
+    client.release();
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// cash-control-context — carry-forward baseline, non-cash split & chain audit
+// ---------------------------------------------------------------------------
+functionsRouter.get("/cash-control-context", requireStaff, asyncHandler(async (req, res) => {
+  try {
+    const targetDate = normalizeDateKey(typeof req.query.date === "string" ? req.query.date : undefined);
+    const [priorRes, allDaysRes, nonCashRes] = await Promise.all([
+      pool.query<Record<string, unknown>>(
+        `SELECT * FROM public.daily_cash_control WHERE date < $1::date ORDER BY date DESC LIMIT 1`,
+        [targetDate]
+      ),
+      pool.query<Record<string, unknown>>(
+        `SELECT * FROM public.daily_cash_control ORDER BY date DESC LIMIT 120`
+      ),
+      pool.query<{ type: string; payment_mode: string | null; total: string }>(
+        `SELECT ft.type, COALESCE(ft.payment_mode, fa.type, 'bank') AS payment_mode, COALESCE(SUM(ft.amount), 0) AS total
+         FROM public.finance_transactions ft
+         LEFT JOIN public.finance_accounts fa ON fa.id = ft.account_id
+         WHERE ft.date = $1::date
+           AND ft.type IN ('income', 'expense')
+           AND (fa.type IS DISTINCT FROM 'cash')
+           AND (fa.type = 'bank' OR LOWER(COALESCE(ft.payment_mode, '')) NOT IN ('cash', 'petty_cash', 'drawer', ''))
+         GROUP BY ft.type, COALESCE(ft.payment_mode, fa.type, 'bank')`,
+        [targetDate]
+      ),
+    ]);
+
+    const prior = priorRes.rows[0] ?? null;
+    const suggestedOpening = prior
+      ? Number(prior.closing_cash ?? prior.expected_closing ?? prior.opening_cash ?? 0)
+      : 0;
+
+    const chainAudit = auditCarryForwardChain(
+      allDaysRes.rows.map((r) => ({
+        date: normalizeDateKey(String(r.date)),
+        opening_cash: Number(r.opening_cash || 0),
+        closing_cash: r.closing_cash != null ? Number(r.closing_cash) : null,
+        expected_closing: r.expected_closing != null ? Number(r.expected_closing) : null,
+        pos_total: Number(r.pos_total || 0),
+        auto_income: Number(r.auto_income || 0),
+        manual_income: Number(r.manual_income || 0),
+        transfer_in: Number(r.transfer_in || 0),
+        auto_expense: Number(r.auto_expense || 0),
+        manual_expense: Number(r.manual_expense || 0),
+        transfer_out: Number(r.transfer_out || 0),
+        status: String(r.status || "open"),
+        opening_override_reason: (r.opening_override_reason as string | null) ?? null,
+      }))
+    );
+
+    // Check closed days in the last 30 days for post-close ledger mutations
+    const postCloseAlerts: Record<string, { liveExpected: number; savedExpected: number; delta: number }> = {};
+    for (const row of allDaysRes.rows.slice(0, 30)) {
+      if (row.status !== "closed") continue;
+      const dk = normalizeDateKey(String(row.date));
+      const agg = await aggregateCashMovementsForDate(pool, dk);
+      const liveHasTxns =
+        agg.pos_total + agg.auto_income + agg.manual_income + agg.auto_expense + agg.manual_expense + agg.transfer_in + agg.transfer_out > 0;
+      if (!liveHasTxns) continue;
+      const liveExpected = computeCashDayExpectedClosing({ opening_cash: Number(row.opening_cash || 0), ...agg });
+      const savedExpected = row.expected_closing != null
+        ? Number(row.expected_closing)
+        : computeCashDayExpectedClosing(row as any);
+      const delta = Math.round((liveExpected - savedExpected) * 100) / 100;
+      if (Math.abs(delta) >= 0.01) {
+        postCloseAlerts[dk] = { liveExpected, savedExpected, delta };
+      }
+    }
+
+    let nonCashIncome = 0;
+    let nonCashExpense = 0;
+    const channelBreakdown: Record<string, { income: number; expense: number }> = {};
+    for (const r of nonCashRes.rows) {
+      const val = Number(r.total || 0);
+      const mode = String(r.payment_mode || "bank").toLowerCase();
+      if (!channelBreakdown[mode]) channelBreakdown[mode] = { income: 0, expense: 0 };
+      if (r.type === "income") {
+        nonCashIncome += val;
+        channelBreakdown[mode].income += val;
+      } else {
+        nonCashExpense += val;
+        channelBreakdown[mode].expense += val;
+      }
+    }
+
+    return ok(res, {
+      targetDate,
+      previousDay: prior
+        ? {
+            date: normalizeDateKey(String(prior.date)),
+            status: prior.status,
+            opening_cash: Number(prior.opening_cash || 0),
+            closing_cash: prior.closing_cash != null ? Number(prior.closing_cash) : null,
+            expected_closing: prior.expected_closing != null ? Number(prior.expected_closing) : null,
+          }
+        : null,
+      suggestedOpening,
+      nonCashSummary: {
+        income: Math.round(nonCashIncome * 100) / 100,
+        expense: Math.round(nonCashExpense * 100) / 100,
+        net: Math.round((nonCashIncome - nonCashExpense) * 100) / 100,
+        byChannel: channelBreakdown,
+      },
+      chainAudit,
+      postCloseAlerts,
+    });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// cash-control-recompute — recomputes open day or admin-reopens closed day
+// ---------------------------------------------------------------------------
+functionsRouter.post("/cash-control-recompute", requireStaff, asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const dateKey = normalizeDateKey(typeof body.date === "string" ? body.date : undefined);
+  const reopen = Boolean(body.reopen);
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+
+  if (reopen) {
+    if (!req.user?.roles.includes("admin")) {
+      return fail(res, "Admin role required to reopen a closed day", 403);
+    }
+    if (!reason) return fail(res, "Reopen reason is required", 400);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    if (reopen) {
+      await client.query(
+        `UPDATE public.daily_cash_control
+         SET status = 'open', reopened_by = $2::uuid, reopened_at = now()
+         WHERE date = $1::date`,
+        [dateKey, req.user?.id || null]
+      );
+      await client.query(
+        `INSERT INTO public.finance_audit_log (action, entity_type, details, staff_name, user_id)
+         VALUES ('DAY_REOPENED', 'cash_control', $1, $2, $3::uuid)`,
+        [`Day ${dateKey} reopened for reconciliation. Reason: ${reason}`, req.user?.email || "Admin", req.user?.id || null]
+      );
+    }
+
+    const updated = await syncDailyCashForDate(client, dateKey, {
+      userId: req.user?.id || null,
+      staffName: req.user?.email || null,
+      allowCreate: Boolean(body.allow_create),
+    });
+    await client.query("COMMIT");
+    return ok(res, { success: true, record: updated });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  } finally {
+    client.release();
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// cashflow-audit-pdf — Branded A4 Period Cash Flow & Daily Control Report
+// ---------------------------------------------------------------------------
+functionsRouter.get("/cashflow-audit-pdf", requireStaff, asyncHandler(async (req, res) => {
+  try {
+    const toDate = normalizeDateKey(typeof req.query.to === "string" ? req.query.to : undefined);
+    const fromDefault = `${toDate.slice(0, 8)}01`;
+    const fromDate = normalizeDateKey(typeof req.query.from === "string" ? req.query.from : fromDefault);
+    const entrySourceFilter = typeof req.query.entry_source === "string" ? req.query.entry_source : "all";
+    const channelFilter = typeof req.query.channel === "string" ? req.query.channel : "all";
+    const download = req.query.download === "1" || req.query.download === "true";
+
+    const [business, daysRes, txRes] = await Promise.all([
+      getSettings(),
+      pool.query<Record<string, unknown>>(
+        `SELECT * FROM public.daily_cash_control WHERE date >= $1::date AND date <= $2::date ORDER BY date ASC`,
+        [fromDate, toDate]
+      ),
+      pool.query<Record<string, unknown>>(
+        `SELECT ft.*, fa.name AS account_name, fa.type AS account_type, fc.name AS category_name
+         FROM public.finance_transactions ft
+         LEFT JOIN public.finance_accounts fa ON fa.id = ft.account_id
+         LEFT JOIN public.finance_categories fc ON fc.id = ft.category_id
+         WHERE ft.date >= $1::date AND ft.date <= $2::date
+         ORDER BY ft.date ASC, ft.created_at ASC`,
+        [fromDate, toDate]
+      ),
+    ]);
+
+    const filteredTx = txRes.rows.filter((t) => {
+      if (entrySourceFilter === "manual" && t.entry_source !== "manual") return false;
+      if (entrySourceFilter === "auto" && (!t.entry_source || t.entry_source === "manual")) return false;
+      const isCash = t.account_type === "cash" || String(t.payment_mode || "").toLowerCase() === "cash";
+      if (channelFilter === "cash" && !isCash) return false;
+      if (channelFilter === "bank" && isCash) return false;
+      return true;
+    });
+
+    const pdfBytes = await buildCashflowAuditPdf({
+      business: business as any,
+      fromDate,
+      toDate,
+      days: daysRes.rows.map((d) => ({
+        date: normalizeDateKey(String(d.date)),
+        status: String(d.status || "open"),
+        opening_cash: Number(d.opening_cash || 0),
+        pos_total: Number(d.pos_total || 0),
+        auto_income: Number(d.auto_income || 0),
+        manual_income: Number(d.manual_income || 0),
+        transfer_in: Number(d.transfer_in || 0),
+        auto_expense: Number(d.auto_expense || 0),
+        manual_expense: Number(d.manual_expense || 0),
+        transfer_out: Number(d.transfer_out || 0),
+        expected_closing: d.expected_closing != null ? Number(d.expected_closing) : null,
+        closing_cash: d.closing_cash != null ? Number(d.closing_cash) : null,
+        difference: d.difference != null ? Number(d.difference) : null,
+        staff_name: (d.staff_name as string | null) ?? null,
+        notes: (d.notes as string | null) ?? null,
+      })),
+      transactions: filteredTx.map((t) => ({
+        transaction_id: String(t.transaction_id || "FIN"),
+        date: normalizeDateKey(String(t.date)),
+        type: String(t.type || "income"),
+        entry_source: String(t.entry_source || "manual"),
+        payment_mode: (t.payment_mode as string | null) ?? null,
+        amount: Number(t.amount || 0),
+        account_name: (t.account_name as string | null) ?? null,
+        category_name: (t.category_name as string | null) ?? null,
+        reference: (t.reference as string | null) ?? null,
+        description: (t.description as string | null) ?? null,
+        staff_name: (t.staff_name as string | null) ?? null,
+      })),
+    });
+
+    const filename = `ALVStore-CashFlow-Audit-${fromDate}-to-${toDate}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.send(Buffer.from(pdfBytes));
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// employee-advance-issue / cancel — Admin advance lifecycle + finance sync
+// ---------------------------------------------------------------------------
+functionsRouter.post("/employee-advance-issue", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const employeeId = typeof body.employee_id === "string" ? body.employee_id.trim() : "";
+  const amount = Number(body.amount);
+  const paymentMode = typeof body.payment_mode === "string" ? body.payment_mode.trim().toLowerCase() : "cash";
+  const accountId = typeof body.account_id === "string" && DOC_UUID_RE.test(body.account_id) ? body.account_id : null;
+  const advanceDate = normalizeDateKey(typeof body.advance_date === "string" ? body.advance_date : undefined);
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+  const staffName = typeof body.staff_name === "string" ? body.staff_name.trim() : req.user?.email || "Admin";
+
+  if (!DOC_UUID_RE.test(employeeId)) return fail(res, "Valid employee_id required", 400);
+  if (!Number.isFinite(amount) || amount <= 0) return fail(res, "Advance amount must be greater than zero", 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const empRes = await client.query<{ id: string; name: string }>(
+      "SELECT id, name FROM public.employees WHERE id = $1::uuid LIMIT 1",
+      [employeeId]
+    );
+    const emp = empRes.rows[0];
+    if (!emp) {
+      await client.query("ROLLBACK");
+      return fail(res, "Employee not found", 404);
+    }
+
+    const advId = crypto.randomUUID();
+    const syncRes = await recordFinanceSync(client, {
+      entry_source: "advance",
+      source_id: `adv:${advId}`,
+      type: "expense",
+      amount,
+      date: advanceDate,
+      payment_mode: paymentMode,
+      account_id: accountId,
+      category_name: "Salary",
+      reference: reason || `Advance - ${emp.name}`,
+      description: `Employee salary advance to ${emp.name}${notes ? `: ${notes}` : ""}`,
+      staff_name: staffName,
+      user_id: req.user?.id || null,
+    });
+
+    const { rows: advRows } = await client.query<Record<string, unknown>>(
+      `INSERT INTO public.employee_advances
+       (id, employee_id, amount, recovered_amount, remaining_amount, advance_date, payment_mode, account_id, status, reason, notes, finance_transaction_id, staff_name, created_by)
+       VALUES ($1::uuid, $2::uuid, $3, 0, $3, $4::date, $5, $6::uuid, 'active', $7, $8, $9::uuid, $10, $11::uuid)
+       RETURNING *`,
+      [
+        advId,
+        employeeId,
+        amount,
+        advanceDate,
+        paymentMode,
+        syncRes.account.id,
+        reason || null,
+        notes || null,
+        syncRes.transaction?.id || null,
+        staffName,
+        req.user?.id || null,
+      ]
+    );
+
+    await client.query(
+      `INSERT INTO public.system_audit_log (action, module, entity_type, entity_id, details, staff_name, user_id)
+       VALUES ('advance_issued', 'hrm', 'employee_advance', $1::uuid, $2, $3, $4::uuid)`,
+      [
+        advId,
+        JSON.stringify({ employee: emp.name, amount, payment_mode: paymentMode, advance_number: advRows[0]?.advance_number }),
+        staffName,
+        req.user?.id || null,
+      ]
+    );
+    await client.query("COMMIT");
+    return ok(res, { success: true, advance: advRows[0], transaction: syncRes.transaction, dailyCash: syncRes.dailyCash });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  } finally {
+    client.release();
+  }
+}));
+
+functionsRouter.post("/employee-advance-cancel", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const advanceId = typeof body.advance_id === "string" ? body.advance_id.trim() : "";
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "Cancelled";
+  const staffName = typeof body.staff_name === "string" ? body.staff_name.trim() : req.user?.email || "Admin";
+  if (!DOC_UUID_RE.test(advanceId)) return fail(res, "Valid advance_id required", 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const advRes = await client.query<Record<string, unknown>>(
+      `SELECT ea.*, e.name AS employee_name
+       FROM public.employee_advances ea
+       JOIN public.employees e ON e.id = ea.employee_id
+       WHERE ea.id = $1::uuid FOR UPDATE`,
+      [advanceId]
+    );
+    const adv = advRes.rows[0];
+    if (!adv) {
+      await client.query("ROLLBACK");
+      return fail(res, "Advance record not found", 404);
+    }
+    if (adv.status === "cancelled") {
+      await client.query("ROLLBACK");
+      return fail(res, "Advance is already cancelled", 409);
+    }
+    if (Number(adv.recovered_amount || 0) > 0) {
+      await client.query("ROLLBACK");
+      return fail(res, "Cannot cancel an advance after salary recovery has been applied", 400);
+    }
+
+    const syncRes = await recordFinanceSync(client, {
+      entry_source: "advance_refund",
+      source_id: `advref:${advanceId}`,
+      type: "income",
+      amount: Number(adv.amount || 0),
+      date: normalizeDateKey(),
+      payment_mode: String(adv.payment_mode || "cash"),
+      account_id: (adv.account_id as string | null) || null,
+      category_name: "Other Income",
+      reference: String(adv.advance_number || advanceId),
+      description: `Reversal of cancelled salary advance (${adv.employee_name}): ${reason}`,
+      staff_name: staffName,
+      user_id: req.user?.id || null,
+    });
+
+    const { rows: updated } = await client.query<Record<string, unknown>>(
+      `UPDATE public.employee_advances
+       SET status = 'cancelled',
+           remaining_amount = 0,
+           notes = COALESCE(notes || E'\\n', '') || $2
+       WHERE id = $1::uuid
+       RETURNING *`,
+      [advanceId, `[Cancelled: ${reason}]`]
+    );
+
+    await client.query("COMMIT");
+    return ok(res, { success: true, advance: updated[0], refundTransaction: syncRes.transaction });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  } finally {
+    client.release();
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// payroll-settle — Mark slip paid, recover advances FIFO & post Finance expense
+// ---------------------------------------------------------------------------
+functionsRouter.post("/payroll-settle", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const payrollId = typeof body.payroll_id === "string" ? body.payroll_id.trim() : "";
+  const paymentMode = typeof body.payment_mode === "string" ? body.payment_mode.trim().toLowerCase() : "cash";
+  const accountId = typeof body.account_id === "string" && DOC_UUID_RE.test(body.account_id) ? body.account_id : null;
+  const paidDate = normalizeDateKey(typeof body.paid_date === "string" ? body.paid_date : undefined);
+  const notes = typeof body.notes === "string" ? body.notes.trim() : null;
+  const staffName = typeof body.staff_name === "string" ? body.staff_name.trim() : req.user?.email || "Admin";
+  if (!DOC_UUID_RE.test(payrollId)) return fail(res, "Valid payroll_id required", 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const payRes = await client.query<Record<string, unknown>>(
+      `SELECT p.*, e.name AS employee_name
+       FROM public.payroll p
+       JOIN public.employees e ON e.id = p.employee_id
+       WHERE p.id = $1::uuid FOR UPDATE`,
+      [payrollId]
+    );
+    const pay = payRes.rows[0];
+    if (!pay) {
+      await client.query("ROLLBACK");
+      return fail(res, "Payroll slip not found", 404);
+    }
+    if (pay.payment_status === "paid") {
+      await client.query("ROLLBACK");
+      return fail(res, "Salary slip is already marked as paid", 409);
+    }
+
+    const advanceDeductionTarget = Math.max(0, Number(pay.advance_deduction || 0));
+    const recoveriesApplied: Array<{ advance_id: string; amount_recovered: number; new_status: string }> = [];
+
+    if (advanceDeductionTarget > 0) {
+      const { rows: activeAdvances } = await client.query<{
+        id: string;
+        remaining_amount: string;
+        recovered_amount: string;
+        advance_date: string;
+      }>(
+        `SELECT id, remaining_amount, recovered_amount, advance_date
+         FROM public.employee_advances
+         WHERE employee_id = $1::uuid AND status IN ('active', 'partial') AND remaining_amount > 0
+         ORDER BY advance_date ASC, created_at ASC
+         FOR UPDATE`,
+        [pay.employee_id]
+      );
+
+      let toRecover = advanceDeductionTarget;
+      for (const adv of activeAdvances) {
+        if (toRecover <= 0.005) break;
+        const prevRem = Math.max(0, Number(adv.remaining_amount || 0));
+        const chunk = Math.min(prevRem, toRecover);
+        const newRecovered = Math.round((Number(adv.recovered_amount || 0) + chunk) * 100) / 100;
+        const newRemaining = Math.max(0, Math.round((prevRem - chunk) * 100) / 100);
+        const newStatus = newRemaining <= 0.005 ? "recovered" : "partial";
+
+        await client.query(
+          `INSERT INTO public.payroll_advance_recoveries (payroll_id, advance_id, amount_recovered)
+           VALUES ($1::uuid, $2::uuid, $3)`,
+          [payrollId, adv.id, chunk]
+        );
+        await client.query(
+          `UPDATE public.employee_advances
+           SET recovered_amount = $2, remaining_amount = $3, status = $4
+           WHERE id = $1::uuid`,
+          [adv.id, newRecovered, newRemaining, newStatus]
+        );
+        recoveriesApplied.push({ advance_id: adv.id, amount_recovered: chunk, new_status: newStatus });
+        toRecover = Math.round((toRecover - chunk) * 100) / 100;
+      }
+    }
+
+    const netSalary = Math.max(0, Number(pay.net_salary || 0));
+    let syncRes: Awaited<ReturnType<typeof recordFinanceSync>> | null = null;
+    if (netSalary > 0) {
+      syncRes = await recordFinanceSync(client, {
+        entry_source: "payroll",
+        source_id: `payroll:${payrollId}`,
+        type: "expense",
+        amount: netSalary,
+        date: paidDate,
+        payment_mode: paymentMode,
+        account_id: accountId,
+        category_name: "Salary",
+        reference: String(pay.slip_number || `Payroll-${pay.month}`),
+        description: `Salary paid to ${pay.employee_name} (${pay.month})`,
+        staff_name: staffName,
+        user_id: req.user?.id || null,
+      });
+    }
+
+    const { rows: updatedRows } = await client.query<Record<string, unknown>>(
+      `UPDATE public.payroll
+       SET payment_status = 'paid',
+           paid_date = $2::date,
+           payment_mode = $3,
+           account_id = $4::uuid,
+           finance_transaction_id = $5::uuid,
+           notes = COALESCE($6, notes)
+       WHERE id = $1::uuid
+       RETURNING *`,
+      [
+        payrollId,
+        paidDate,
+        paymentMode,
+        syncRes?.account.id || accountId || null,
+        syncRes?.transaction?.id || null,
+        notes,
+      ]
+    );
+
+    await client.query(
+      `INSERT INTO public.system_audit_log (action, module, entity_type, entity_id, details, staff_name, user_id)
+       VALUES ('payroll_paid', 'hrm', 'payroll', $1::uuid, $2, $3, $4::uuid)`,
+      [
+        payrollId,
+        JSON.stringify({ employee: pay.employee_name, month: pay.month, net_salary: netSalary, advance_deduction: advanceDeductionTarget, payment_mode: paymentMode }),
+        staffName,
+        req.user?.id || null,
+      ]
+    );
+
+    await client.query("COMMIT");
+    return ok(res, {
+      success: true,
+      payroll: updatedRows[0],
+      transaction: syncRes?.transaction || null,
+      dailyCash: syncRes?.dailyCash || null,
+      recoveries: recoveriesApplied,
+    });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  } finally {
+    client.release();
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// payroll-pdf — Branded A4 Employee Salary Payslip PDF
+// ---------------------------------------------------------------------------
+functionsRouter.get("/payroll-pdf", requireAuth, asyncHandler(async (req, res) => {
+  try {
+    const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+    const download = req.query.download === "1" || req.query.download === "true";
+    if (!DOC_UUID_RE.test(id)) return fail(res, "Valid payroll slip 'id' is required", 400);
+
+    const [business, rowRes] = await Promise.all([
+      getSettings(),
+      pool.query<Record<string, unknown>>(
+        `SELECT p.*, e.name AS employee_name, e.role AS employee_role, e.department AS department,
+                e.salary AS monthly_base_salary, e.user_id AS employee_user_id, fa.name AS account_name
+         FROM public.payroll p
+         JOIN public.employees e ON e.id = p.employee_id
+         LEFT JOIN public.finance_accounts fa ON fa.id = p.account_id
+         WHERE p.id = $1::uuid
+         LIMIT 1`,
+        [id]
+      ),
+    ]);
+
+    const row = rowRes.rows[0];
+    if (!row) return fail(res, "Salary slip not found", 404);
+    const isAdmin = req.user?.roles.includes("admin");
+    if (!isAdmin && row.employee_user_id !== req.user?.id) {
+      return fail(res, "Admin role or slip owner required", 403);
+    }
+
+    const pdfBytes = await buildPayrollSlipPdf({
+      business: business as any,
+      slipNumber: (row.slip_number as string | null) ?? null,
+      month: String(row.month || ""),
+      employeeName: String(row.employee_name || "Employee"),
+      employeeRole: (row.employee_role as string | null) ?? null,
+      department: (row.department as string | null) ?? null,
+      workingDays: row.working_days != null ? Number(row.working_days) : null,
+      presentDays: row.present_days != null ? Number(row.present_days) : null,
+      halfDays: row.half_days != null ? Number(row.half_days) : null,
+      leaveDays: row.leave_days != null ? Number(row.leave_days) : null,
+      absentDays: row.absent_days != null ? Number(row.absent_days) : null,
+      monthlyBaseSalary: row.monthly_base_salary != null ? Number(row.monthly_base_salary) : null,
+      basicSalary: Number(row.basic_salary || 0),
+      bonus: Number(row.bonus || 0),
+      advanceDeduction: Number(row.advance_deduction || 0),
+      otherDeductions: Number(row.other_deductions ?? row.deductions ?? 0),
+      netSalary: Number(row.net_salary || 0),
+      paymentStatus: String(row.payment_status || "pending"),
+      paidDate: row.paid_date ? normalizeDateKey(String(row.paid_date)) : null,
+      paymentMode: (row.payment_mode as string | null) ?? null,
+      accountName: (row.account_name as string | null) ?? null,
+      notes: (row.notes as string | null) ?? null,
+    });
+
+    const safeFile = `Payslip-${String(row.slip_number || row.month || id).replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${safeFile}"`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.send(Buffer.from(pdfBytes));
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// leads-delete & leads-convert — Atomic CRM spam/bot cleanup & deduped conversion
+// ---------------------------------------------------------------------------
+functionsRouter.post("/leads-delete", requireStaff, asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const ids = Array.isArray(body.ids) ? body.ids : body.id ? [body.id] : [];
+  if (ids.length === 0) return fail(res, "At least one lead id is required", 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await deleteLeadsTx(client, {
+      ids: ids.map(String),
+      userId: req.user?.id || null,
+    });
+    await client.query("COMMIT");
+    return ok(res, { success: true, ...result });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (isDatabaseUnavailable(e)) throw e;
+    const status = typeof (e as { status?: number }).status === "number" ? (e as { status: number }).status : 500;
+    return fail(res, (e as Error).message, status);
+  } finally {
+    client.release();
+  }
+}));
+
+functionsRouter.post("/leads-convert", requireStaff, asyncHandler(async (req, res) => {
+  const leadId = typeof req.body?.lead_id === "string" ? req.body.lead_id : typeof req.body?.id === "string" ? req.body.id : "";
+  if (!DOC_UUID_RE.test(leadId)) return fail(res, "Valid lead id is required", 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await convertLeadTx(client, {
+      leadId,
+      userId: req.user?.id || null,
+    });
+    await client.query("COMMIT");
+    return ok(res, { success: true, ...result });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (isDatabaseUnavailable(e)) throw e;
+    const status = typeof (e as { status?: number }).status === "number" ? (e as { status: number }).status : 500;
+    return fail(res, (e as Error).message, status);
+  } finally {
+    client.release();
+  }
+}));
+
+// ---------------------------------------------------------------------------
+// WhatsApp Gateway Session Management, Direct PDF Send & Chat->Lead Promotion
+// ---------------------------------------------------------------------------
+functionsRouter.get(["/whatsapp-session/status", "/whatsapp-session-status"], requireRole("admin"), asyncHandler(async (_req, res) => {
+  try {
+    const settings = await getSettings();
+    const cfg = resolveWhatsappConfig(
+      {
+        whatsapp_api_url: settings.whatsapp_api_url as string | null,
+        whatsapp_api_key: settings.whatsapp_api_key as string | null,
+        whatsapp_phone_id: settings.whatsapp_phone_id as string | null,
+        integrations: (settings.integrations as Record<string, unknown>) || null,
+      },
+      env
+    );
+    const status = await getGatewaySessionStatus(cfg);
+    return ok(res, {
+      success: true,
+      configured: cfg.configured,
+      webhook_url: `${env.appOrigin.replace(/\/$/, "")}/api/functions/whatsapp-webhook`,
+      ...status,
+    });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 502);
+  }
+}));
+
+functionsRouter.post(["/whatsapp-session/connect", "/whatsapp-session-connect"], requireRole("admin"), asyncHandler(async (req, res) => {
+  try {
+    const { method = "qr", phone_number } = req.body ?? {};
+    const connectMethod = method === "pairing_code" ? "pairing_code" : "qr";
+    const settings = await getSettings();
+    const cfg = resolveWhatsappConfig(
+      {
+        whatsapp_api_url: settings.whatsapp_api_url as string | null,
+        whatsapp_api_key: settings.whatsapp_api_key as string | null,
+        whatsapp_phone_id: settings.whatsapp_phone_id as string | null,
+        integrations: (settings.integrations as Record<string, unknown>) || null,
+      },
+      env
+    );
+    const webhookUrl = `${env.appOrigin.replace(/\/$/, "")}/api/functions/whatsapp-webhook`;
+    const status = await connectGatewaySession(cfg, {
+      method: connectMethod,
+      phoneNumber: typeof phone_number === "string" ? phone_number : undefined,
+      webhookUrl,
+    });
+    return ok(res, { success: true, webhook_url: webhookUrl, ...status });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 400);
+  }
+}));
+
+functionsRouter.post(["/whatsapp-session/logout", "/whatsapp-session-logout"], requireRole("admin"), asyncHandler(async (req, res) => {
+  try {
+    const settings = await getSettings();
+    const cfg = resolveWhatsappConfig(
+      {
+        whatsapp_api_url: settings.whatsapp_api_url as string | null,
+        whatsapp_api_key: settings.whatsapp_api_key as string | null,
+        whatsapp_phone_id: settings.whatsapp_phone_id as string | null,
+        integrations: (settings.integrations as Record<string, unknown>) || null,
+      },
+      env
+    );
+    const result = await disconnectGatewaySession(cfg);
+    await pool.query(
+      `INSERT INTO public.system_audit_log (user_id, action, module, details, ip_address)
+       VALUES ($1::uuid, 'whatsapp_session_disconnected', 'integrations', $2::jsonb, $3)`,
+      [req.user?.id ?? null, JSON.stringify({ provider: cfg.provider, instance: cfg.instance }), getClientIp(req)]
+    );
+    return ok(res, { success: result.ok, provider: cfg.provider, instance: cfg.instance });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 502);
+  }
+}));
+
+functionsRouter.post("/send-whatsapp-document", requireStaff, asyncHandler(async (req, res) => {
+  try {
+    const { type, id, to, message, mark_sent } = req.body ?? {};
+    const docType = String(type ?? "").toLowerCase() as BrandedDocumentType;
+    const docId = String(id ?? "").trim();
+    if (!["quotation", "invoice", "challan"].includes(docType) || !DOC_UUID_RE.test(docId)) {
+      return fail(res, "Valid 'type' and 'id' are required", 400);
+    }
+
+    const loaded = await loadDocumentForPdf(docType, { id: docId });
+    if (!loaded) return fail(res, `${docType} not found`, 404);
+
+    const recipientPhone = String(to || loaded.pdfInput.customer?.phone || "").trim();
+    if (!recipientPhone) {
+      return fail(res, "Customer WhatsApp phone number is required", 400);
+    }
+
+    const pdfBytes = await buildBrandedDocumentPdf(loaded.pdfInput);
+    const origin = env.appOrigin.replace(/\/$/, "");
+    const publicPdfUrl = loaded.publicToken
+      ? `${origin}/api/functions/document-pdf?type=${docType}&token=${loaded.publicToken}`
+      : `${origin}/api/functions/document-pdf?type=${docType}&id=${loaded.id}`;
+    const portalLink = loaded.publicPath ? `${origin}${loaded.publicPath}` : null;
+
+    const docLabel = docType === "quotation" ? "Quotation" : docType === "challan" ? "Delivery Challan" : "Tax Invoice";
+    const defaultText = [
+      `Hello ${loaded.customerName || "Customer"},`,
+      `Please find attached your ALVStore ${docLabel} (${loaded.docNumber}).`,
+      portalLink ? `Review online: ${portalLink}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const finalMessage = String(message || "").trim() || defaultText;
+
+    const sendRes = await sendWhatsAppMessage({
+      to: recipientPhone,
+      message: portalLink && !String(message || "").includes("http")
+        ? `${finalMessage}\n\nOnline link: ${portalLink}`
+        : finalMessage,
+      file_url: publicPdfUrl,
+      file_name: loaded.filename,
+      file_type: "application/pdf",
+      media_base64: Buffer.from(pdfBytes).toString("base64"),
+    });
+    if (!sendRes.success) {
+      return fail(res, sendRes.error ?? "Failed to send WhatsApp PDF", 502);
+    }
+
+    const chatPdfPath = loaded.publicToken
+      ? `/api/functions/document-pdf?type=${docType}&token=${loaded.publicToken}`
+      : `/api/functions/document-pdf?type=${docType}&id=${loaded.id}`;
+    const chatRec = await recordOutboundWhatsappChatMessage(pool, {
+      phone: recipientPhone,
+      senderId: req.user?.id ?? null,
+      customerName: loaded.customerName,
+      content: `${docLabel} ${loaded.docNumber} sent via WhatsApp`,
+      waMessageId: sendRes.waMessageId ?? null,
+      fileUrl: chatPdfPath,
+      fileName: loaded.filename,
+      fileType: "application/pdf",
+    });
+
+    if (docType === "quotation" && mark_sent !== false) {
+      await prisma.quotations.updateMany({
+        where: { id: loaded.id, status: "draft" },
+        data: { status: "sent", updated_at: new Date() },
+      });
+    }
+
+    await pool.query(
+      `INSERT INTO public.system_audit_log (user_id, action, module, entity_type, entity_id, details, ip_address)
+       VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::jsonb, $7)`,
+      [
+        req.user?.id ?? null,
+        `${docType}_whatsapp_sent`,
+        docType === "challan" ? "logistics" : "sales",
+        docType,
+        loaded.id,
+        JSON.stringify({ to: recipientPhone, doc_number: loaded.docNumber, message_id: sendRes.waMessageId }),
+        getClientIp(req),
+      ]
+    );
+
+    return ok(res, {
+      success: true,
+      whatsapp_message_id: sendRes.waMessageId,
+      conversation_id: chatRec.conversationId,
+      provider: sendRes.provider,
+    });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    return fail(res, (e as Error).message, 500);
+  }
+}));
+
+functionsRouter.post("/whatsapp-promote-lead", requireStaff, asyncHandler(async (req, res) => {
+  try {
+    const { conversation_id, name, interest, notes } = req.body ?? {};
+    const cid = String(conversation_id ?? "").trim();
+    if (!DOC_UUID_RE.test(cid)) {
+      return fail(res, "Valid conversation_id is required", 400);
+    }
+    const result = await promoteWhatsappChatToLead(pool, {
+      conversationId: cid,
+      userId: req.user?.id ?? null,
+      name: typeof name === "string" ? name : null,
+      interest: typeof interest === "string" ? interest : null,
+      notes: typeof notes === "string" ? notes : null,
+    });
+    return ok(res, { success: true, ...result });
+  } catch (e) {
+    if (isDatabaseUnavailable(e)) throw e;
+    const status = typeof (e as { status?: number }).status === "number" ? (e as { status: number }).status : 500;
     return fail(res, (e as Error).message, status);
   }
 }));

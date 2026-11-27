@@ -10,6 +10,7 @@ import { ArrowLeft, Copy, Loader2, User, Smartphone, ClipboardCheck, History, Sh
 import { createNotification } from "@/lib/notifications";
 import { computeRepairBillingSummary } from "@/lib/repair-billing";
 import { recordSystemAudit } from "@/lib/audit";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 import {
     getPostRepairChecklistForDevice,
     isDevicePoweredOffChecklist,
@@ -418,9 +419,44 @@ export default function JobSheetDetail() {
             return;
         }
         if (job.assigned_technician_id) {
-            await supabase.from("technician_payments").insert({
-                technician_id: job.assigned_technician_id, job_sheet_id: id, amount, status: "unpaid", payment_mode: techPayForm.method, notes: techPayForm.notes || `Payment for ${job.job_number}`, created_by: user?.id,
-            } as any);
+            const { data: tpRow } = await supabase.from("technician_payments").insert({
+                technician_id: job.assigned_technician_id,
+                job_sheet_id: id,
+                amount,
+                status: "paid",
+                payment_date: localDateKey(),
+                payment_mode: techPayForm.method,
+                notes: techPayForm.notes || `Payment for ${job.job_number}`,
+                created_by: user?.id,
+            } as any).select("id").single();
+            const syncRes = await syncFinanceEvent({
+                entry_source: "technician",
+                source_id: tpRow?.id ? `techpay:${tpRow.id}` : `jobtech:${id}:${Date.now()}`,
+                type: "expense",
+                amount,
+                date: localDateKey(),
+                payment_mode: techPayForm.method,
+                category_name: "Maintenance",
+                reference: job.job_number,
+                description: `Technician payout for ${job.job_number}`,
+                staff_name: user?.email || null,
+            });
+            if (tpRow?.id && syncRes.transactionId) {
+                await supabase.from("technician_payments").update({ finance_transaction_id: syncRes.transactionId } as any).eq("id", tpRow.id);
+            }
+        } else {
+            await syncFinanceEvent({
+                entry_source: "technician",
+                source_id: `jobtech:${id}:${Date.now()}`,
+                type: "expense",
+                amount,
+                date: localDateKey(),
+                payment_mode: techPayForm.method,
+                category_name: "Maintenance",
+                reference: job.job_number,
+                description: `Technician payout for ${job.job_number}`,
+                staff_name: user?.email || null,
+            });
         }
         await supabase.from("job_sheet_audit_log").insert({ job_sheet_id: id, action: "technician_payment_recorded", details: `Technician paid ₹${amount} via ${techPayForm.method}. ${techPayForm.notes || ""}`.trim(), user_id: user?.id });
         toast.success("Technician payment recorded");
@@ -498,7 +534,20 @@ export default function JobSheetDetail() {
             return;
         }
         try {
-            await supabase.from("payments").insert({ customer_id: job.customer_id, job_sheet_id: id, amount, payment_method: paymentForm.method as any, type: "invoice" as any, status: "completed" as any, notes: paymentForm.notes || `Payment for ${job.job_number}`, created_by: user?.id });
+            const { data: insertedPayment } = await supabase.from("payments").insert({ customer_id: job.customer_id, job_sheet_id: id, amount, payment_method: paymentForm.method as any, type: "invoice" as any, status: "completed" as any, notes: paymentForm.notes || `Payment for ${job.job_number}`, created_by: user?.id }).select("id").single();
+            await syncFinanceEvent({
+                entry_source: "repair",
+                source_id: insertedPayment?.id ? `repair:${insertedPayment.id}` : `repair:${id}:${Date.now()}`,
+                type: "income",
+                amount,
+                date: localDateKey(),
+                payment_mode: paymentForm.method,
+                category_name: "Repair Income",
+                customer_id: job.customer_id,
+                reference: job.job_number,
+                description: paymentForm.notes || `Repair payment for ${job.job_number}`,
+                staff_name: user?.email || null,
+            });
             const { data: allPayments } = await supabase.from("payments").select("amount").eq("job_sheet_id", id).eq("status", "completed");
             const totalPaid = (allPayments || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
             const billing = computeRepairBillingSummary({

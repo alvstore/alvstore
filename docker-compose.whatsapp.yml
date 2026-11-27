@@ -1,0 +1,23 @@
+# Self-hosted OpenWA WhatsApp CRM Gateway (Baileys + SQLite, zero Chromium required)
+# Run on any VPS or Docker host and connect in ALVStore -> Settings -> WhatsApp
+# Example:
+#   WHATSAPP_GATEWAY_KEY=change-this-strong-secret docker compose -f docker-compose.whatsapp.yml up -d
+services:
+  openwa:
+    image: ghcr.io/rmyndharis/openwa:latest
+    container_name: alvstore-openwa
+    restart: unless-stopped
+    ports:
+      - "2785:2785"
+    environment:
+      PORT: "2785"
+      ENGINE_TYPE: "baileys"
+      API_KEY: "${WHATSAPP_GATEWAY_KEY:-change-this-openwa-key}"
+      DATA_DIR: "/app/data"
+      LOG_LEVEL: "info"
+    volumes:
+      - openwa_data:/app/data
+
+volumes:
+  openwa_data:
+    driver: local

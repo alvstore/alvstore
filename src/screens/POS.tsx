@@ -18,6 +18,7 @@ import { useNavigate } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { recordSystemAudit } from "@/lib/audit";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 import { compactAxisNumber } from "@/lib/chart-theme";
 import {
   buildPosShiftTelemetry,
@@ -402,6 +403,20 @@ export default function POS() {
         entityType: "pos_transaction",
         entityId: txn?.id,
         details: `POS ${txn?.transaction_number || ""} — ₹${cartTotals.total.toFixed(2)} via ${paymentMethod.toUpperCase()} (${cartTotals.itemCount} items)`,
+      });
+
+      await syncFinanceEvent({
+        entry_source: "pos",
+        source_id: txn?.id ? `pos:${txn.id}` : undefined,
+        type: "income",
+        amount: cartTotals.total,
+        date: localDateKey(),
+        payment_mode: paymentMethod,
+        category_name: "POS Sales",
+        customer_id: customerId,
+        reference: txn?.transaction_number || "POS Sale",
+        description: `POS Checkout (${cartTotals.itemCount} items)`,
+        staff_name: user?.email || "Staff",
       });
 
       setLastSale({

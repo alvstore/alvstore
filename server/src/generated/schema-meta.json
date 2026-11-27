@@ -262,6 +262,12 @@
           "hasDefault": true
         },
         {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
           "name": "notes",
           "udt": "text",
           "nullable": true,
@@ -1002,6 +1008,18 @@
           "hasDefault": true
         },
         {
+          "name": "previous_closing",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "opening_override_reason",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
           "name": "closing_cash",
           "udt": "numeric",
           "nullable": true,
@@ -1050,13 +1068,37 @@
           "hasDefault": true
         },
         {
+          "name": "auto_income",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
           "name": "manual_income",
           "udt": "numeric",
           "nullable": true,
           "hasDefault": true
         },
         {
+          "name": "auto_expense",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
           "name": "manual_expense",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "transfer_in",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "transfer_out",
           "udt": "numeric",
           "nullable": true,
           "hasDefault": true
@@ -1081,6 +1123,18 @@
         },
         {
           "name": "closed_at",
+          "udt": "timestamptz",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "reopened_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "reopened_at",
           "udt": "timestamptz",
           "nullable": true,
           "hasDefault": false
@@ -1693,6 +1747,139 @@
       ],
       "relations": []
     },
+    "employee_advances": {
+      "model": "EmployeeAdvances",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "advance_number",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "employee_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "recovered_amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "remaining_amount",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "advance_date",
+          "udt": "date",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "payment_mode",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "account_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "status",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "reason",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "notes",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "finance_transaction_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "staff_name",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_by",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_employees",
+          "kind": "many-to-one",
+          "targetTable": "employees",
+          "targetModel": "Employees",
+          "fkColumns": [
+            "employee_id"
+          ],
+          "optional": false
+        },
+        {
+          "field": "r_finance_accounts",
+          "kind": "many-to-one",
+          "targetTable": "finance_accounts",
+          "targetModel": "FinanceAccounts",
+          "fkColumns": [
+            "account_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payroll_recoveries",
+          "kind": "one-to-many",
+          "targetTable": "payroll_advance_recoveries",
+          "targetModel": "PayrollAdvanceRecoveries",
+          "fkColumns": [
+            "advance_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
     "employees": {
       "model": "Employees",
       "columns": [
@@ -1811,6 +1998,16 @@
           "optional": true
         },
         {
+          "field": "rl_employee_advances_employee_id",
+          "kind": "one-to-many",
+          "targetTable": "employee_advances",
+          "targetModel": "EmployeeAdvances",
+          "fkColumns": [
+            "employee_id"
+          ],
+          "optional": true
+        },
+        {
           "field": "rl_hikvision_attendance_logs_employee_id",
           "kind": "one-to-many",
           "targetTable": "hikvision_attendance_logs",
@@ -1914,6 +2111,16 @@
       ],
       "relations": [
         {
+          "field": "rl_employee_advances_account_id",
+          "kind": "one-to-many",
+          "targetTable": "employee_advances",
+          "targetModel": "EmployeeAdvances",
+          "fkColumns": [
+            "account_id"
+          ],
+          "optional": true
+        },
+        {
           "field": "rl_finance_transactions_account_id",
           "kind": "one-to-many",
           "targetTable": "finance_transactions",
@@ -1930,6 +2137,16 @@
           "targetModel": "FinanceTransactions",
           "fkColumns": [
             "to_account_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payroll_account_id",
+          "kind": "one-to-many",
+          "targetTable": "payroll",
+          "targetModel": "Payroll",
+          "fkColumns": [
+            "account_id"
           ],
           "optional": true
         }
@@ -2070,10 +2287,28 @@
           "hasDefault": false
         },
         {
+          "name": "entry_source",
+          "udt": "text",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "source_id",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
           "name": "date",
           "udt": "date",
           "nullable": false,
           "hasDefault": true
+        },
+        {
+          "name": "daily_cash_date",
+          "udt": "date",
+          "nullable": true,
+          "hasDefault": false
         },
         {
           "name": "amount",
@@ -4337,6 +4572,12 @@
           "hasDefault": true
         },
         {
+          "name": "slip_number",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
           "name": "employee_id",
           "udt": "uuid",
           "nullable": false,
@@ -4349,7 +4590,61 @@
           "hasDefault": false
         },
         {
+          "name": "working_days",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "present_days",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "half_days",
+          "udt": "int4",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "leave_days",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "absent_days",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "overtime_hours",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "gross_salary",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
           "name": "basic_salary",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "advance_deduction",
+          "udt": "numeric",
+          "nullable": true,
+          "hasDefault": true
+        },
+        {
+          "name": "other_deductions",
           "udt": "numeric",
           "nullable": true,
           "hasDefault": true
@@ -4379,6 +4674,24 @@
           "hasDefault": true
         },
         {
+          "name": "payment_mode",
+          "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "account_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "finance_transaction_id",
+          "udt": "uuid",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
           "name": "paid_date",
           "udt": "date",
           "nullable": true,
@@ -4387,6 +4700,12 @@
         {
           "name": "notes",
           "udt": "text",
+          "nullable": true,
+          "hasDefault": false
+        },
+        {
+          "name": "policy_snapshot",
+          "udt": "jsonb",
           "nullable": true,
           "hasDefault": false
         },
@@ -4411,6 +4730,83 @@
           "targetModel": "Employees",
           "fkColumns": [
             "employee_id"
+          ],
+          "optional": false
+        },
+        {
+          "field": "r_finance_accounts",
+          "kind": "many-to-one",
+          "targetTable": "finance_accounts",
+          "targetModel": "FinanceAccounts",
+          "fkColumns": [
+            "account_id"
+          ],
+          "optional": true
+        },
+        {
+          "field": "rl_payroll_advance_recoveries",
+          "kind": "one-to-many",
+          "targetTable": "payroll_advance_recoveries",
+          "targetModel": "PayrollAdvanceRecoveries",
+          "fkColumns": [
+            "payroll_id"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    "payroll_advance_recoveries": {
+      "model": "PayrollAdvanceRecoveries",
+      "columns": [
+        {
+          "name": "id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": true
+        },
+        {
+          "name": "payroll_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "advance_id",
+          "udt": "uuid",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "amount_recovered",
+          "udt": "numeric",
+          "nullable": false,
+          "hasDefault": false
+        },
+        {
+          "name": "created_at",
+          "udt": "timestamptz",
+          "nullable": false,
+          "hasDefault": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "r_payroll",
+          "kind": "many-to-one",
+          "targetTable": "payroll",
+          "targetModel": "Payroll",
+          "fkColumns": [
+            "payroll_id"
+          ],
+          "optional": false
+        },
+        {
+          "field": "r_employee_advance",
+          "kind": "many-to-one",
+          "targetTable": "employee_advances",
+          "targetModel": "EmployeeAdvances",
+          "fkColumns": [
+            "advance_id"
           ],
           "optional": false
         }

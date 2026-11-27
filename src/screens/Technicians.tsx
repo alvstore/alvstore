@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Search, Wrench, Pencil, ShieldCheck, AlertTriangle, Users, CheckCircle2, Clock, IndianRupee, BookOpen } from "lucide-react";
 import { AvatarUpload } from "@/components/AvatarUpload";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 interface Technician {
     id: string;
     user_id: string | null;
@@ -128,20 +129,29 @@ export default function Technicians() {
         setLedgerOpen(true);
     };
     const markAsPaid = async (payment: any) => {
-        // Create finance expense transaction
-        const { data: accounts } = await supabase.from("finance_accounts").select("id").limit(1);
-        let finTxnId: string | null = null;
-        if (accounts && accounts.length > 0) {
-            const { data: txn } = await supabase.from("finance_transactions").insert({
-                type: "expense", amount: payment.amount, account_id: accounts[0].id,
-                description: `Tech payment: ${ledgerTech?.name}`, reference: `TP-${payment.id.slice(0, 8)}`,
-                created_by: user?.id,
-            } as any).select().single();
-            finTxnId = txn?.id || null;
+        if (payment.status === "paid") {
+            toast.info("Already marked as paid");
+            return;
+        }
+        const syncRes = await syncFinanceEvent({
+            entry_source: "technician",
+            source_id: `techpay:${payment.id}`,
+            type: "expense",
+            amount: Number(payment.amount || 0),
+            date: localDateKey(),
+            payment_mode: payment.payment_mode || "cash",
+            category_name: "Maintenance",
+            description: `Tech payment: ${ledgerTech?.name || "Technician"}`,
+            reference: `TP-${payment.id.slice(0, 8)}`,
+            staff_name: user?.email || null,
+        });
+        if (!syncRes.ok) {
+            toast.error(syncRes.error || "Finance sync failed");
+            return;
         }
         await supabase.from("technician_payments").update({
-            status: "paid", payment_date: new Date().toISOString().split("T")[0],
-            finance_transaction_id: finTxnId,
+            status: "paid", payment_date: localDateKey(),
+            finance_transaction_id: syncRes.transactionId || null,
         } as any).eq("id", payment.id);
         toast.success("Payment marked as paid & synced to Finance");
         openLedger(ledgerTech!);

@@ -152,6 +152,7 @@ export type Database = {
           id: string
           notes: string | null
           source: Database["public"]["Enums"]["attendance_source"]
+          status: string
         }
         Insert: {
           check_in?: string | null
@@ -164,6 +165,7 @@ export type Database = {
           id?: string
           notes?: string | null
           source?: Database["public"]["Enums"]["attendance_source"]
+          status?: string
         }
         Update: {
           check_in?: string | null
@@ -176,6 +178,7 @@ export type Database = {
           id?: string
           notes?: string | null
           source?: Database["public"]["Enums"]["attendance_source"]
+          status?: string
         }
         Relationships: []
       }
@@ -515,6 +518,8 @@ export type Database = {
       }
       daily_cash_control: {
         Row: {
+          auto_expense: number | null
+          auto_income: number | null
           closed_at: string | null
           closed_by: string | null
           closing_cash: number | null
@@ -529,11 +534,19 @@ export type Database = {
           manual_income: number | null
           notes: string | null
           opening_cash: number
+          opening_override_reason: string | null
           pos_total: number | null
+          previous_closing: number | null
+          reopened_at: string | null
+          reopened_by: string | null
           staff_name: string | null
           status: string | null
+          transfer_in: number | null
+          transfer_out: number | null
         }
         Insert: {
+          auto_expense?: number | null
+          auto_income?: number | null
           closed_at?: string | null
           closed_by?: string | null
           closing_cash?: number | null
@@ -548,11 +561,19 @@ export type Database = {
           manual_income?: number | null
           notes?: string | null
           opening_cash?: number
+          opening_override_reason?: string | null
           pos_total?: number | null
+          previous_closing?: number | null
+          reopened_at?: string | null
+          reopened_by?: string | null
           staff_name?: string | null
           status?: string | null
+          transfer_in?: number | null
+          transfer_out?: number | null
         }
         Update: {
+          auto_expense?: number | null
+          auto_income?: number | null
           closed_at?: string | null
           closed_by?: string | null
           closing_cash?: number | null
@@ -567,9 +588,15 @@ export type Database = {
           manual_income?: number | null
           notes?: string | null
           opening_cash?: number
+          opening_override_reason?: string | null
           pos_total?: number | null
+          previous_closing?: number | null
+          reopened_at?: string | null
+          reopened_by?: string | null
           staff_name?: string | null
           status?: string | null
+          transfer_in?: number | null
+          transfer_out?: number | null
         }
         Relationships: []
       }
@@ -886,6 +913,63 @@ export type Database = {
         }
         Relationships: []
       }
+      employee_advances: {
+        Row: {
+          account_id: string | null
+          advance_date: string
+          advance_number: string
+          amount: number
+          created_at: string
+          created_by: string | null
+          employee_id: string
+          finance_transaction_id: string | null
+          id: string
+          notes: string | null
+          payment_mode: string
+          reason: string | null
+          recovered_amount: number
+          remaining_amount: number
+          staff_name: string | null
+          status: string
+        }
+        Insert: {
+          account_id?: string | null
+          advance_date?: string
+          advance_number?: string
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          employee_id: string
+          finance_transaction_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_mode?: string
+          reason?: string | null
+          recovered_amount?: number
+          remaining_amount: number
+          staff_name?: string | null
+          status?: string
+        }
+        Update: {
+          account_id?: string | null
+          advance_date?: string
+          advance_number?: string
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string
+          finance_transaction_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_mode?: string
+          reason?: string | null
+          recovered_amount?: number
+          remaining_amount?: number
+          staff_name?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       employees: {
         Row: {
           avatar_url: string | null
@@ -1069,11 +1153,14 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_id: string | null
+          daily_cash_date: string | null
           date: string
           description: string | null
+          entry_source: string
           id: string
           payment_mode: string | null
           reference: string | null
+          source_id: string | null
           staff_name: string | null
           to_account_id: string | null
           transaction_id: string
@@ -1088,11 +1175,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          daily_cash_date?: string | null
           date?: string
           description?: string | null
+          entry_source?: string
           id?: string
           payment_mode?: string | null
           reference?: string | null
+          source_id?: string | null
           staff_name?: string | null
           to_account_id?: string | null
           transaction_id?: string
@@ -1107,11 +1197,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          daily_cash_date?: string | null
           date?: string
           description?: string | null
+          entry_source?: string
           id?: string
           payment_mode?: string | null
           reference?: string | null
+          source_id?: string | null
           staff_name?: string | null
           to_account_id?: string | null
           transaction_id?: string
@@ -2268,46 +2361,88 @@ export type Database = {
       }
       payroll: {
         Row: {
+          absent_days: number | null
+          account_id: string | null
+          advance_deduction: number | null
           basic_salary: number | null
           bonus: number | null
           created_at: string
           created_by: string | null
           deductions: number | null
           employee_id: string
+          finance_transaction_id: string | null
+          gross_salary: number | null
+          half_days: number | null
           id: string
+          leave_days: number | null
           month: string
           net_salary: number | null
           notes: string | null
+          other_deductions: number | null
+          overtime_hours: number | null
           paid_date: string | null
+          payment_mode: string | null
           payment_status: string | null
+          policy_snapshot: Json | null
+          present_days: number | null
+          slip_number: string | null
+          working_days: number | null
         }
         Insert: {
+          absent_days?: number | null
+          account_id?: string | null
+          advance_deduction?: number | null
           basic_salary?: number | null
           bonus?: number | null
           created_at?: string
           created_by?: string | null
           deductions?: number | null
           employee_id: string
+          finance_transaction_id?: string | null
+          gross_salary?: number | null
+          half_days?: number | null
           id?: string
+          leave_days?: number | null
           month: string
           net_salary?: number | null
           notes?: string | null
+          other_deductions?: number | null
+          overtime_hours?: number | null
           paid_date?: string | null
+          payment_mode?: string | null
           payment_status?: string | null
+          policy_snapshot?: Json | null
+          present_days?: number | null
+          slip_number?: string | null
+          working_days?: number | null
         }
         Update: {
+          absent_days?: number | null
+          account_id?: string | null
+          advance_deduction?: number | null
           basic_salary?: number | null
           bonus?: number | null
           created_at?: string
           created_by?: string | null
           deductions?: number | null
           employee_id?: string
+          finance_transaction_id?: string | null
+          gross_salary?: number | null
+          half_days?: number | null
           id?: string
+          leave_days?: number | null
           month?: string
           net_salary?: number | null
           notes?: string | null
+          other_deductions?: number | null
+          overtime_hours?: number | null
           paid_date?: string | null
+          payment_mode?: string | null
           payment_status?: string | null
+          policy_snapshot?: Json | null
+          present_days?: number | null
+          slip_number?: string | null
+          working_days?: number | null
         }
         Relationships: [
           {
@@ -2318,6 +2453,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      payroll_advance_recoveries: {
+        Row: {
+          advance_id: string
+          amount_recovered: number
+          created_at: string
+          id: string
+          payroll_id: string
+        }
+        Insert: {
+          advance_id: string
+          amount_recovered: number
+          created_at?: string
+          id?: string
+          payroll_id: string
+        }
+        Update: {
+          advance_id?: string
+          amount_recovered?: number
+          created_at?: string
+          id?: string
+          payroll_id?: string
+        }
+        Relationships: []
       }
       pos_transactions: {
         Row: {

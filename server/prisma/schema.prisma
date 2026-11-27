@@ -188,6 +188,7 @@ model AttendanceRecords {
   date        DateTime         @default(dbgenerated("CURRENT_DATE")) @db.Date
   device_id   String?
   source      AttendanceSource @default(dbgenerated("'manual'::attendance_source"))
+  status      String           @default(dbgenerated("'present'::text"))
   notes       String?
   created_by  String?          @db.Uuid
   created_at  DateTime         @default(now()) @db.Timestamptz(6)
@@ -339,23 +340,31 @@ model Customers {
 }
 
 model DailyCashControl {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  date             DateTime  @unique @db.Date
-  opening_cash     Decimal   @default(dbgenerated("0")) @db.Decimal
-  closing_cash     Decimal?  @db.Decimal
-  difference       Decimal?  @db.Decimal
-  staff_name       String?
-  created_by       String?   @db.Uuid
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  notes            String?
-  denominations    Json?     @db.JsonB
-  pos_total        Decimal?  @default(dbgenerated("0")) @db.Decimal
-  manual_income    Decimal?  @default(dbgenerated("0")) @db.Decimal
-  manual_expense   Decimal?  @default(dbgenerated("0")) @db.Decimal
-  expected_closing Decimal?  @db.Decimal
-  status           String?   @default(dbgenerated("'open'::text"))
-  closed_by        String?   @db.Uuid
-  closed_at        DateTime? @db.Timestamptz(6)
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date                    DateTime  @unique @db.Date
+  opening_cash            Decimal   @default(dbgenerated("0")) @db.Decimal
+  previous_closing        Decimal?  @db.Decimal
+  opening_override_reason String?
+  closing_cash            Decimal?  @db.Decimal
+  difference              Decimal?  @db.Decimal
+  staff_name              String?
+  created_by              String?   @db.Uuid
+  created_at              DateTime  @default(now()) @db.Timestamptz(6)
+  notes                   String?
+  denominations           Json?     @db.JsonB
+  pos_total               Decimal?  @default(dbgenerated("0")) @db.Decimal
+  auto_income             Decimal?  @default(dbgenerated("0")) @db.Decimal
+  manual_income           Decimal?  @default(dbgenerated("0")) @db.Decimal
+  auto_expense            Decimal?  @default(dbgenerated("0")) @db.Decimal
+  manual_expense          Decimal?  @default(dbgenerated("0")) @db.Decimal
+  transfer_in             Decimal?  @default(dbgenerated("0")) @db.Decimal
+  transfer_out            Decimal?  @default(dbgenerated("0")) @db.Decimal
+  expected_closing        Decimal?  @db.Decimal
+  status                  String?   @default(dbgenerated("'open'::text"))
+  closed_by               String?   @db.Uuid
+  closed_at               DateTime? @db.Timestamptz(6)
+  reopened_by             String?   @db.Uuid
+  reopened_at             DateTime? @db.Timestamptz(6)
 
   @@map("daily_cash_control")
   @@schema("public")
@@ -485,6 +494,31 @@ model DeviceModels {
   @@schema("public")
 }
 
+model EmployeeAdvances {
+  id                     String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  advance_number         String                     @default(dbgenerated("''::text"))
+  employee_id            String                     @db.Uuid
+  amount                 Decimal                    @db.Decimal
+  recovered_amount       Decimal                    @default(dbgenerated("0")) @db.Decimal
+  remaining_amount       Decimal                    @db.Decimal
+  advance_date           DateTime                   @default(dbgenerated("CURRENT_DATE")) @db.Date
+  payment_mode           String                     @default(dbgenerated("'cash'::text"))
+  account_id             String?                    @db.Uuid
+  status                 String                     @default(dbgenerated("'active'::text"))
+  reason                 String?
+  notes                  String?
+  finance_transaction_id String?                    @db.Uuid
+  staff_name             String?
+  created_by             String?                    @db.Uuid
+  created_at             DateTime                   @default(now()) @db.Timestamptz(6)
+  r_employees            Employees                  @relation(name: "employee_advances_employee_id_fkey", fields: [employee_id], references: [id], onDelete: Cascade)
+  r_finance_accounts     FinanceAccounts?           @relation(name: "employee_advances_account_id_fkey", fields: [account_id], references: [id])
+  rl_payroll_recoveries  PayrollAdvanceRecoveries[] @relation(name: "payroll_advance_recoveries_advance_id_fkey")
+
+  @@map("employee_advances")
+  @@schema("public")
+}
+
 model Employees {
   id                                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id                                  String?                    @db.Uuid
@@ -504,6 +538,7 @@ model Employees {
   device_employee_code                     String?
   employee_type                            String?                    @default(dbgenerated("'internal'::text"))
   r_departments                            Departments?               @relation(name: "employees_department_id_fkey", fields: [department_id], references: [id])
+  rl_employee_advances_employee_id         EmployeeAdvances[]         @relation(name: "employee_advances_employee_id_fkey")
   rl_hikvision_attendance_logs_employee_id HikvisionAttendanceLogs[]  @relation(name: "hikvision_attendance_logs_employee_id_fkey")
   rl_hikvision_employee_mapping            HikvisionEmployeeMapping[] @relation(name: "hikvision_employee_mapping_erp_employee_id_fkey")
   rl_payroll_employee_id                   Payroll[]                  @relation(name: "payroll_employee_id_fkey")
@@ -524,8 +559,10 @@ model FinanceAccounts {
   created_by                            String?               @db.Uuid
   created_at                            DateTime              @default(now()) @db.Timestamptz(6)
   updated_at                            DateTime              @default(now()) @db.Timestamptz(6)
+  rl_employee_advances_account_id       EmployeeAdvances[]    @relation(name: "employee_advances_account_id_fkey")
   rl_finance_transactions_account_id    FinanceTransactions[] @relation(name: "finance_transactions_account_id_fkey")
   rl_finance_transactions_to_account_id FinanceTransactions[] @relation(name: "finance_transactions_to_account_id_fkey")
+  rl_payroll_account_id                 Payroll[]             @relation(name: "payroll_account_id_fkey")
 
   @@map("finance_accounts")
   @@schema("public")
@@ -563,7 +600,10 @@ model FinanceTransactions {
   id                               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   transaction_id                   String             @default(dbgenerated("''::text"))
   type                             String
+  entry_source                     String             @default(dbgenerated("'manual'::text"))
+  source_id                        String?
   date                             DateTime           @default(dbgenerated("CURRENT_DATE")) @db.Date
+  daily_cash_date                  DateTime?          @db.Date
   amount                           Decimal            @db.Decimal
   payment_mode                     String?
   account_id                       String?            @db.Uuid
@@ -582,6 +622,7 @@ model FinanceTransactions {
   r_customers                      Customers?         @relation(name: "finance_transactions_customer_id_fkey", fields: [customer_id], references: [id])
   r_finance_accounts_to_account_id FinanceAccounts?   @relation(name: "finance_transactions_to_account_id_fkey", fields: [to_account_id], references: [id])
 
+  @@index([entry_source, source_id], map: "finance_transactions_entry_source_source_id_idx")
   @@map("finance_transactions")
   @@schema("public")
 }
@@ -998,21 +1039,50 @@ model Payments {
 }
 
 model Payroll {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employee_id    String    @db.Uuid
-  month          String
-  basic_salary   Decimal?  @default(dbgenerated("0")) @db.Decimal
-  deductions     Decimal?  @default(dbgenerated("0")) @db.Decimal
-  bonus          Decimal?  @default(dbgenerated("0")) @db.Decimal
-  net_salary     Decimal?  @default(dbgenerated("0")) @db.Decimal
-  payment_status String?   @default(dbgenerated("'pending'::text"))
-  paid_date      DateTime? @db.Date
-  notes          String?
-  created_by     String?   @db.Uuid
-  created_at     DateTime  @default(now()) @db.Timestamptz(6)
-  r_employees    Employees @relation(name: "payroll_employee_id_fkey", fields: [employee_id], references: [id], onDelete: Cascade)
+  id                            String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slip_number                   String?                    @default(dbgenerated("''::text"))
+  employee_id                   String                     @db.Uuid
+  month                         String
+  working_days                  Decimal?                   @db.Decimal
+  present_days                  Decimal?                   @db.Decimal
+  half_days                     Int?                       @default(dbgenerated("0"))
+  leave_days                    Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  absent_days                   Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  overtime_hours                Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  gross_salary                  Decimal?                   @db.Decimal
+  basic_salary                  Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  advance_deduction             Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  other_deductions              Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  deductions                    Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  bonus                         Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  net_salary                    Decimal?                   @default(dbgenerated("0")) @db.Decimal
+  payment_status                String?                    @default(dbgenerated("'pending'::text"))
+  payment_mode                  String?
+  account_id                    String?                    @db.Uuid
+  finance_transaction_id        String?                    @db.Uuid
+  paid_date                     DateTime?                  @db.Date
+  notes                         String?
+  policy_snapshot               Json?                      @db.JsonB
+  created_by                    String?                    @db.Uuid
+  created_at                    DateTime                   @default(now()) @db.Timestamptz(6)
+  r_employees                   Employees                  @relation(name: "payroll_employee_id_fkey", fields: [employee_id], references: [id], onDelete: Cascade)
+  r_finance_accounts            FinanceAccounts?           @relation(name: "payroll_account_id_fkey", fields: [account_id], references: [id])
+  rl_payroll_advance_recoveries PayrollAdvanceRecoveries[] @relation(name: "payroll_advance_recoveries_payroll_id_fkey")
 
   @@map("payroll")
+  @@schema("public")
+}
+
+model PayrollAdvanceRecoveries {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payroll_id         String           @db.Uuid
+  advance_id         String           @db.Uuid
+  amount_recovered   Decimal          @db.Decimal
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  r_payroll          Payroll          @relation(name: "payroll_advance_recoveries_payroll_id_fkey", fields: [payroll_id], references: [id], onDelete: Cascade)
+  r_employee_advance EmployeeAdvances @relation(name: "payroll_advance_recoveries_advance_id_fkey", fields: [advance_id], references: [id], onDelete: Cascade)
+
+  @@map("payroll_advance_recoveries")
   @@schema("public")
 }
 

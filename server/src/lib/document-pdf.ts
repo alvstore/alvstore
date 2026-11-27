@@ -96,13 +96,21 @@ export interface BrandedDocumentPdfInput {
   items: DocumentPdfItem[];
 }
 
-const A4_W = 595.28;
-const A4_H = 841.89;
-const MARGIN = 34;
-const CONTENT_W = A4_W - MARGIN * 2;
-const BOTTOM_LIMIT = 46;
+export const PDF_LAYOUT = {
+  A4_W: 595.28,
+  A4_H: 841.89,
+  MARGIN: 34,
+  CONTENT_W: 595.28 - 34 * 2,
+  BOTTOM_LIMIT: 46,
+};
 
-const C = {
+const A4_W = PDF_LAYOUT.A4_W;
+const A4_H = PDF_LAYOUT.A4_H;
+const MARGIN = PDF_LAYOUT.MARGIN;
+const CONTENT_W = PDF_LAYOUT.CONTENT_W;
+const BOTTOM_LIMIT = PDF_LAYOUT.BOTTOM_LIMIT;
+
+export const PDF_COLORS = {
   obsidian: rgb(11 / 255, 12 / 255, 14 / 255),
   brass: rgb(156 / 255, 123 / 255, 73 / 255),
   ink: rgb(17 / 255, 24 / 255, 39 / 255),
@@ -122,10 +130,12 @@ const C = {
   infoInk: rgb(30 / 255, 58 / 255, 138 / 255),
 };
 
+const C = PDF_COLORS;
+
 let cachedRegularFont: Uint8Array | null = null;
 let cachedBoldFont: Uint8Array | null = null;
 
-function loadFontBytes(): { regular: Uint8Array; bold: Uint8Array } {
+export function loadFontBytes(): { regular: Uint8Array; bold: Uint8Array } {
   if (!cachedRegularFont) {
     cachedRegularFont = new Uint8Array(fs.readFileSync(path.join(serverRoot, "assets/fonts/NotoSans-Regular.ttf")));
   }
@@ -135,25 +145,25 @@ function loadFontBytes(): { regular: Uint8Array; bold: Uint8Array } {
   return { regular: cachedRegularFont, bold: cachedBoldFont };
 }
 
-function safePdfText(value: unknown): string {
+export function safePdfText(value: unknown): string {
   const s = String(value ?? "");
   // Strip emoji / astral plane symbols (> U+FFFF) and non-printable control chars (keep \n).
   return s.replace(/[\u0000-\u0009\u000B-\u001F\u007F]|[\uD800-\uDFFF]/g, "");
 }
 
-function formatInr(amount: number): string {
+export function formatInr(amount: number): string {
   const n = Number.isFinite(amount) ? amount : 0;
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function formatDate(d: string | Date | null | undefined): string {
+export function formatDate(d: string | Date | null | undefined): string {
   if (!d) return "";
   const dt = d instanceof Date ? d : new Date(d);
   if (Number.isNaN(dt.getTime())) return String(d);
   return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function wrapLines(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
+export function wrapLines(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
   const cleaned = safePdfText(text).trim();
   if (!cleaned) return [];
   const paragraphs = cleaned.split(/\r?\n/);
@@ -324,7 +334,7 @@ async function resolveImageBytes(url: string | null | undefined): Promise<Uint8A
   return null;
 }
 
-async function embedImageSafe(doc: PDFDocument, url: string | null | undefined): Promise<PDFImage | null> {
+export async function embedImageSafe(doc: PDFDocument, url: string | null | undefined): Promise<PDFImage | null> {
   const bytes = await resolveImageBytes(url);
   if (!bytes || bytes.byteLength < 8) return null;
   const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
@@ -354,7 +364,7 @@ function docTitleLabel(docType: BrandedDocumentType): string {
   return "QUOTATION";
 }
 
-function drawRightText(page: PDFPage, text: string, rightX: number, y: number, font: PDFFont, size: number, color = C.ink) {
+export function drawRightText(page: PDFPage, text: string, rightX: number, y: number, font: PDFFont, size: number, color = C.ink) {
   const safe = safePdfText(text);
   const w = font.widthOfTextAtSize(safe, size);
   page.drawText(safe, { x: rightX - w, y, size, font, color });

@@ -18,6 +18,7 @@ import {
 import { completionPercent } from "@/lib/widget-data";
 import { computePaymentUpdate, filterInvoices, summarizeInvoices } from "@/lib/invoice-metrics";
 import { pastelPillColors, solidHeaderBg, solidTextTone } from "@/lib/pill-style";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 
 interface Invoice {
   id: string;
@@ -146,6 +147,18 @@ export default function Invoices() {
       if (error) {
         toast.error(error.message);
       } else {
+        await syncFinanceEvent({
+          entry_source: "invoice",
+          source_id: `inv:${payInvoice.id}:${Math.round(currentPaid * 100)}-to-${Math.round(computation.nextPaid * 100)}`,
+          type: "income",
+          amount: paymentValue,
+          date: localDateKey(),
+          payment_mode: payMethod,
+          category_name: "Invoice Sales",
+          customer_id: payInvoice.customer_id,
+          reference: payInvoice.invoice_number,
+          description: `Invoice payment received (${payInvoice.invoice_number})`,
+        });
         toast.success("Payment recorded");
         setPaySheetOpen(false);
         await fetchInvoices();

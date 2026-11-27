@@ -196,6 +196,69 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
 
+CREATE OR REPLACE FUNCTION public.sync_account_balance_on_transaction_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND OLD.type IS NOT DISTINCT FROM NEW.type
+     AND OLD.amount IS NOT DISTINCT FROM NEW.amount
+     AND OLD.account_id IS NOT DISTINCT FROM NEW.account_id
+     AND OLD.to_account_id IS NOT DISTINCT FROM NEW.to_account_id THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN
+    IF OLD.type = 'income' THEN
+      UPDATE public.finance_accounts SET current_balance = current_balance - OLD.amount, updated_at = now() WHERE id = OLD.account_id;
+    ELSIF OLD.type = 'expense' THEN
+      UPDATE public.finance_accounts SET current_balance = current_balance + OLD.amount, updated_at = now() WHERE id = OLD.account_id;
+    ELSIF OLD.type = 'transfer' THEN
+      UPDATE public.finance_accounts SET current_balance = current_balance + OLD.amount, updated_at = now() WHERE id = OLD.account_id;
+      UPDATE public.finance_accounts SET current_balance = current_balance - OLD.amount, updated_at = now() WHERE id = OLD.to_account_id;
+    END IF;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.type = 'income' THEN
+      UPDATE public.finance_accounts SET current_balance = current_balance + NEW.amount, updated_at = now() WHERE id = NEW.account_id;
+    ELSIF NEW.type = 'expense' THEN
+      UPDATE public.finance_accounts SET current_balance = current_balance - NEW.amount, updated_at = now() WHERE id = NEW.account_id;
+    ELSIF NEW.type = 'transfer' THEN
+      UPDATE public.finance_accounts SET current_balance = current_balance - NEW.amount, updated_at = now() WHERE id = NEW.account_id;
+      UPDATE public.finance_accounts SET current_balance = current_balance + NEW.amount, updated_at = now() WHERE id = NEW.to_account_id;
+    END IF;
+    RETURN NEW;
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.generate_advance_number()
+RETURNS TRIGGER AS $$
+DECLARE
+  next_num INTEGER;
+BEGIN
+  SELECT COALESCE(MAX(CAST(SUBSTRING(advance_number FROM 5) AS INTEGER)), 0) + 1
+    INTO next_num
+    FROM public.employee_advances
+    WHERE advance_number ~ '^ADV-[0-9]+$';
+  NEW.advance_number := 'ADV-' || LPAD(next_num::TEXT, 5, '0');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.generate_payroll_slip_number()
+RETURNS TRIGGER AS $$
+DECLARE
+  next_num INTEGER;
+BEGIN
+  SELECT COALESCE(MAX(CAST(SUBSTRING(slip_number FROM 5) AS INTEGER)), 0) + 1
+    INTO next_num
+    FROM public.payroll
+    WHERE slip_number ~ '^PAY-[0-9]+$';
+  NEW.slip_number := 'PAY-' || LPAD(next_num::TEXT, 5, '0');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
 CREATE OR REPLACE FUNCTION public.log_finance_action()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -381,6 +444,24 @@ CREATE TRIGGER trg_update_account_balance
   BEFORE INSERT ON public.finance_transactions
   FOR EACH ROW
   EXECUTE FUNCTION public.update_account_balance_on_transaction();
+
+DROP TRIGGER IF EXISTS trg_sync_account_balance_change ON public.finance_transactions;
+CREATE TRIGGER trg_sync_account_balance_change
+  AFTER UPDATE OR DELETE ON public.finance_transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.sync_account_balance_on_transaction_change();
+
+DROP TRIGGER IF EXISTS trg_generate_advance_number ON public.employee_advances;
+CREATE TRIGGER trg_generate_advance_number
+  BEFORE INSERT ON public.employee_advances
+  FOR EACH ROW WHEN (NEW.advance_number = '' OR NEW.advance_number IS NULL)
+  EXECUTE FUNCTION public.generate_advance_number();
+
+DROP TRIGGER IF EXISTS trg_generate_payroll_slip_number ON public.payroll;
+CREATE TRIGGER trg_generate_payroll_slip_number
+  BEFORE INSERT ON public.payroll
+  FOR EACH ROW WHEN (NEW.slip_number = '' OR NEW.slip_number IS NULL)
+  EXECUTE FUNCTION public.generate_payroll_slip_number();
 
 DROP TRIGGER IF EXISTS trg_log_finance_action ON public.finance_transactions;
 CREATE TRIGGER trg_log_finance_action

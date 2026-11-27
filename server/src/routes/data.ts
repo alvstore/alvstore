@@ -43,7 +43,9 @@ const PUBLIC_WRITE = new Set([
 const WRITE_ROLES: Record<string, string[]> = {
   user_roles: ["admin"],
   employees: ["admin"],
+  employee_advances: ["admin"],
   payroll: ["admin"],
+  payroll_advance_recoveries: ["admin"],
   finance_audit_log: ["admin"],
   system_audit_log: ["admin"],
   business_settings: ["admin"],

@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Search, Building2, Phone, Mail, IndianRupee, TrendingDown, Users, Eye, MapPin, CreditCard } from "lucide-react";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 interface Supplier {
     id: string;
     name: string;
@@ -115,19 +116,21 @@ export default function Suppliers() {
         }
         setPayingSaving(true);
         try {
-            // Create finance expense transaction
-            const { error: finErr } = await supabase.from("finance_transactions").insert({
+            const syncRes = await syncFinanceEvent({
+                entry_source: "supplier",
+                source_id: `suppay:${ledgerSupplier.id}:${Date.now()}`,
                 type: "expense",
                 amount,
+                date: localDateKey(),
                 account_id: payForm.account_id,
                 payment_mode: payForm.payment_mode,
-                description: `Supplier payment to ${ledgerSupplier.name}`,
+                category_name: "Purchase",
+                description: `Supplier payment to ${ledgerSupplier.name}${payForm.notes ? ` · ${payForm.notes}` : ""}`,
                 reference: `supplier:${ledgerSupplier.id}`,
-                staff_name: "Admin",
-                created_by: user?.id,
+                staff_name: user?.email || "Admin",
             });
-            if (finErr)
-                throw finErr;
+            if (!syncRes.ok)
+                throw new Error(syncRes.error || "Failed to record finance entry");
             // Reduce outstanding balance
             const newBalance = Math.max(0, (ledgerSupplier.outstanding_balance || 0) - amount);
             await supabase.from("suppliers").update({ outstanding_balance: newBalance, updated_at: new Date().toISOString() } as any).eq("id", ledgerSupplier.id);

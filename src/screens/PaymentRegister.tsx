@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { FileText, Plus, Search, Download, Filter, CreditCard, AlertTriangle, CheckCircle2, Clock, Banknote, Upload, X, ChevronDown, Percent, } from "lucide-react";
+import { syncFinanceEvent } from "@/lib/finance-sync";
 type PaymentRegisterRow = {
     id: string;
     register_number: string;
@@ -250,17 +251,53 @@ export default function PaymentRegister() {
             ...(documentUrl && { document_url: documentUrl }),
             ...(!editId && { created_by: user?.id }),
         };
+        let savedRow: any = null;
         let error;
         if (editId) {
-            ({ error } = await supabase.from("payment_register").update(payload as any).eq("id", editId));
+            ({ data: savedRow, error } = await supabase.from("payment_register").update(payload as any).eq("id", editId).select("id, register_number").single());
         }
         else {
-            ({ error } = await supabase.from("payment_register").insert(payload as any));
+            ({ data: savedRow, error } = await supabase.from("payment_register").insert(payload as any).select("id, register_number").single());
         }
         if (error) {
             toast.error(error.message);
         }
         else {
+            // Settlement reconciliation sync (idempotent, never double-counts linked Invoice collections)
+            if ((form.status === "cleared" || form.status === "reconciled") && savedRow?.id) {
+                const txDate = form.settlement_date || form.transaction_date;
+                const refLabel = form.invoice_number || savedRow.register_number || form.transaction_reference || null;
+                if (!form.invoice_id && netReceived > 0) {
+                    await syncFinanceEvent({
+                        entry_source: "payment_register",
+                        source_id: `preg:${savedRow.id}`,
+                        type: "income",
+                        amount: netReceived,
+                        date: txDate,
+                        payment_mode: form.payment_mode,
+                        category_name: "Invoice Sales",
+                        customer_id: form.customer_id || null,
+                        reference: refLabel,
+                        description: `Settlement ${savedRow.register_number || ""} (${form.customer_name})`.trim(),
+                        staff_name: user?.email || null,
+                    });
+                }
+                if (Number(form.bank_charges || 0) > 0) {
+                    await syncFinanceEvent({
+                        entry_source: "payment_register",
+                        source_id: `preg-fee:${savedRow.id}`,
+                        type: "expense",
+                        amount: Number(form.bank_charges),
+                        date: txDate,
+                        payment_mode: form.payment_mode,
+                        category_name: "Bank & Gateway Charges",
+                        customer_id: form.customer_id || null,
+                        reference: refLabel,
+                        description: `MDR / Bank charges (${savedRow.register_number || form.customer_name})`,
+                        staff_name: user?.email || null,
+                    });
+                }
+            }
             toast.success(editId ? "Entry updated" : "Entry created");
             setSheetOpen(false);
             setForm(emptyForm);

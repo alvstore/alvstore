@@ -12,6 +12,8 @@ import { ItemsTable, type DocumentItem } from "@/components/documents/ItemsTable
 import { TotalsPanel } from "@/components/documents/TotalsPanel";
 import { SendDocumentDrawer } from "@/components/documents/SendDocumentDrawer";
 import { downloadDocumentPdf } from "@/lib/document-pdf-client";
+import { computePaymentUpdate } from "@/lib/invoice-metrics";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 import { ArrowLeft, Send, Download, Printer, Pencil, CreditCard, Copy, Link, Loader2, Truck } from "lucide-react";
 export default function InvoicePreview() {
     const { id } = useParams<{
@@ -93,19 +95,36 @@ export default function InvoicePreview() {
         if (!invoice)
             return;
         const amount = parseFloat(payAmount) || 0;
-        if (amount <= 0) {
-            toast.error("Enter a valid amount");
+        const currentPaid = Number(invoice.paid_amount || 0);
+        const computation = computePaymentUpdate(Number(invoice.total || 0), currentPaid, amount);
+        if (!computation.valid) {
+            toast.error(computation.error || "Enter a valid amount");
             return;
         }
-        const newPaid = (invoice.paid_amount || 0) + amount;
-        const paymentStatus = newPaid >= invoice.total ? "paid" : "partial";
-        const status = paymentStatus === "paid" ? "paid" : invoice.status;
-        const { error } = await supabase.from("invoices").update({ paid_amount: newPaid, payment_status: paymentStatus, status }).eq("id", invoice.id);
+        const status = computation.invoiceStatus === "paid" ? "paid" : invoice.status === "draft" ? "sent" : invoice.status;
+        const { error } = await supabase.from("invoices").update({
+            paid_amount: computation.nextPaid,
+            payment_status: computation.paymentStatus,
+            status,
+        }).eq("id", invoice.id);
         if (error)
             toast.error(error.message);
         else {
+            await syncFinanceEvent({
+                entry_source: "invoice",
+                source_id: `inv:${invoice.id}:${Math.round(currentPaid * 100)}-to-${Math.round(computation.nextPaid * 100)}`,
+                type: "income",
+                amount,
+                date: localDateKey(),
+                payment_mode: payMethod,
+                category_name: "Invoice Sales",
+                customer_id: invoice.customer_id || null,
+                reference: invoice.invoice_number,
+                description: `Invoice payment received (${invoice.invoice_number})`,
+                staff_name: user?.email || null,
+            });
             toast.success("Payment recorded");
-            setInvoice({ ...invoice, paid_amount: newPaid, payment_status: paymentStatus, status });
+            setInvoice({ ...invoice, paid_amount: computation.nextPaid, payment_status: computation.paymentStatus, status });
         }
         setPaySheetOpen(false);
     };

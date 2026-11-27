@@ -68,6 +68,8 @@ export default function Chat() {
     const [waName, setWaName] = useState("");
     const [newChatType, setNewChatType] = useState<"internal" | "whatsapp">("internal");
     const [sendingWa, setSendingWa] = useState(false);
+    const [promotingLead, setPromotingLead] = useState(false);
+    const [promotedMap, setPromotedMap] = useState<Record<string, boolean>>({});
     const [uploading, setUploading] = useState(false);
     const [pendingFile, setPendingFile] = useState<{
         file: File;
@@ -162,14 +164,21 @@ export default function Chat() {
         fetchMessages(id);
         markMessagesRead(id);
     };
-    // Poll for new messages (replaces Supabase realtime subscription)
+    // Poll conversations & active thread (and auto-select ?conversation= from notifications)
     useEffect(() => {
-        if (!selectedConvo)
-            return;
+        const paramConvo = new URLSearchParams(window.location.search).get("conversation");
+        if (paramConvo && !selectedConvo) {
+            setSelectedConvo(paramConvo);
+            setMobileShowChat(true);
+            fetchMessages(paramConvo);
+        }
+    }, [fetchMessages, selectedConvo]);
+
+    useEffect(() => {
         const interval = setInterval(() => {
-            fetchMessages(selectedConvo);
+            if (selectedConvo) fetchMessages(selectedConvo);
             fetchConversations();
-        }, 4000);
+        }, selectedConvo ? 4000 : 8000);
         return () => clearInterval(interval);
     }, [selectedConvo, fetchConversations, fetchMessages]);
     useEffect(() => {
@@ -231,12 +240,21 @@ export default function Chat() {
             setSendingWa(true);
             try {
                 const { data, error } = await supabase.functions.invoke("send-whatsapp", {
-                    body: { to: convo.whatsapp_phone, message: content, conversation_id: selectedConvo, sender_id: user.id },
+                    body: {
+                        to: convo.whatsapp_phone,
+                        message: content,
+                        conversation_id: selectedConvo,
+                        sender_id: user.id,
+                        customer_name: convo.title,
+                        ...(fileData ? { file_url: fileData.url, file_name: fileData.name, file_type: fileData.type } : {}),
+                    },
                 });
                 if (error)
                     throw error;
                 if (!data?.success)
                     throw new Error(data?.error || "Send failed");
+                await fetchMessages(selectedConvo);
+                await fetchConversations();
             }
             catch (err: any) {
                 toast.error(err.message || "WhatsApp send failed");
@@ -245,7 +263,6 @@ export default function Chat() {
             finally {
                 setSendingWa(false);
             }
-            await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
         }
         else {
             const insertPayload: any = {
@@ -264,6 +281,29 @@ export default function Chat() {
             await supabase.from("chat_conversations").update({ last_message: content, last_message_at: new Date().toISOString() }).eq("id", selectedConvo);
         }
     };
+    const promoteToLead = async () => {
+        if (!selectedConversation) return;
+        setPromotingLead(true);
+        try {
+            const { data, error } = await supabase.functions.invoke("whatsapp-promote-lead", {
+                body: { conversation_id: selectedConversation.id },
+            });
+            if (error || !data?.success) {
+                throw new Error(data?.error || error?.message || "Failed to add lead");
+            }
+            setPromotedMap((prev) => ({ ...prev, [selectedConversation.id]: true }));
+            if (data.created) {
+                toast.success(`Added ${data.lead?.name || "contact"} to Leads`);
+            } else {
+                toast.info(`Already in Leads (${data.lead?.name || "linked"})`);
+            }
+        } catch (err: any) {
+            toast.error(err?.message || "Failed to add contact to Leads");
+        } finally {
+            setPromotingLead(false);
+        }
+    };
+
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -417,29 +457,49 @@ export default function Chat() {
               </Box>
             </Box>) : (<>
               {/* Chat Header */}
-              <Box sx={{ display: "flex", alignItems: "center", gap: "0.75rem", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", backgroundColor: "hsl(var(--card))" }}>
-                <Button onClick={() => setMobileShowChat(false)} variant="text" size="small" sx={{ "@media (min-width: 768px)": { display: "none" } }}>←</Button>
+              <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.625rem", paddingLeft: "1rem", paddingRight: "1rem", paddingTop: "0.75rem", paddingBottom: "0.75rem", borderBottomWidth: "1px", borderColor: "color-mix(in srgb, hsl(var(--border)) 50%, transparent)", backgroundColor: "hsl(var(--card))" }}>
+                <Button onClick={() => setMobileShowChat(false)} variant="text" size="small" sx={{ minWidth: "32px", px: "0.375rem", "@media (min-width: 768px)": { display: "none" } }}>←</Button>
                 <Avatar sx={mergeSx({ height: "2.25rem", width: "2.25rem" }, mergeSx({ fontSize: "0.75rem", lineHeight: "1rem", fontWeight: "600" }, selectedConversation?.channel === "whatsapp" ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))" }))}>
                     {selectedConversation?.channel === "whatsapp"
                 ? <Box component={Phone} sx={{ height: "1rem", width: "1rem" }}/> : getInitials(selectedConversation ? getConvoName(selectedConversation) : "?")}
                   </Avatar>
-                <Box sx={{ flex: "1 1 0%" }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600" }}>{selectedConversation ? getConvoName(selectedConversation) : "Chat"}</Typography>
+                <Box sx={{ flex: "1 1 0%", minWidth: 0 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <Typography component="p" variant="body1" sx={{ fontSize: "0.875rem", lineHeight: "1.25rem", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedConversation ? getConvoName(selectedConversation) : "Chat"}</Typography>
                     {selectedConversation?.channel === "whatsapp" && (<StatusChip label={"WhatsApp"} variant="outlined" sx={{ fontSize: "10px", color: "hsl(var(--success))", borderColor: "color-mix(in srgb, hsl(var(--success)) 30%, transparent)" }}/>)}
                   </Box>
                   <Typography component="p" variant="body1" sx={{ fontSize: "11px", color: "hsl(var(--muted-foreground))" }}>
                     {selectedConversation?.channel === "whatsapp" ? selectedConversation.whatsapp_phone : "Internal"}
                   </Typography>
                 </Box>
+                {selectedConversation?.channel === "whatsapp" && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={promotingLead}
+                    onClick={() => void promoteToLead()}
+                    startIcon={<UserPlus size={14} />}
+                    sx={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                  >
+                    {promotingLead
+                      ? "Adding..."
+                      : promotedMap[selectedConversation.id]
+                        ? "In Leads"
+                        : "Add to Leads"}
+                  </Button>
+                )}
               </Box>
 
               {/* Messages */}
               <Box sx={{ flex: "1 1 0%", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent", "&::-webkit-scrollbar": { width: "5px", height: "5px" }, "&::-webkit-scrollbar-track": { background: "transparent" }, "&::-webkit-scrollbar-thumb": { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: "99px" }, padding: "1rem", "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.75rem" } }}>
                 {messages.map(msg => {
                 const isMe = msg.sender_id === user?.id;
-                const senderName = msg.sender_id ? (profiles[msg.sender_id]?.full_name || "User") : "System";
                 const isWaMsg = msg.channel === "whatsapp";
+                const senderName = msg.sender_id
+                  ? (profiles[msg.sender_id]?.full_name || "User")
+                  : isWaMsg && selectedConversation
+                    ? getConvoName(selectedConversation)
+                    : "System";
                 return (<Box key={msg.id} sx={mergeSx({ display: "flex" }, isMe ? { justifyContent: "flex-end" } : { justifyContent: "flex-start" })}>
                       <Box sx={mergeSx({ display: "flex", gap: "0.5rem", maxWidth: "75%" }, isMe && { flexDirection: "row-reverse" })}>
                         {!isMe && (<Avatar sx={mergeSx({ height: "1.75rem", width: "1.75rem", marginTop: "0.25rem", flexShrink: "0" }, mergeSx({ fontSize: "10px" }, isWaMsg ? { backgroundColor: "color-mix(in srgb, hsl(var(--success)) 10%, transparent)", color: "hsl(var(--success))" } : { backgroundColor: "hsl(var(--muted))" }))}>

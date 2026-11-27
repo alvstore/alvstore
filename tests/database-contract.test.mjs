@@ -25,9 +25,11 @@ test("query metadata covers exactly the Prisma public models, not auth passwords
   const tables = [...schema.matchAll(/model\s+(\w+)\s*\{([\s\S]*?)\n\}/g)]
     .filter(match => /@@schema\("public"\)/.test(match[2]))
     .map(match => match[2].match(/@@map\("([^"]+)"\)/)?.[1]);
-  assert.equal(tables.length, 65);
+  assert.equal(tables.length, 67);
   assert.deepEqual(Object.keys(metadata.tables).sort(), tables.sort());
   assert.equal(metadata.tables.users, undefined);
   assert.equal(metadata.tables.password_reset_tokens, undefined);
   assert.equal(metadata.tables.finance_transactions.columns.find(column => column.name === "date").udt, "date");
+  assert.ok(metadata.tables.employee_advances);
+  assert.ok(metadata.tables.payroll_advance_recoveries);
 });

@@ -28,7 +28,7 @@ export const toast = Object.assign((message: ReactNode, options?: Options) => ad
 export function ToastProvider() {
   const messages = useSyncExternalStore(subscribe, snapshot, () => empty);
   const current = messages[0];
-  return <Snackbar key={current?.id ?? "empty"} open={!!current} autoHideDuration={current?.loading ? null : current?.duration ?? 5000} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} onClose={(_event, reason) => { if (reason !== "clickaway") dismiss(current?.id); }}>
+  return <Snackbar key={current?.id ?? "empty"} open={!!current} autoHideDuration={current?.loading ? null : current?.duration ?? 5000} anchorOrigin={{ vertical: "top", horizontal: "center" }} onClose={(_event, reason) => { if (reason !== "clickaway") dismiss(current?.id); }}>
     <Alert variant="filled" severity={current?.severity ?? "info"} onClose={() => dismiss(current?.id)} icon={current?.loading ? <CircularProgress size={18} color="inherit" /> : undefined} sx={{ maxWidth: "min(440px, 90vw)", alignItems: "center" }}>
       {current?.message}{current?.description && <Box sx={{ fontSize: 12, mt: 0.5, overflowWrap: "anywhere" }}>{current.description}</Box>}
     </Alert>

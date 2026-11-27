@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { DollarSign, Clock, CheckCircle, Plus, Search, CreditCard, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 interface Payment {
     id: string;
     payment_number: string;
@@ -58,14 +59,28 @@ export default function Payments() {
             toast.error("Enter valid amount");
             return;
         }
-        const { error } = await supabase.from("payments").insert({
+        const { data: insertedPay, error } = await supabase.from("payments").insert({
             amount, type: form.type as any, payment_method: form.payment_method as any,
             status: form.status as any, reference_id: form.reference_id || null,
             notes: form.notes || null, created_by: user?.id,
-        });
+        }).select("id, payment_number").single();
         if (error)
             toast.error(error.message);
         else {
+            if (form.status === "completed") {
+                await syncFinanceEvent({
+                    entry_source: "payment",
+                    source_id: insertedPay?.id ? `pay:${insertedPay.id}` : undefined,
+                    type: "income",
+                    amount,
+                    date: localDateKey(),
+                    payment_mode: form.payment_method,
+                    category_name: form.type === "pos" ? "POS Sales" : "Invoice Sales",
+                    reference: form.reference_id || insertedPay?.payment_number || null,
+                    description: form.notes || `Standalone payment (${form.type})`,
+                    staff_name: user?.email || null,
+                });
+            }
             toast.success("Payment recorded");
             setSheetOpen(false);
             fetchPayments();

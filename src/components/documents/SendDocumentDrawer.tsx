@@ -40,9 +40,11 @@ export function SendDocumentDrawer({
 }: SendDocumentDrawerProps) {
   const docLabel = DOC_TITLES[docType];
   const [toEmail, setToEmail] = useState(defaultEmail || "");
+  const [waPhone, setWaPhone] = useState(defaultPhone || "");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendingWa, setSendingWa] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -51,6 +53,7 @@ export function SendDocumentDrawer({
     if (!open) return;
     setErrorMsg(null);
     setToEmail(defaultEmail || "");
+    setWaPhone(defaultPhone || "");
     setSubject(`ALVStore ${docLabel} — ${docNumber}`);
     const greeting = `Hello ${customerName || "Customer"},`;
     const bodyText =
@@ -60,7 +63,40 @@ export function SendDocumentDrawer({
         ? `Your ALVStore dispatch ${docLabel} (${docNumber}) has been generated. Track live delivery milestones and confirm proof of delivery online.`
         : `Please find attached your ${docLabel} (${docNumber})${totalLabel ? ` for ${totalLabel}` : ""} from ALVStore.`;
     setMessage(`${greeting}\n\n${bodyText}\n\nWarm regards,\nALVStore Team`);
-  }, [open, docType, docLabel, docNumber, customerName, defaultEmail, totalLabel]);
+  }, [open, docType, docLabel, docNumber, customerName, defaultEmail, defaultPhone, totalLabel]);
+
+  const handleSendWhatsappPdf = async () => {
+    setErrorMsg(null);
+    const cleanPhone = waPhone.trim();
+    if (!cleanPhone) {
+      setErrorMsg("Customer WhatsApp phone number is required.");
+      return;
+    }
+    setSendingWa(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-document", {
+        body: {
+          type: docType,
+          id: docId,
+          to: cleanPhone,
+          message,
+          mark_sent: docType === "quotation",
+        },
+      });
+      if (error || !data?.success) {
+        throw new Error(data?.error || error?.message || "Failed to send WhatsApp PDF");
+      }
+      toast.success(`${docNumber}.pdf sent on WhatsApp to ${cleanPhone}`);
+      onEmailSent?.();
+      onClose();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to send WhatsApp PDF";
+      setErrorMsg(msg);
+      toast.error(msg);
+    } finally {
+      setSendingWa(false);
+    }
+  };
 
   const handleSendEmail = async () => {
     setErrorMsg(null);
@@ -219,11 +255,30 @@ export function SendDocumentDrawer({
 
         <Divider />
 
-        <Box>
+        <Stack spacing={1.5}>
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 }}>
-            Instant Customer Share
+            WhatsApp Direct PDF &amp; Quick Share
           </Typography>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
+          <TextField
+            fullWidth
+            size="small"
+            type="tel"
+            label="Customer WhatsApp Number"
+            placeholder="+91 98876 01200"
+            value={waPhone}
+            onChange={(e) => setWaPhone(e.target.value)}
+          />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <Button
+              variant="contained"
+              color="success"
+              fullWidth
+              disabled={sendingWa || sending || !waPhone.trim()}
+              startIcon={<Send size={15} />}
+              onClick={() => void handleSendWhatsappPdf()}
+            >
+              {sendingWa ? "Sending PDF..." : "Send PDF on WhatsApp"}
+            </Button>
             <Button
               variant="outlined"
               fullWidth
@@ -243,7 +298,7 @@ export function SendDocumentDrawer({
               </Button>
             )}
           </Stack>
-        </Box>
+        </Stack>
       </Stack>
     </SideDrawer>
   );

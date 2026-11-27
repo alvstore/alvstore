@@ -57,24 +57,32 @@ import {
   File,
   FileText,
   Globe,
+  KeyRound,
+  Link2,
   Loader2,
   Mail,
+  MessageCircle,
   MessageSquare,
   Palette,
   Pencil,
   Phone,
   Plus,
+  QrCode,
   Receipt,
   RefreshCw,
   Save,
+  Search,
   Send,
   Shield,
+  Smartphone,
   TestTube,
   Trash2,
+  Unplug,
   Upload,
   User,
   UserPlus,
   Wrench,
+  X,
 } from "lucide-react";
 
 interface Profile {
@@ -102,25 +110,26 @@ interface EmployeeLink {
 interface SettingsSection {
   id: string;
   label: string;
+  keywords: string;
   icon: React.ComponentType<{ size?: number }>;
   group: "Account" | "Workspace" | "Integrations";
   adminOnly?: boolean;
 }
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
-  { id: "profile", label: "Profile", icon: User, group: "Account" },
-  { id: "appearance", label: "Appearance", icon: Palette, group: "Account" },
-  { id: "business", label: "Business Info", icon: Building2, group: "Workspace", adminOnly: true },
-  { id: "users", label: "User Management", icon: Shield, group: "Workspace", adminOnly: true },
-  { id: "gst", label: "GST Settings", icon: Receipt, group: "Workspace", adminOnly: true },
-  { id: "documents", label: "Document Settings", icon: FileText, group: "Workspace", adminOnly: true },
-  { id: "service-categories", label: "Service Categories", icon: Wrench, group: "Workspace", adminOnly: true },
-  { id: "templates", label: "Templates", icon: File, group: "Workspace", adminOnly: true },
-  { id: "email", label: "Email / SMTP", icon: Mail, group: "Integrations", adminOnly: true },
-  { id: "sms", label: "SMS Gateway", icon: MessageSquare, group: "Integrations", adminOnly: true },
-  { id: "whatsapp", label: "WhatsApp", icon: Phone, group: "Integrations", adminOnly: true },
-  { id: "razorpay", label: "Razorpay", icon: CreditCard, group: "Integrations", adminOnly: true },
-  { id: "hikvision", label: "Hikvision", icon: Camera, group: "Integrations", adminOnly: true },
+  { id: "profile", label: "Profile", keywords: "avatar photo name password security account", icon: User, group: "Account" },
+  { id: "appearance", label: "Appearance", keywords: "theme dark light palette obsidian sidebar compact", icon: Palette, group: "Account" },
+  { id: "business", label: "Business Info", keywords: "company logo bank upi ifsc address branding", icon: Building2, group: "Workspace", adminOnly: true },
+  { id: "users", label: "User Management", keywords: "team staff roles permissions login invite", icon: Shield, group: "Workspace", adminOnly: true },
+  { id: "gst", label: "GST Settings", keywords: "tax gstin cgst sgst igst hsn", icon: Receipt, group: "Workspace", adminOnly: true },
+  { id: "documents", label: "Document Settings", keywords: "invoice quotation challan prefix terms", icon: FileText, group: "Workspace", adminOnly: true },
+  { id: "service-categories", label: "Service Categories", keywords: "repair jobs pricing rates charges", icon: Wrench, group: "Workspace", adminOnly: true },
+  { id: "templates", label: "Templates", keywords: "email whatsapp sms message placeholders", icon: File, group: "Workspace", adminOnly: true },
+  { id: "email", label: "Email / SMTP", keywords: "smtp host mail password test", icon: Mail, group: "Integrations", adminOnly: true },
+  { id: "sms", label: "SMS Gateway", keywords: "msg91 text sms sender api", icon: MessageSquare, group: "Integrations", adminOnly: true },
+  { id: "whatsapp", label: "WhatsApp", keywords: "meta whatsapp business automation", icon: Phone, group: "Integrations", adminOnly: true },
+  { id: "razorpay", label: "Razorpay", keywords: "payment link webhook secret key", icon: CreditCard, group: "Integrations", adminOnly: true },
+  { id: "hikvision", label: "Hikvision", keywords: "biometric attendance punch device sync", icon: Camera, group: "Integrations", adminOnly: true },
 ];
 
 function CardSectionHeader({
@@ -309,7 +318,39 @@ export default function Settings() {
   };
 
   const visibleSections = SETTINGS_SECTIONS.filter((s) => !s.adminOnly || isAdmin);
-  const groups = [...new Set(visibleSections.map((s) => s.group))];
+  const [navQuery, setNavQuery] = useState("");
+  const [sectionStatus, setSectionStatus] = useState<Record<string, boolean>>({});
+  const filteredSections = visibleSections.filter((s) => {
+    const q = navQuery.trim().toLowerCase();
+    if (!q) return true;
+    return s.label.toLowerCase().includes(q) || s.keywords.includes(q) || s.group.toLowerCase().includes(q);
+  });
+  const groups = [...new Set(filteredSections.map((s) => s.group))];
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    Promise.all([
+      supabase.from("business_settings").select("company_name, gst_number, whatsapp_phone_id, integrations").limit(1).maybeSingle(),
+      supabase.from("hikvision_devices").select("id", { count: "exact", head: true }),
+    ]).then(([bsRes, hikRes]) => {
+      const bs = bsRes.data as any;
+      const integ = (bs?.integrations || {}) as Record<string, unknown>;
+      setSectionStatus({
+        business: Boolean(bs?.company_name),
+        gst: Boolean(bs?.gst_number),
+        email: Boolean(integ.smtp_host && integ.smtp_user),
+        sms: Boolean(integ.sms_api_key || integ.msg91_auth_key),
+        whatsapp: Boolean(
+          integ.whatsapp_gateway_url ||
+            bs?.whatsapp_phone_id ||
+            integ.whatsapp_phone_id ||
+            integ.whatsapp_token
+        ),
+        razorpay: Boolean(integ.razorpay_key_id),
+        hikvision: Boolean((hikRes.count || 0) > 0 || integ.hikvision_app_key),
+      });
+    });
+  }, [isAdmin, activeSection]);
 
   const renderContent = () => {
     switch (activeSection) {
@@ -325,6 +366,8 @@ export default function Settings() {
             avatarUrl={avatarUrl}
             saving={savingProfile}
             uploadingAvatar={uploadingAvatar}
+            heroFileRef={heroFileRef}
+            onHeroFileSelected={handleHeroFileSelected}
             onAvatarUploaded={handleAvatarUploaded}
             onPickAvatar={() => heroFileRef.current?.click()}
             onRemoveAvatar={removeAvatar}
@@ -362,163 +405,184 @@ export default function Settings() {
 
   return (
     <AnimatedPage>
-      <Box sx={{ maxWidth: "74rem", "& > :not([hidden]) ~ :not([hidden])": { mt: 3 } }}>
+      <Box sx={{ maxWidth: "78rem", display: "grid", gap: 2.5, minWidth: 0 }}>
         <PageHeader
           title="Settings"
-          subtitle="Manage your profile avatar, theme preferences, business branding, tax configuration, and integrations"
-        />
-
-        {/* Top Identity & Quick Controls Strip */}
-        <Card
-          sx={{
-            background: `linear-gradient(135deg, ${alpha(muiTheme.palette.primary.main, 0.08)} 0%, transparent 55%)`,
-          }}
-        >
-          <CardContent sx={{ p: { xs: 2.25, sm: 3 } }}>
+          subtitle="Manage your account preferences, workspace identity, tax configuration, and connected services"
+          actions={
             <Box
               sx={{
-                display: "flex",
-                flexDirection: { xs: "column", md: "row" },
-                alignItems: { xs: "flex-start", md: "center" },
-                justifyContent: "space-between",
-                gap: 2.5,
+                display: { xs: "none", sm: "inline-flex" },
+                alignItems: "center",
+                gap: 1.25,
+                px: 1.5,
+                py: 0.75,
+                borderRadius: 99,
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: alpha(muiTheme.palette.background.paper, 0.7),
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0 }}>
-                <Box
-                  ref={heroFileRef}
-                  component="input"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleHeroFileSelected}
-                  sx={{ display: "none" }}
-                />
-                <AvatarUpload
-                  currentUrl={avatarUrl}
-                  name={fullName || user?.email || "User"}
-                  folder="profiles"
-                  entityId={user?.id}
-                  size="lg"
-                  onUploaded={handleAvatarUploaded}
-                />
-                <Box sx={{ minWidth: 0 }}>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 0.5 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: "-0.02em" }} noWrap>
-                      {fullName || user?.email?.split("@")[0] || "Workspace Account"}
-                    </Typography>
-                    <StatusChip label={roleLabel} size="small" color="primary" variant="outlined" />
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    {user?.email || "Signed in account"}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.35 }}>
-                    Active theme: {currentTheme.label} ({currentTheme.isDark ? "Dark" : "Light"})
-                  </Typography>
-                </Box>
-              </Box>
-
-              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1, flexShrink: 0 }}>
-                <Button
-                  size="small"
-                  variant="contained"
-                  disabled={uploadingAvatar || savingProfile}
-                  onClick={() => heroFileRef.current?.click()}
-                  startIcon={
-                    uploadingAvatar ? (
-                      <Box component={Loader2} sx={{ width: 15, height: 15, animation: "spin 1s linear infinite" }} />
-                    ) : (
-                      <Upload size={15} />
-                    )
-                  }
-                >
-                  {avatarUrl ? "Change Photo" : "Upload Photo"}
-                </Button>
-                {avatarUrl && (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="error"
-                    disabled={savingProfile || uploadingAvatar}
-                    onClick={() => void removeAvatar()}
-                  >
-                    Remove Photo
-                  </Button>
-                )}
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setActiveSection("appearance")}
-                  startIcon={<Palette size={15} />}
-                >
-                  Theme
-                </Button>
-              </Stack>
+              <Avatar
+                src={avatarUrl ?? undefined}
+                alt={fullName || "User"}
+                sx={{
+                  width: 24,
+                  height: 24,
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  bgcolor: alpha(muiTheme.palette.primary.main, 0.16),
+                  color: muiTheme.palette.primary.main,
+                }}
+              >
+                {(fullName || user?.email || "U")
+                  .split(" ")
+                  .map((w) => w[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </Avatar>
+              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                {fullName || user?.email?.split("@")[0] || "Account"}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                · {currentTheme.label}
+              </Typography>
             </Box>
-          </CardContent>
-        </Card>
+          }
+        />
 
-        {/* Unified Section Navigation Bar */}
-        <Card>
-          <CardContent sx={{ p: { xs: 1.25, md: 2 } }}>
+        {/* 2026 Split Console Grid: Sticky Rail + Open Hairline Workspace */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "252px minmax(0, 1fr)" },
+            gap: { xs: 2, md: 3.5 },
+            alignItems: "start",
+            minWidth: 0,
+          }}
+        >
+          {/* Sticky Desktop Index Rail & Compact Mobile Rail */}
+          <Card
+            sx={{
+              position: { md: "sticky" },
+              top: { md: 20 },
+              p: { xs: 1.25, md: 1.5 },
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
+            <TextField
+              size="small"
+              fullWidth
+              value={navQuery}
+              onChange={(e) => setNavQuery(e.target.value)}
+              placeholder="Filter settings..."
+              slotProps={{
+                htmlInput: { "aria-label": "Filter settings" },
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Box component={Search} sx={{ width: 14, height: 14, color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: navQuery ? (
+                    <InputAdornment position="end">
+                      <IconButton size="small" aria-label="Clear settings filter" onClick={() => setNavQuery("")}>
+                        <X size={13} />
+                      </IconButton>
+                    </InputAdornment>
+                  ) : undefined,
+                },
+              }}
+              sx={{ mb: { xs: 1.25, md: 1.75 } }}
+            />
+
             <Box
               sx={{
                 display: { xs: "flex", md: "grid" },
-                gridTemplateColumns: { md: "104px 1fr" },
+                gap: { xs: 0.75, md: 1.75 },
                 overflowX: { xs: "auto", md: "visible" },
-                alignItems: "center",
-                rowGap: 1.25,
-                columnGap: 2,
-                gap: { xs: 0.75, md: 0 },
+                pb: { xs: 0.5, md: 0 },
                 scrollbarWidth: "thin",
               }}
             >
-              {groups.map((group) => (
-                <Fragment key={group}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      display: { xs: "none", md: "block" },
-                    }}
-                  >
-                    {group}
-                  </Typography>
+              {groups.length === 0 ? (
+                <Typography variant="caption" color="text.secondary" sx={{ px: 1, py: 1.5 }}>
+                  No matching sections
+                </Typography>
+              ) : (
+                groups.map((group) => (
                   <Box
+                    key={group}
                     sx={{
-                      display: "flex",
-                      flexWrap: { xs: "nowrap", md: "wrap" },
-                      alignItems: "center",
-                      gap: 0.75,
+                      display: { xs: "flex", md: "grid" },
+                      gap: { xs: 0.75, md: 0.35 },
                       flexShrink: 0,
                     }}
                   >
-                    {visibleSections
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{
+                        px: 1.25,
+                        pb: 0.35,
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        display: { xs: "none", md: "block" },
+                      }}
+                    >
+                      {group}
+                    </Typography>
+                    {filteredSections
                       .filter((s) => s.group === group)
                       .map((section) => {
                         const Icon = section.icon;
                         const selected = activeSection === section.id;
+                        const configured = sectionStatus[section.id];
                         return (
                           <Button
                             key={section.id}
                             type="button"
                             size="small"
+                            fullWidth={false}
                             variant={selected ? "contained" : "text"}
                             color={selected ? "primary" : "inherit"}
                             onClick={() => setActiveSection(section.id)}
                             startIcon={<Icon size={15} />}
+                            endIcon={
+                              configured !== undefined && !selected ? (
+                                <Box
+                                  component="span"
+                                  aria-hidden="true"
+                                  sx={{
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: "50%",
+                                    bgcolor: configured ? "success.main" : alpha(muiTheme.palette.text.disabled, 0.35),
+                                    display: "inline-block",
+                                  }}
+                                />
+                              ) : undefined
+                            }
                             sx={{
+                              justifyContent: { xs: "center", md: "space-between" },
+                              textAlign: "left",
                               flexShrink: 0,
                               whiteSpace: "nowrap",
                               px: 1.5,
-                              minHeight: 34,
+                              py: 0.75,
+                              minHeight: 35,
+                              width: { md: "100%" },
                               color: selected ? undefined : "text.secondary",
+                              bgcolor: selected ? undefined : "transparent",
+                              "& .MuiButton-startIcon": { mr: 1 },
+                              "& .MuiButton-endIcon": { ml: "auto" },
                               "&:hover": selected
                                 ? undefined
-                                : { bgcolor: "action.hover", color: "text.primary" },
+                                : { bgcolor: alpha(muiTheme.palette.primary.main, 0.06), color: "text.primary" },
                             }}
                           >
                             {section.label}
@@ -526,20 +590,20 @@ export default function Settings() {
                         );
                       })}
                   </Box>
-                </Fragment>
-              ))}
+                ))
+              )}
             </Box>
-          </CardContent>
-        </Card>
+          </Card>
 
-        {/* Active Settings Canvas */}
-        <Box sx={{ minWidth: 0 }}>{renderContent()}</Box>
+          {/* Active Settings Workspace */}
+          <Box sx={{ minWidth: 0, maxWidth: "56rem" }}>{renderContent()}</Box>
+        </Box>
       </Box>
     </AnimatedPage>
   );
 }
 
-// ─── Profile & Security Tab ─────────────────────────────────────
+// ─── Profile & Security Tab (Unified Single-Avatar Identity Panel) ───────────────
 function ProfileTab({
   user,
   roleLabel,
@@ -550,6 +614,8 @@ function ProfileTab({
   avatarUrl,
   saving,
   uploadingAvatar,
+  heroFileRef,
+  onHeroFileSelected,
   onAvatarUploaded,
   onPickAvatar,
   onRemoveAvatar,
@@ -564,11 +630,14 @@ function ProfileTab({
   avatarUrl: string | null;
   saving: boolean;
   uploadingAvatar: boolean;
+  heroFileRef: React.RefObject<HTMLInputElement | null>;
+  onHeroFileSelected: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onAvatarUploaded: (url: string) => Promise<void>;
   onPickAvatar: () => void;
   onRemoveAvatar: () => Promise<void>;
   onSaveProfile: () => Promise<void>;
 }) {
+  const muiTheme = useMuiTheme();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -595,64 +664,93 @@ function ProfileTab({
   };
 
   return (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns: { xs: "1fr", lg: "1.15fr 0.85fr" },
-        gap: 3,
-        alignItems: "start",
-      }}
-    >
-      <Card>
-        <CardSectionHeader
-          icon={User}
-          title="Personal Details & Avatar"
-          subtitle="Keep your profile photo, display name, and contact number synced across the header, sidebar, and audit trail"
-        />
-        <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: 2,
-              border: "1px dashed",
-              borderColor: "divider",
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 2,
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <AvatarUpload
-                currentUrl={avatarUrl}
-                name={fullName || user?.email || "User"}
-                folder="profiles"
-                entityId={user?.id}
-                size="md"
-                onUploaded={onAvatarUploaded}
-              />
-              <Box>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Profile Photo
+    <Card>
+      <CardContent sx={{ p: { xs: 2.5, sm: 3.5 }, display: "grid", gap: 3 }}>
+        {/* Unified Profile Identity & Avatar Header */}
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            alignItems: { xs: "flex-start", sm: "center" },
+            justifyContent: "space-between",
+            gap: 2.5,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2.25, minWidth: 0 }}>
+            <Box
+              ref={heroFileRef}
+              component="input"
+              type="file"
+              accept="image/*"
+              onChange={onHeroFileSelected}
+              sx={{ display: "none" }}
+            />
+            <AvatarUpload
+              currentUrl={avatarUrl}
+              name={fullName || user?.email || "User"}
+              folder="profiles"
+              entityId={user?.id}
+              size="lg"
+              onUploaded={onAvatarUploaded}
+            />
+            <Box sx={{ minWidth: 0 }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 0.5 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: "-0.02em" }} noWrap>
+                  {fullName || user?.email?.split("@")[0] || "Workspace Account"}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  PNG, JPG, or WebP up to 5 MB
-                </Typography>
-              </Box>
+                <StatusChip label={roleLabel} size="small" color="primary" variant="outlined" />
+              </Stack>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {user?.email || "Signed in account"}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                PNG, JPG, or WebP up to 5 MB · Synced across header, sidebar, and audit trail
+              </Typography>
             </Box>
-            <Stack direction="row" spacing={1}>
-              <Button size="small" variant="outlined" disabled={uploadingAvatar} onClick={onPickAvatar}>
-                {avatarUrl ? "Replace" : "Choose Image"}
-              </Button>
-              {avatarUrl && (
-                <Button size="small" variant="text" color="error" disabled={saving} onClick={onRemoveAvatar}>
-                  Remove
-                </Button>
-              )}
-            </Stack>
           </Box>
 
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, flexWrap: "wrap", rowGap: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={uploadingAvatar || saving}
+              onClick={onPickAvatar}
+              startIcon={
+                uploadingAvatar ? (
+                  <Box component={Loader2} sx={{ width: 15, height: 15, animation: "spin 1s linear infinite" }} />
+                ) : (
+                  <Upload size={15} />
+                )
+              }
+            >
+              {avatarUrl ? "Change Photo" : "Upload Photo"}
+            </Button>
+            {avatarUrl && (
+              <Button
+                size="small"
+                variant="text"
+                color="error"
+                disabled={saving || uploadingAvatar}
+                onClick={onRemoveAvatar}
+              >
+                Remove Photo
+              </Button>
+            )}
+          </Stack>
+        </Box>
+
+        <Divider />
+
+        {/* Identity Fields */}
+        <Box sx={{ display: "grid", gap: 2 }}>
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
+              Personal Details
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Display name and contact number shown on Quotations, Invoices, and Financial Audit entries
+            </Typography>
+          </Box>
           <TextField value={user?.email || ""} disabled label="Account Email" size="small" fullWidth />
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
             <TextField
@@ -671,67 +769,84 @@ function ProfileTab({
               fullWidth
             />
           </Box>
-
-          <Box sx={{ pt: 0.5 }}>
+          <Box>
             <Button onClick={onSaveProfile} disabled={saving} variant="contained" startIcon={<Save size={16} />}>
               {saving ? "Saving..." : "Save Profile"}
             </Button>
           </Box>
-        </CardContent>
-      </Card>
+        </Box>
 
-      <Card>
-        <CardSectionHeader
-          icon={Shield}
-          title="Password & Access"
-          subtitle={`Signed in with ${roleLabel} permissions`}
-        />
-        <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
-          <TextField
-            type={showPwd ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            label="New Password"
-            size="small"
-            fullWidth
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      aria-label={showPwd ? "Hide password" : "Show password"}
-                      onClick={() => setShowPwd((p) => !p)}
-                      edge="end"
-                    >
-                      {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-          <TextField
-            type={showPwd ? "text" : "password"}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            label="Confirm New Password"
-            size="small"
-            fullWidth
-            error={Boolean(confirmPassword && password !== confirmPassword)}
-            helperText={confirmPassword && password !== confirmPassword ? "Passwords do not match" : undefined}
-          />
-          <Button
-            onClick={changePassword}
-            disabled={updatingPwd || !password}
-            variant="outlined"
-            fullWidth
-          >
-            {updatingPwd ? "Updating..." : "Update Password"}
-          </Button>
-        </CardContent>
-      </Card>
-    </Box>
+        <Divider />
+
+        {/* Password & Access */}
+        <Box sx={{ display: "grid", gap: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
+                Password & Security
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Signed in with {roleLabel} permissions
+              </Typography>
+            </Box>
+            <StatusChip
+              label={roleLabel}
+              size="small"
+              sx={{
+                bgcolor: alpha(muiTheme.palette.primary.main, 0.08),
+                color: muiTheme.palette.primary.main,
+              }}
+            />
+          </Box>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+            <TextField
+              type={showPwd ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              label="New Password"
+              size="small"
+              fullWidth
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        aria-label={showPwd ? "Hide password" : "Show password"}
+                        onClick={() => setShowPwd((p) => !p)}
+                        edge="end"
+                      >
+                        {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+            <TextField
+              type={showPwd ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              label="Confirm New Password"
+              size="small"
+              fullWidth
+              error={Boolean(confirmPassword && password !== confirmPassword)}
+              helperText={confirmPassword && password !== confirmPassword ? "Passwords do not match" : undefined}
+            />
+          </Box>
+          <Box>
+            <Button
+              onClick={changePassword}
+              disabled={updatingPwd || !password}
+              variant="outlined"
+              startIcon={<Shield size={15} />}
+            >
+              {updatingPwd ? "Updating..." : "Update Password"}
+            </Button>
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -761,98 +876,106 @@ function AppearanceTab() {
   };
 
   return (
-    <Stack spacing={3}>
-      <Card>
-        <CardSectionHeader
-          icon={Palette}
-          title="Console Color Palette"
-          subtitle="Switch live between Obsidian Dark and curated light/accent workspaces"
-        />
-        <CardContent sx={{ px: 3, pb: 3 }}>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)", lg: "repeat(4, 1fr)" },
-              gap: 1.5,
-            }}
-          >
-            {themes.map((t) => {
-              const selected = theme === t.name;
-              return (
-                <ButtonBase
-                  key={t.name}
-                  type="button"
-                  onClick={() => setTheme(t.name)}
-                  aria-pressed={selected}
+    <Card>
+      <CardContent sx={{ p: { xs: 2.5, sm: 3.5 }, display: "grid", gap: 3 }}>
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 1 }}>
+            <Box component={Palette} sx={{ width: 18, height: 18, color: "primary.main" }} />
+            Console Color Palette
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
+            Switch live between Obsidian Dark and curated light/accent workspaces
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(3, 1fr)" },
+            gap: 1.5,
+          }}
+        >
+          {themes.map((t) => {
+            const selected = theme === t.name;
+            const bgColor = t.isDark ? "#0d0e12" : "#f7f8fa";
+            const surfaceColor = t.isDark ? "#171820" : "#ffffff";
+            return (
+              <ButtonBase
+                key={t.name}
+                type="button"
+                onClick={() => setTheme(t.name)}
+                aria-pressed={selected}
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2.5,
+                  border: "2px solid",
+                  borderColor: selected ? "primary.main" : "divider",
+                  bgcolor: selected ? alpha(muiTheme.palette.primary.main, 0.08) : "background.paper",
+                  display: "grid",
+                  gap: 1.25,
+                  textAlign: "left",
+                  transition: "border-color 150ms ease, background-color 150ms ease",
+                  "&:hover": { borderColor: "primary.main" },
+                }}
+              >
+                {/* Live Mini Workspace Preview Bar */}
+                <Box
+                  aria-hidden="true"
                   sx={{
-                    p: 1.75,
-                    borderRadius: 2.5,
-                    border: "2px solid",
-                    borderColor: selected ? "primary.main" : "divider",
-                    bgcolor: selected ? alpha(muiTheme.palette.primary.main, 0.08) : "background.paper",
+                    height: 36,
+                    borderRadius: 1.5,
+                    bgcolor: bgColor,
+                    border: "1px solid",
+                    borderColor: alpha(t.isDark ? "#ffffff" : "#000000", 0.1),
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 1.5,
-                    textAlign: "left",
-                    transition: "border-color 150ms ease, background-color 150ms ease",
-                    "&:hover": { borderColor: "primary.main" },
+                    gap: 1,
+                    p: 0.75,
                   }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
-                    <Box
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: "50%",
-                        bgcolor: t.preview,
-                        border: "2px solid",
-                        borderColor: "divider",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 650 }} noWrap>
-                        {t.label}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {t.isDark ? "Dark mode" : "Light mode"}
-                      </Typography>
-                    </Box>
+                  <Box sx={{ width: 14, height: "100%", borderRadius: 0.75, bgcolor: surfaceColor, opacity: 0.9 }} />
+                  <Box sx={{ flex: 1, display: "grid", gap: 0.4 }}>
+                    <Box sx={{ width: "55%", height: 4, borderRadius: 2, bgcolor: t.preview }} />
+                    <Box sx={{ width: "80%", height: 3, borderRadius: 2, bgcolor: alpha(t.isDark ? "#ffffff" : "#000000", 0.16) }} />
+                  </Box>
+                  <Box sx={{ width: 12, height: 12, borderRadius: "50%", bgcolor: t.preview }} />
+                </Box>
+
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }} noWrap>
+                      {t.label}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {t.isDark ? "Dark mode" : "Light mode"}
+                    </Typography>
                   </Box>
                   {selected && <Box component={Check} sx={{ width: 16, height: 16, color: "primary.main", flexShrink: 0 }} />}
-                </ButtonBase>
-              );
-            })}
-          </Box>
-        </CardContent>
-      </Card>
+                </Box>
+              </ButtonBase>
+            );
+          })}
+        </Box>
 
-      <Card>
-        <CardSectionHeader
-          icon={Wrench}
-          title="Workspace Behavior"
-          subtitle="Control desktop navigation density"
-        />
-        <CardContent sx={{ px: 3, pb: 3 }}>
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Compact Navigation Sidebar
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Collapse the desktop sidebar to an 88px icon rail with quick tooltips
-              </Typography>
-            </Box>
-            <Switch
-              checked={sidebarCompact}
-              onChange={(_, checked) => toggleCompactSidebar(checked)}
-              slotProps={{ input: { "aria-label": "Compact Navigation Sidebar" } }}
-            />
+        <Divider />
+
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 650 }}>
+              Workspace Behavior — Compact Navigation Sidebar
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Collapse the desktop sidebar to an 88px icon rail with quick tooltips
+            </Typography>
           </Box>
-        </CardContent>
-      </Card>
-    </Stack>
+          <Switch
+            checked={sidebarCompact}
+            onChange={(_, checked) => toggleCompactSidebar(checked)}
+            slotProps={{ input: { "aria-label": "Compact Navigation Sidebar" } }}
+          />
+        </Box>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1699,7 +1822,7 @@ function DocumentSettingsTab() {
 
 // ─── Integration Settings Helpers ───────────────────────────────
 function useIntegrations() {
-  const [integrations, setIntegrations] = useState<Record<string, string>>({});
+  const [integrations, setIntegrations] = useState<Record<string, any>>({});
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1713,7 +1836,7 @@ function useIntegrations() {
         if (data) {
           setSettingsId(data.id);
           if (data.integrations && typeof data.integrations === "object") {
-            setIntegrations(data.integrations as Record<string, string>);
+            setIntegrations(data.integrations as Record<string, any>);
           }
         }
       });
@@ -1723,25 +1846,25 @@ function useIntegrations() {
     setIntegrations((prev) => ({ ...prev, [key]: value }));
   };
 
-  const persistIntegrations = async (silent = false, extra?: Record<string, string>): Promise<boolean> => {
+  const persistIntegrations = async (silent = false, extra?: Record<string, any>): Promise<boolean> => {
     setSaving(true);
     let ok = false;
     try {
       let targetId = settingsId;
-      let existingIntegrations: Record<string, string> = {};
+      let existingIntegrations: Record<string, any> = {};
       if (!targetId) {
         const { data: rows } = await supabase.from("business_settings").select("id, integrations").limit(1);
         if (rows?.[0]) {
           targetId = rows[0].id;
           setSettingsId(targetId);
           if (rows[0].integrations && typeof rows[0].integrations === "object") {
-            existingIntegrations = rows[0].integrations as Record<string, string>;
+            existingIntegrations = rows[0].integrations as Record<string, any>;
           }
         }
       } else {
         const { data: current } = await supabase.from("business_settings").select("integrations").eq("id", targetId).single();
         if (current?.integrations && typeof current.integrations === "object") {
-          existingIntegrations = current.integrations as Record<string, string>;
+          existingIntegrations = current.integrations as Record<string, any>;
         }
       }
       const merged = { ...existingIntegrations, ...integrations, ...(extra || {}) };
@@ -1768,7 +1891,7 @@ function useIntegrations() {
   };
 
   const saveIntegrations = () => persistIntegrations(false);
-  const saveIntegrationsWith = (extra: Record<string, string>) => persistIntegrations(false, extra);
+  const saveIntegrationsWith = (extra: Record<string, any>, silent = false) => persistIntegrations(silent, extra);
   const saveIntegrationsSilent = () => persistIntegrations(true);
 
   return { integrations, updateField, saveIntegrations, saveIntegrationsWith, saveIntegrationsSilent, saving };
@@ -1973,15 +2096,76 @@ function SMSTab() {
 }
 
 // ─── WhatsApp Tab ───────────────────────────────────────────────
+interface WaSessionStatus {
+  provider: "openwa" | "evolution" | "meta";
+  instance: string;
+  state: "connected" | "qr_ready" | "connecting" | "disconnected" | "error";
+  connected: boolean;
+  configured?: boolean;
+  phone?: string;
+  pushName?: string;
+  qrCode?: string;
+  pairingCode?: string;
+  detail?: string;
+  webhook_url?: string;
+}
+
 function WhatsAppTab() {
   const [form, setForm] = useState({ whatsapp_api_url: "", whatsapp_api_key: "", whatsapp_phone_id: "" });
   const { integrations, updateField, saveIntegrationsWith, saving: intSaving } = useIntegrations();
   const [saving, setSaving] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [showGatewayKey, setShowGatewayKey] = useState(false);
+  const [linkMode, setLinkMode] = useState<"qr" | "pairing_code">("qr");
+  const [pairingPhone, setPairingPhone] = useState("");
+  const [session, setSession] = useState<WaSessionStatus | null>(null);
+  const [sessionBusy, setSessionBusy] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
+  const [testText, setTestText] = useState("Hello from ALVStore CRM!");
+  const [testingSend, setTestingSend] = useState(false);
+
   const webhookUrl = `${window.location.origin}/api/backend/functions/whatsapp-webhook`;
-  const [generatedToken] = useState(() => "lovable_whatsapp_verify_" + Math.random().toString(36).substring(2, 10));
+  const [generatedToken] = useState(() => "alvstore_wa_verify_" + Math.random().toString(36).substring(2, 10));
+  const [generatedWebhookSecret] = useState(() => "alv_wh_" + Math.random().toString(36).substring(2, 14));
   const verifyToken = integrations["wa_verify_token"] || generatedToken;
+  const gatewaySecret = integrations["whatsapp_webhook_secret"] || generatedWebhookSecret;
+
+  const provider = (integrations["whatsapp_provider"] ||
+    (integrations["whatsapp_gateway_url"] ? "openwa" : form.whatsapp_phone_id ? "meta" : "openwa")) as
+    | "openwa"
+    | "evolution"
+    | "meta";
+
+  const fetchSessionStatus = useCallback(async (silent = false) => {
+    try {
+      const res = await fetch("/api/backend/functions/whatsapp-session/status", {
+        headers: getBackendAuthHeaders(),
+      });
+      const data = (await res.json().catch(() => ({}))) as WaSessionStatus & {
+        success?: boolean;
+        error?: string;
+      };
+      if (!res.ok) {
+        if (!silent) toast.error(data?.error || "Could not reach WhatsApp gateway");
+        return;
+      }
+      if (data?.success) {
+        setSession((prev) =>
+          data.connected
+            ? data
+            : {
+                ...data,
+                pairingCode:
+                  data.pairingCode ||
+                  (data.state === "qr_ready" || data.state === "connecting" ? prev?.pairingCode : undefined),
+              }
+        );
+      }
+    } catch (err: any) {
+      if (!silent) toast.error(err?.message || "Gateway status check failed");
+    }
+  }, []);
 
   useEffect(() => {
     supabase
@@ -2000,17 +2184,113 @@ function WhatsAppTab() {
           });
         }
       });
-  }, []);
+    void fetchSessionStatus(true);
+  }, [fetchSessionStatus]);
 
-  const save = async () => {
+  // Poll session status every 3s while awaiting QR scan / phone pairing confirmation
+  useEffect(() => {
+    if (provider === "meta") return;
+    if (!session || (session.state !== "qr_ready" && session.state !== "connecting")) return;
+    const timer = window.setInterval(() => {
+      void fetchSessionStatus(true);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [provider, session, fetchSessionStatus]);
+
+  const save = async (silent = false) => {
     setSaving(true);
     if (settingsId) {
       const { error } = await supabase.from("business_settings").update(form as any).eq("id", settingsId);
-      if (error) toast.error(error.message);
-      else toast.success("WhatsApp settings saved");
+      if (error && !silent) toast.error(error.message);
     }
-    await saveIntegrationsWith({ wa_verify_token: verifyToken });
+    const patch: Record<string, string> = {
+      whatsapp_provider: provider,
+      wa_verify_token: verifyToken,
+    };
+    if (provider !== "meta") {
+      patch.whatsapp_webhook_secret = gatewaySecret;
+      if (!integrations["whatsapp_instance"]) {
+        patch.whatsapp_instance = "alvstore";
+      }
+    }
+    await saveIntegrationsWith(patch, silent);
     setSaving(false);
+    if (!silent) void fetchSessionStatus(true);
+  };
+
+  const handleConnect = async () => {
+    if (provider === "meta") return;
+    if (!(integrations["whatsapp_gateway_url"] || "").trim()) {
+      toast.error("Save your Gateway URL first before linking a WhatsApp number.");
+      return;
+    }
+    if (linkMode === "pairing_code" && pairingPhone.replace(/\D/g, "").length < 10) {
+      toast.error("Enter a valid WhatsApp phone number with country code (e.g. +919887601200).");
+      return;
+    }
+    setSessionBusy(true);
+    try {
+      await save(true);
+      const { data, error } = await supabase.functions.invoke("whatsapp-session-connect", {
+        body: {
+          method: linkMode,
+          phone_number: linkMode === "pairing_code" ? pairingPhone.trim() : undefined,
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Connection attempt failed");
+      setSession(data as WaSessionStatus);
+      toast.success(
+        data.connected
+          ? `Connected to WhatsApp${data.phone ? ` (+${data.phone})` : ""}`
+          : linkMode === "pairing_code"
+            ? "Pairing code ready — enter it on your phone"
+            : "QR code ready — scan with WhatsApp"
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to start WhatsApp linking");
+    } finally {
+      setSessionBusy(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    const confirmed = await confirmAction(
+      "Disconnect the active WhatsApp Web session from ALVStore CRM? You can re-link anytime via QR scan."
+    );
+    if (!confirmed) return;
+    setSessionBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("whatsapp-session-logout", { body: {} });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Disconnect failed");
+      toast.success("WhatsApp number disconnected");
+      await fetchSessionStatus(true);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to disconnect session");
+    } finally {
+      setSessionBusy(false);
+    }
+  };
+
+  const handleTestSend = async () => {
+    if (!testPhone.trim() || !testText.trim()) {
+      toast.error("Enter both a recipient phone number and a message.");
+      return;
+    }
+    setTestingSend(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+        body: { to: testPhone.trim(), message: testText.trim() },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Test send failed");
+      toast.success(`Test message sent${data.whatsapp_message_id ? ` (${data.whatsapp_message_id})` : ""}`);
+    } catch (err: any) {
+      toast.error(err?.message || "Test send failed");
+    } finally {
+      setTestingSend(false);
+    }
   };
 
   const copyToClipboard = (value: string) => {
@@ -2018,118 +2298,421 @@ function WhatsAppTab() {
     toast.success("Copied to clipboard");
   };
 
+  const statusChipProps =
+    session?.connected
+      ? { label: session.phone ? `Connected · +${session.phone}` : "Connected", color: "success" as const }
+      : session?.state === "qr_ready" || session?.state === "connecting"
+        ? { label: session.state === "qr_ready" ? "Awaiting Scan" : "Connecting...", color: "warning" as const }
+        : session?.state === "error"
+          ? { label: "Gateway Error", color: "error" as const }
+          : { label: "Not Linked", color: "default" as const };
+
   return (
     <Stack spacing={3}>
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 3, alignItems: "start" }}>
-        <Card>
-          <CardSectionHeader
-            icon={Phone}
-            title="WhatsApp Business API"
-            subtitle="Configure Meta Cloud API credentials"
-          />
-          <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
-            <TextField
-              value={form.whatsapp_api_url}
-              onChange={(e) => setForm((p) => ({ ...p, whatsapp_api_url: e.target.value }))}
-              placeholder="https://graph.facebook.com/v17.0"
-              label="API URL"
-              size="small"
-              fullWidth
-            />
-            <TextField
-              type={showKey ? "text" : "password"}
-              value={form.whatsapp_api_key}
-              onChange={(e) => setForm((p) => ({ ...p, whatsapp_api_key: e.target.value }))}
-              label="API Key / Access Token"
-              size="small"
-              fullWidth
-              slotProps={{
-                input: {
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        size="small"
-                        aria-label={showKey ? "Hide API key" : "Show API key"}
-                        onClick={() => setShowKey((p) => !p)}
-                        edge="end"
-                      >
-                        {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-            <TextField
-              value={form.whatsapp_phone_id}
-              onChange={(e) => setForm((p) => ({ ...p, whatsapp_phone_id: e.target.value }))}
-              label="Phone Number ID"
-              size="small"
-              fullWidth
-            />
-            <Button onClick={save} disabled={saving || intSaving} variant="contained" startIcon={<Save size={16} />}>
-              {saving || intSaving ? "Saving..." : "Save WhatsApp Settings"}
-            </Button>
-          </CardContent>
-        </Card>
+      <Card>
+        <CardSectionHeader
+          icon={MessageCircle}
+          title="WhatsApp Transport Mode"
+          subtitle="Choose your self-hosted WhatsApp Web gateway (QR / pairing) or Meta Official Cloud API"
+          action={<StatusChip label={statusChipProps.label} color={statusChipProps.color} variant="filled" />}
+        />
+        <CardContent sx={{ px: 3, pb: 3 }}>
+          <TextField
+            select
+            label="Active Provider"
+            size="small"
+            fullWidth
+            value={provider}
+            onChange={(e) => updateField("whatsapp_provider", e.target.value)}
+          >
+            <MenuItem value="openwa">OpenWA Gateway (Self-Hosted Baileys · Lightweight · Recommended)</MenuItem>
+            <MenuItem value="evolution">Evolution API v2 (Self-Hosted Baileys)</MenuItem>
+            <MenuItem value="meta">Meta Official Cloud API (graph.facebook.com)</MenuItem>
+          </TextField>
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardSectionHeader
-            icon={Globe}
-            title="Facebook Developer Portal"
-            subtitle="Webhook verification values for Meta App Dashboard"
-          />
-          <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
-            <TextField
-              value={integrations["fb_app_id"] || ""}
-              onChange={(e) => updateField("fb_app_id", e.target.value)}
-              placeholder="Enter Facebook App ID"
-              label="Facebook App ID"
-              size="small"
-              fullWidth
+      {provider !== "meta" ? (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 3, alignItems: "start" }}>
+          <Card>
+            <CardSectionHeader
+              icon={provider === "openwa" ? QrCode : Globe}
+              title={provider === "openwa" ? "OpenWA Gateway Config" : "Evolution API v2 Config"}
+              subtitle="Connect your self-hosted container URL and webhook secret"
             />
-            <TextField
-              type="password"
-              value={integrations["fb_app_secret"] || ""}
-              onChange={(e) => updateField("fb_app_secret", e.target.value)}
-              placeholder="Enter Facebook App Secret"
-              label="Facebook App Secret"
-              size="small"
-              fullWidth
+            <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
+              <TextField
+                value={integrations["whatsapp_gateway_url"] || ""}
+                onChange={(e) => updateField("whatsapp_gateway_url", e.target.value)}
+                placeholder="http://127.0.0.1:2785 or https://wa.yourdomain.com"
+                label="Gateway URL"
+                size="small"
+                fullWidth
+              />
+              <TextField
+                type={showGatewayKey ? "text" : "password"}
+                value={integrations["whatsapp_gateway_key"] || ""}
+                onChange={(e) => updateField("whatsapp_gateway_key", e.target.value)}
+                label={provider === "evolution" ? "Evolution Global / Instance API Key" : "OpenWA X-API-Key"}
+                size="small"
+                fullWidth
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          aria-label={showGatewayKey ? "Hide gateway key" : "Show gateway key"}
+                          onClick={() => setShowGatewayKey((p) => !p)}
+                          edge="end"
+                        >
+                          {showGatewayKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <TextField
+                value={integrations["whatsapp_instance"] || "alvstore"}
+                onChange={(e) => updateField("whatsapp_instance", e.target.value)}
+                label="Session / Instance Name"
+                placeholder="alvstore"
+                size="small"
+                fullWidth
+              />
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { mt: 0.5 } }}>
+                <FormLabel>Webhook HMAC Secret</FormLabel>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    value={gatewaySecret}
+                    onChange={(e) => updateField("whatsapp_webhook_secret", e.target.value)}
+                    size="small"
+                    fullWidth
+                    slotProps={{ htmlInput: { "aria-label": "Webhook HMAC Secret" } }}
+                    sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem" }}
+                  />
+                  <IconButton onClick={() => copyToClipboard(gatewaySecret)} aria-label="Copy webhook secret">
+                    <Copy size={16} />
+                  </IconButton>
+                </Box>
+              </Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { mt: 0.5 } }}>
+                <FormLabel>Auto-Registered Webhook URL</FormLabel>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    value={webhookUrl}
+                    size="small"
+                    fullWidth
+                    slotProps={{ htmlInput: { readOnly: true, "aria-label": "Webhook Callback URL" } }}
+                    sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem" }}
+                  />
+                  <IconButton onClick={() => copyToClipboard(webhookUrl)} aria-label="Copy webhook URL">
+                    <Copy size={16} />
+                  </IconButton>
+                </Box>
+              </Box>
+              <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: "wrap" }}>
+                <Button
+                  onClick={() => void save(false)}
+                  disabled={saving || intSaving}
+                  variant="contained"
+                  startIcon={<Save size={16} />}
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  {saving || intSaving ? "Saving..." : "Save Gateway Settings"}
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => void fetchSessionStatus(false)}
+                  disabled={sessionBusy}
+                  startIcon={<RefreshCw size={15} />}
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  Check Status
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardSectionHeader
+              icon={Smartphone}
+              title="Link WhatsApp Number"
+              subtitle="Scan QR code or pair via 8-character code on your phone"
             />
-            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { mt: 0.5 } }}>
-              <FormLabel>Webhook Verify Token</FormLabel>
-              <Box sx={{ display: "flex", gap: 1 }}>
+            <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
+              {session?.connected ? (
+                <Stack spacing={2}>
+                  <Alert severity="success" icon={<CheckCircle2 size={18} />}>
+                    Bound number:{" "}
+                    <strong>{session.phone ? `+${session.phone}` : session.instance}</strong>
+                    {session.pushName ? ` (${session.pushName})` : ""}
+                  </Alert>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() => void handleDisconnect()}
+                    disabled={sessionBusy}
+                    startIcon={<Unplug size={15} />}
+                    sx={{ alignSelf: "flex-start" }}
+                  >
+                    Disconnect Number
+                  </Button>
+                </Stack>
+              ) : (
+                <Stack spacing={2}>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant={linkMode === "qr" ? "contained" : "outlined"}
+                      onClick={() => setLinkMode("qr")}
+                      startIcon={<QrCode size={15} />}
+                    >
+                      Scan QR Code
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={linkMode === "pairing_code" ? "contained" : "outlined"}
+                      onClick={() => setLinkMode("pairing_code")}
+                      startIcon={<KeyRound size={15} />}
+                    >
+                      Phone Pairing Code
+                    </Button>
+                  </Stack>
+
+                  {linkMode === "pairing_code" && (
+                    <TextField
+                      label="Business Phone Number (with country code)"
+                      placeholder="+919887601200"
+                      size="small"
+                      fullWidth
+                      value={pairingPhone}
+                      onChange={(e) => setPairingPhone(e.target.value)}
+                    />
+                  )}
+
+                  <Button
+                    variant="contained"
+                    onClick={() => void handleConnect()}
+                    disabled={sessionBusy}
+                    startIcon={sessionBusy ? <Loader2 size={15} /> : <Link2 size={15} />}
+                  >
+                    {sessionBusy
+                      ? "Connecting..."
+                      : linkMode === "qr"
+                        ? session?.qrCode
+                          ? "Refresh QR Code"
+                          : "Generate QR Code"
+                        : "Request 8-Char Pairing Code"}
+                  </Button>
+
+                  {linkMode === "qr" && session?.qrCode && (
+                    <Box
+                      sx={{
+                        p: 2,
+                        borderRadius: 2,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        bgcolor: "common.white",
+                        display: "inline-flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        alignSelf: "center",
+                        gap: 1,
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={session.qrCode}
+                        alt="WhatsApp Link QR Code"
+                        sx={{ width: 220, height: 220, objectFit: "contain" }}
+                      />
+                      <Typography variant="caption" sx={{ color: "grey.700", fontWeight: 600 }}>
+                        Open WhatsApp &rarr; Linked Devices &rarr; Link a Device
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {linkMode === "pairing_code" && session?.pairingCode && (
+                    <Alert severity="info" icon={<KeyRound size={18} />}>
+                      <Stack spacing={0.5}>
+                        <Typography variant="caption">
+                          Enter this code on WhatsApp (&ldquo;Link with phone number instead&rdquo;):
+                        </Typography>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                          <Typography
+                            variant="h6"
+                            sx={{ fontFamily: "JetBrains Mono, monospace", letterSpacing: 3, fontWeight: 700 }}
+                          >
+                            {session.pairingCode}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => copyToClipboard(session.pairingCode || "")}
+                            aria-label="Copy pairing code"
+                          >
+                            <Copy size={15} />
+                          </IconButton>
+                        </Stack>
+                      </Stack>
+                    </Alert>
+                  )}
+
+                  {session?.detail && !session.qrCode && !session.pairingCode && (
+                    <Typography variant="caption" color="text.secondary">
+                      {session.detail}
+                    </Typography>
+                  )}
+                </Stack>
+              )}
+
+              <Divider />
+
+              <Stack spacing={1.5}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: "uppercase" }}>
+                  Send Test Message
+                </Typography>
                 <TextField
-                  value={verifyToken}
+                  label="Recipient WhatsApp Number"
+                  placeholder="+919887601200"
                   size="small"
                   fullWidth
-                  slotProps={{ htmlInput: { readOnly: true, "aria-label": "Webhook Verify Token" } }}
-                  sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem" }}
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
                 />
-                <IconButton onClick={() => copyToClipboard(verifyToken)} aria-label="Copy token">
-                  <Copy size={16} />
-                </IconButton>
-              </Box>
-            </Box>
-            <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { mt: 0.5 } }}>
-              <FormLabel>Webhook Callback URL</FormLabel>
-              <Box sx={{ display: "flex", gap: 1 }}>
                 <TextField
-                  value={webhookUrl}
+                  label="Test Message"
                   size="small"
                   fullWidth
-                  slotProps={{ htmlInput: { readOnly: true, "aria-label": "Webhook Callback URL" } }}
-                  sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem" }}
+                  value={testText}
+                  onChange={(e) => setTestText(e.target.value)}
                 />
-                <IconButton onClick={() => copyToClipboard(webhookUrl)} aria-label="Copy webhook URL">
-                  <Copy size={16} />
-                </IconButton>
+                <Button
+                  variant="outlined"
+                  onClick={() => void handleTestSend()}
+                  disabled={testingSend}
+                  startIcon={<Send size={15} />}
+                  sx={{ alignSelf: "flex-start" }}
+                >
+                  {testingSend ? "Sending..." : "Send Test Message"}
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Box>
+      ) : (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 3, alignItems: "start" }}>
+          <Card>
+            <CardSectionHeader
+              icon={Phone}
+              title="WhatsApp Business API"
+              subtitle="Configure Meta Cloud API credentials"
+            />
+            <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
+              <TextField
+                value={form.whatsapp_api_url}
+                onChange={(e) => setForm((p) => ({ ...p, whatsapp_api_url: e.target.value }))}
+                placeholder="https://graph.facebook.com/v21.0"
+                label="API URL"
+                size="small"
+                fullWidth
+              />
+              <TextField
+                type={showKey ? "text" : "password"}
+                value={form.whatsapp_api_key}
+                onChange={(e) => setForm((p) => ({ ...p, whatsapp_api_key: e.target.value }))}
+                label="API Key / Access Token"
+                size="small"
+                fullWidth
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          aria-label={showKey ? "Hide API key" : "Show API key"}
+                          onClick={() => setShowKey((p) => !p)}
+                          edge="end"
+                        >
+                          {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <TextField
+                value={form.whatsapp_phone_id}
+                onChange={(e) => setForm((p) => ({ ...p, whatsapp_phone_id: e.target.value }))}
+                label="Phone Number ID"
+                size="small"
+                fullWidth
+              />
+              <Button onClick={() => void save(false)} disabled={saving || intSaving} variant="contained" startIcon={<Save size={16} />}>
+                {saving || intSaving ? "Saving..." : "Save WhatsApp Settings"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardSectionHeader
+              icon={Globe}
+              title="Facebook Developer Portal"
+              subtitle="Webhook verification values for Meta App Dashboard"
+            />
+            <CardContent sx={{ px: 3, pb: 3, "& > :not([hidden]) ~ :not([hidden])": { mt: 2 } }}>
+              <TextField
+                value={integrations["fb_app_id"] || ""}
+                onChange={(e) => updateField("fb_app_id", e.target.value)}
+                placeholder="Enter Facebook App ID"
+                label="Facebook App ID"
+                size="small"
+                fullWidth
+              />
+              <TextField
+                type="password"
+                value={integrations["fb_app_secret"] || ""}
+                onChange={(e) => updateField("fb_app_secret", e.target.value)}
+                placeholder="Enter Facebook App Secret"
+                label="Facebook App Secret"
+                size="small"
+                fullWidth
+              />
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { mt: 0.5 } }}>
+                <FormLabel>Webhook Verify Token</FormLabel>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    value={verifyToken}
+                    size="small"
+                    fullWidth
+                    slotProps={{ htmlInput: { readOnly: true, "aria-label": "Webhook Verify Token" } }}
+                    sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem" }}
+                  />
+                  <IconButton onClick={() => copyToClipboard(verifyToken)} aria-label="Copy token">
+                    <Copy size={16} />
+                  </IconButton>
+                </Box>
               </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
+              <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { mt: 0.5 } }}>
+                <FormLabel>Webhook Callback URL</FormLabel>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    value={webhookUrl}
+                    size="small"
+                    fullWidth
+                    slotProps={{ htmlInput: { readOnly: true, "aria-label": "Webhook Callback URL" } }}
+                    sx={{ fontFamily: "JetBrains Mono, monospace", fontSize: "0.75rem" }}
+                  />
+                  <IconButton onClick={() => copyToClipboard(webhookUrl)} aria-label="Copy webhook URL">
+                    <Copy size={16} />
+                  </IconButton>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Box>
+      )}
 
       <WhatsAppAutomationSection />
     </Stack>

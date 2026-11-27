@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, Box } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { mergeSx, toast } from "@/components/mui";
 import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +14,7 @@ interface AvatarUploadProps {
     onUploaded: (url: string) => void;
     size?: "sm" | "md" | "lg";
 }
-const sizes = { sm: { height: "3rem", width: "3rem" }, md: { height: "4rem", width: "4rem" }, lg: { height: "5rem", width: "5rem" } };
+const sizes = { sm: { height: "3rem", width: "3rem", fontSize: "0.875rem" }, md: { height: "4rem", width: "4rem", fontSize: "1.05rem" }, lg: { height: "5rem", width: "5rem", fontSize: "1.35rem" } };
 const iconSizes = { sm: { height: "0.75rem", width: "0.75rem" }, md: { height: "1rem", width: "1rem" }, lg: { height: "1.25rem", width: "1.25rem" } };
 export function AvatarUpload({ currentUrl, name, folder, entityId, onUploaded, size = "md" }: AvatarUploadProps) {
     const [uploading, setUploading] = useState(false);
@@ -67,7 +68,7 @@ export function AvatarUpload({ currentUrl, name, folder, entityId, onUploaded, s
       sx={{ position: "relative", display: "inline-flex", cursor: "pointer", borderRadius: "9999px" }}
     >
       <Box ref={fileRef} type="file" accept="image/*" onChange={handleUpload} component="input" sx={{ display: "none" }}/>
-      <Avatar src={currentUrl ?? undefined} alt={name} sx={mergeSx(mergeSx(sizes[size], { borderWidth: "2px", borderColor: "hsl(var(--border))" }), { backgroundColor: "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)", color: "hsl(var(--primary))", fontWeight: "600", fontSize: "0.875rem", lineHeight: "1.25rem" })}>{initials}</Avatar>
+      <Avatar src={currentUrl ?? undefined} alt={name} sx={theme => ({ ...sizes[size], border: "2px solid", borderColor: alpha(theme.palette.primary.main, 0.34), backgroundColor: alpha(theme.palette.primary.main, 0.16), color: theme.palette.primary.main, fontWeight: 700, letterSpacing: "0.02em" })}>{initials}</Avatar>
       <Box sx={{ position: "absolute", inset: "0px", borderRadius: "9999px", backgroundColor: "color-mix(in srgb, hsl(var(--foreground)) 48%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", opacity: uploading ? "1" : "0", "[data-ui-group]:hover &, [data-ui-group]:focus-visible &": { opacity: "1" }, transitionProperty: "opacity", transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)", transitionDuration: "150ms" }}>
         {uploading ? <Box component={Loader2} sx={mergeSx(iconSizes[size], { color: "hsl(var(--background))", animation: "spin 1s linear infinite" })}/> : <Box component={Camera} sx={mergeSx(iconSizes[size], { color: "hsl(var(--background))" })}/>}
       </Box>

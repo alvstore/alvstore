@@ -1,11 +1,12 @@
 "use client";
 
-import { Box, Button, FormLabel, IconButton, MenuItem, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { Box, Button, FormControlLabel, FormLabel, IconButton, MenuItem, Switch, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { AnimatedPage, DataTable, PageHeader, SearchToolbar, SideDrawer, StatCard, StatusChip, toast } from "@/components/mui";
 import { useState, useEffect } from "react";
 import { useLocation } from "@/lib/router-compat";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { localDateKey, syncFinanceEvent } from "@/lib/finance-sync";
 import { Plus, Search, Receipt, Trash2, CheckCircle, IndianRupee } from "lucide-react";
 interface BillItem {
     product_name: string;
@@ -30,9 +31,13 @@ export default function PurchaseBills() {
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({ supplier_id: "", notes: "", bill_date: new Date().toISOString().split("T")[0], due_date: "", po_id: "" });
     const [items, setItems] = useState<BillItem[]>([{ product_name: "", quantity: 1, unit_price: 0, gst_percentage: 18, total: 0 }]);
+    const [confirmBillTarget, setConfirmBillTarget] = useState<any | null>(null);
+    const [confirmPaidNow, setConfirmPaidNow] = useState(false);
+    const [confirmPayMode, setConfirmPayMode] = useState("bank_transfer");
+    const [confirmingBill, setConfirmingBill] = useState(false);
     const fetchBills = async () => {
         setLoading(true);
-        let q = supabase.from("purchase_bills").select("*, suppliers(name)").order("created_at", { ascending: false });
+        let q = supabase.from("purchase_bills").select("*, suppliers(name, outstanding_balance)").order("created_at", { ascending: false });
         if (search)
             q = q.ilike("bill_number", `%${search}%`);
         const { data } = await q;
@@ -115,38 +120,61 @@ export default function PurchaseBills() {
         setItems([{ product_name: "", quantity: 1, unit_price: 0, gst_percentage: 18, total: 0 }]);
         fetchBills();
     };
-    const confirmBill = async (bill: any) => {
-        // 1. Update bill status
-        await supabase.from("purchase_bills").update({ status: "confirmed" } as any).eq("id", bill.id);
-        // 2. Get bill items and create stock movements
-        const { data: billItems } = await supabase.from("purchase_bill_items").select("*").eq("bill_id", bill.id);
-        if (billItems) {
-            for (const item of billItems) {
-                if (item.product_id) {
-                    await supabase.from("stock_movements").insert({
-                        product_id: item.product_id, quantity: item.quantity, type: "in",
-                        reference: `PB: ${bill.bill_number}`, notes: `Purchase bill ${bill.bill_number}`,
-                        created_by: user?.id,
-                    } as any);
+    const openConfirmBill = (bill: any) => {
+        setConfirmBillTarget(bill);
+        setConfirmPaidNow(false);
+        setConfirmPayMode("bank_transfer");
+    };
+    const confirmBill = async (bill: any, paidNow: boolean, payMode: string) => {
+        setConfirmingBill(true);
+        try {
+            // 1. Update bill status (+ paid status when paid on the spot)
+            await supabase.from("purchase_bills").update({
+                status: "confirmed",
+                ...(paidNow ? { payment_status: "paid", paid_amount: bill.total || 0 } : {}),
+            } as any).eq("id", bill.id);
+            // 2. Get bill items and create stock movements
+            const { data: billItems } = await supabase.from("purchase_bill_items").select("*").eq("bill_id", bill.id);
+            if (billItems) {
+                for (const item of billItems) {
+                    if (item.product_id) {
+                        await supabase.from("stock_movements").insert({
+                            product_id: item.product_id, quantity: item.quantity, type: "in",
+                            reference: `PB: ${bill.bill_number}`, notes: `Purchase bill ${bill.bill_number}`,
+                            created_by: user?.id,
+                        } as any);
+                    }
                 }
             }
+            if (paidNow && Number(bill.total || 0) > 0) {
+                // Paid immediately: post Finance & Cash Control expense once without inflating unpaid AP
+                await syncFinanceEvent({
+                    entry_source: "purchase_bill",
+                    source_id: `pbill:${bill.id}`,
+                    type: "expense",
+                    amount: Number(bill.total || 0),
+                    date: bill.bill_date || localDateKey(),
+                    payment_mode: payMode,
+                    category_name: "Purchase",
+                    description: `Purchase Bill: ${bill.bill_number}`,
+                    reference: bill.bill_number,
+                    staff_name: user?.email || null,
+                });
+            } else {
+                // Credit / Unpaid: only update supplier outstanding balance (paid later via Suppliers avoids 2x expense)
+                const { data: supRow } = await supabase.from("suppliers").select("outstanding_balance").eq("id", bill.supplier_id).maybeSingle();
+                const currentBal = Number(supRow?.outstanding_balance ?? bill.suppliers?.outstanding_balance ?? 0);
+                await supabase.from("suppliers").update({
+                    outstanding_balance: currentBal + Number(bill.total || 0),
+                    updated_at: new Date().toISOString(),
+                } as any).eq("id", bill.supplier_id);
+            }
+            toast.success(paidNow ? "Bill confirmed, stock updated & paid expense synced" : "Bill confirmed, stock & supplier balance updated");
+            setConfirmBillTarget(null);
+            fetchBills();
+        } finally {
+            setConfirmingBill(false);
         }
-        // 3. Update supplier outstanding balance
-        await supabase.from("suppliers").update({
-            outstanding_balance: (bill.suppliers?.outstanding_balance || 0) + (bill.total || 0),
-            updated_at: new Date().toISOString(),
-        } as any).eq("id", bill.supplier_id);
-        // 4. Create finance expense transaction
-        const { data: accounts } = await supabase.from("finance_accounts").select("id").limit(1);
-        if (accounts && accounts.length > 0) {
-            await supabase.from("finance_transactions").insert({
-                type: "expense", amount: bill.total || 0, account_id: accounts[0].id,
-                description: `Purchase Bill: ${bill.bill_number}`, reference: bill.bill_number,
-                date: bill.bill_date, created_by: user?.id,
-            } as any);
-        }
-        toast.success("Bill confirmed, stock updated");
-        fetchBills();
     };
     const totalValue = bills.filter(b => b.status !== "cancelled").reduce((s, b) => s + (b.total || 0), 0);
     const totalUnpaid = bills.filter(b => b.payment_status === "unpaid" && b.status !== "cancelled").reduce((s, b) => s + ((b.total || 0) - (b.paid_amount || 0)), 0);
@@ -178,7 +206,7 @@ export default function PurchaseBills() {
                   <TableCell><StatusChip label={b.payment_status}/></TableCell>
                   <TableCell><StatusChip label={b.status}/></TableCell>
                   <TableCell>
-                    {b.status === "draft" && (<Button onClick={() => confirmBill(b)} variant="outlined" size="small">Confirm</Button>)}
+                    {b.status === "draft" && (<Button onClick={() => openConfirmBill(b)} variant="outlined" size="small">Confirm</Button>)}
                   </TableCell>
                 </TableRow>))}</TableBody>
           </DataTable>
@@ -248,5 +276,64 @@ export default function PurchaseBills() {
             <Box sx={{ "& > :not([hidden]) ~ :not([hidden])": { marginTop: "0.375rem" } }}><TextField value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} label={"Notes"} size="small" fullWidth multiline/></Box>
           </Box>
         </SideDrawer>
+
+      {/* Confirm Bill Drawer */}
+      <SideDrawer
+        open={Boolean(confirmBillTarget)}
+        busy={confirmingBill}
+        onClose={() => setConfirmBillTarget(null)}
+        title={`Confirm ${confirmBillTarget?.bill_number || "Purchase Bill"}`}
+        description="Post inventory inward and choose whether this bill is paid now or added to supplier credit"
+        width={420}
+        footer={
+          <>
+            <Button variant="outlined" onClick={() => setConfirmBillTarget(null)} disabled={confirmingBill}>Cancel</Button>
+            <Button
+              variant="contained"
+              disabled={confirmingBill || !confirmBillTarget}
+              onClick={() => confirmBillTarget && void confirmBill(confirmBillTarget, confirmPaidNow, confirmPayMode)}
+            >
+              {confirmingBill ? "Confirming..." : confirmPaidNow ? "Confirm & Record Expense" : "Confirm (Credit / Unpaid)"}
+            </Button>
+          </>
+        }
+      >
+        {confirmBillTarget && (
+          <Box sx={{ display: "grid", gap: 2 }}>
+            <Box sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+              <Typography variant="caption" color="text.secondary">Supplier</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 600 }}>{confirmBillTarget.suppliers?.name || "—"}</Typography>
+              <Typography variant="h6" sx={{ mt: 1, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                ₹{Number(confirmBillTarget.total || 0).toLocaleString("en-IN")}
+              </Typography>
+            </Box>
+            <FormControlLabel
+              control={<Switch checked={confirmPaidNow} onChange={(_, c) => setConfirmPaidNow(c)} />}
+              label="Paid Now (sync expense immediately to Finance & Cash Control)"
+            />
+            {confirmPaidNow ? (
+              <TextField
+                select
+                size="small"
+                fullWidth
+                label="Payment Mode"
+                value={confirmPayMode}
+                onChange={(e) => setConfirmPayMode(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              >
+                <MenuItem value="cash">Cash (Drawer)</MenuItem>
+                <MenuItem value="upi">UPI (Bank)</MenuItem>
+                <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                <MenuItem value="card">Card</MenuItem>
+                <MenuItem value="cheque">Cheque</MenuItem>
+              </TextField>
+            ) : (
+              <Typography variant="caption" color="text.secondary">
+                Bill will remain Unpaid and add ₹{Number(confirmBillTarget.total || 0).toLocaleString("en-IN")} to supplier dues until settled via Suppliers.
+              </Typography>
+            )}
+          </Box>
+        )}
+      </SideDrawer>
     </Box></AnimatedPage>;
 }

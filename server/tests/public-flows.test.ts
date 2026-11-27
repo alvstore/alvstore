@@ -151,6 +151,25 @@ test("Express route guards protect document-pdf, stock, challan-transition, and 
       body: JSON.stringify({ table: "quotations", op: "update", values: { status: "accepted" } }),
     });
     assert.equal(anonQuoteUpdate.status, 401);
+
+    // Protect Cash Flow, Advances, Payroll & PDF routes cleanly
+    for (const [method, endpoint] of [
+      ["POST", "/api/functions/finance-sync"],
+      ["GET", "/api/functions/cash-control-context"],
+      ["POST", "/api/functions/cash-control-recompute"],
+      ["GET", "/api/functions/cashflow-audit-pdf"],
+      ["GET", "/api/functions/payroll-pdf?id=00000000-0000-0000-0000-000000000001"],
+      ["POST", "/api/functions/employee-advance-issue"],
+      ["POST", "/api/functions/employee-advance-cancel"],
+      ["POST", "/api/functions/payroll-settle"],
+    ]) {
+      const r = await fetch(`${base}${endpoint}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        ...(method === "POST" ? { body: "{}" } : {}),
+      });
+      assert.equal(r.status, 401, `Expected 401 on unauth ${method} ${endpoint}`);
+    }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
