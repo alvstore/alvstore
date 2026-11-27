@@ -3613,7 +3613,7 @@ functionsRouter.get(["/whatsapp-session/status", "/whatsapp-session-status"], re
     return ok(res, {
       success: true,
       configured: cfg.configured,
-      webhook_url: `${env.appOrigin.replace(/\/$/, "")}/api/functions/whatsapp-webhook`,
+      webhook_url: `${env.appOrigin.replace(/\/$/, "")}/api/backend/functions/whatsapp-webhook`,
       ...status,
     });
   } catch (e) {
@@ -3636,7 +3636,7 @@ functionsRouter.post(["/whatsapp-session/connect", "/whatsapp-session-connect"],
       },
       env
     );
-    const webhookUrl = `${env.appOrigin.replace(/\/$/, "")}/api/functions/whatsapp-webhook`;
+    const webhookUrl = `${env.appOrigin.replace(/\/$/, "")}/api/backend/functions/whatsapp-webhook`;
     const status = await connectGatewaySession(cfg, {
       method: connectMethod,
       phoneNumber: typeof phone_number === "string" ? phone_number : undefined,
@@ -3694,8 +3694,8 @@ functionsRouter.post("/send-whatsapp-document", requireStaff, asyncHandler(async
     const pdfBytes = await buildBrandedDocumentPdf(loaded.pdfInput);
     const origin = env.appOrigin.replace(/\/$/, "");
     const publicPdfUrl = loaded.publicToken
-      ? `${origin}/api/functions/document-pdf?type=${docType}&token=${loaded.publicToken}`
-      : `${origin}/api/functions/document-pdf?type=${docType}&id=${loaded.id}`;
+      ? `${origin}/api/backend/functions/document-pdf?type=${docType}&token=${loaded.publicToken}`
+      : `${origin}/api/backend/functions/document-pdf?type=${docType}&id=${loaded.id}`;
     const portalLink = loaded.publicPath ? `${origin}${loaded.publicPath}` : null;
 
     const docLabel = docType === "quotation" ? "Quotation" : docType === "challan" ? "Delivery Challan" : "Tax Invoice";
@@ -3723,8 +3723,8 @@ functionsRouter.post("/send-whatsapp-document", requireStaff, asyncHandler(async
     }
 
     const chatPdfPath = loaded.publicToken
-      ? `/api/functions/document-pdf?type=${docType}&token=${loaded.publicToken}`
-      : `/api/functions/document-pdf?type=${docType}&id=${loaded.id}`;
+      ? `/api/backend/functions/document-pdf?type=${docType}&token=${loaded.publicToken}`
+      : `/api/backend/functions/document-pdf?type=${docType}&id=${loaded.id}`;
     const chatRec = await recordOutboundWhatsappChatMessage(pool, {
       phone: recipientPhone,
       senderId: req.user?.id ?? null,
