@@ -1,18 +1,17 @@
 # ALVStore
 
-> Bespoke private cinema design, native 4K laser projection, architectural acoustics, and reference home theater engineering across India (established 2009, Udaipur studio).
+> Udaipur's audio-visual, home theater, pro cafe & lounge sound, 4K laser projection, RGBW architectural lighting & Zigbee 3.0 smart automation studio (established 2009).
 
-ALVStore designs, supplies, installs, and calibrates bespoke private cinemas across India from its experience room at Shop No. 2, 229, Alok School Road, Sector 11, Hiran Magri, Udaipur, Rajasthan 313001 (Mon–Sat, 10:00–20:00 IST; Sunday by appointment). Core partner systems include Sony SXRD & JVC D-ILA native 4K laser projectors (120"–220" woven acoustically transparent screens), Denon AVC, Marantz Cinema & Arcam Class G amplification, and JBL Synthesis, Bowers & Wilkins, KEF Uni-Q & Polk Audio architectural loudspeakers with Dirac Live and Audyssey MultEQ XT32 room calibration.
+ALVStore designs, supplies, installs, and calibrates residential private cinemas, hi-fi & commercial speaker systems, 4K laser projection setups, hospitality audio/PA systems, and RGBW Zigbee 3.0 lighting control across Udaipur, Rajasthan (Hiran Magri, Fatehpura, Shobhagpura, Bhuwana, Fatehsagar, Rani Road, Lake Pichola, Saheli Marg, Nathdwara, Kumbhalgarh, Chittorgarh, Mount Abu) and pan-India.
 
-## Main Pages
+Showroom & Engineering Studio: Shop No. 2, 229, Alok School Road, Sector 11, Hiran Magri, Udaipur, Rajasthan 313001 · +91 98876 01200 · sales@alvstore.in · Mon–Sat 10:00–20:00 IST.
 
-- [ALVStore Studio Gallery](https://alvstore.com/): Showcase of curated systems, architectural room engineering, and consultation intake.
-- [Contact & Consultation](https://alvstore.com/contact): Phone (+91 98876 01200), email (sales@alvstore.in), Udaipur studio directions, and pan-India site survey booking.
+## Core Pages & Udaipur Pillars
 
-## Architecture & Engineering Notes
-
-- [Curated Hardware Collection](https://alvstore.com/#collection): Reference Denon, Marantz, JBL Synthesis, Arcam, Polk Audio, Bowers & Wilkins, KEF, Sony, and JVC cinema hardware.
-- [Interactive Spatial Room Planner](https://alvstore.com/#studio-planner): Live acoustic and geometry planning across 5.1, 5.1.2, 7.2.2, and 7.2.4 Dolby Atmos configurations.
-- [Three-Step Engineering Workflow](https://alvstore.com/#process): Room consultation, CAD acoustic drawing, turnkey installation, and on-site Dirac Live calibration.
-- [After-Sales & Support](https://alvstore.com/#after-sales): Scheduled Dirac Live re-tuning, projector optical maintenance, HDMI 2.1 eARC diagnostics, and pan-India care.
-- [Private Cinema Technical FAQ](https://alvstore.com/#engineering-notes): Room dimension requirements, supported projection/amplification hardware, Dirac Live & ISF calibration, and pan-India execution.
+- [ALVStore Studio Gallery](https://alvstore.com/): Flagship showcase, interactive Spatial Room Planner (5.1 to 7.2.4 Dolby Atmos), and consultation intake.
+- [Best Home Theater Installation in Udaipur](https://alvstore.com/home-theater-udaipur): Custom Dolby Atmos theaters, marble/Kota stone reflection treatment, Dirac Live & Audyssey XT32 calibration, Denon, Marantz, JBL Synthesis, KEF, Bowers & Wilkins.
+- [Best Speakers & Sound Systems in Udaipur](https://alvstore.com/speakers-udaipur): Floorstanding towers, in-wall/in-ceiling architectural speakers, subwoofers, IP65 weatherproof terrace speakers, and high-SPL PA cabinets.
+- [4K Laser Projectors & Screens in Udaipur](https://alvstore.com/projectors-udaipur): Sony SXRD & JVC D-ILA native 4K laser projection, UST Laser TVs, motorized tensioned ALR screens, 120"–220" woven acoustically transparent screens, and optical servicing.
+- [Cafe & Lounge Commercial Sound & PA Systems in Udaipur](https://alvstore.com/commercial-audio-lounge-cafe-udaipur): Multi-zone 70V/100V background music networks, IP65 rooftop weatherproof audio, club subwoofers, noise-spill directional aiming, echo dampening, and DMX/zone lighting.
+- [RGBW Architectural Lighting & Zigbee 3.0 Automation in Udaipur](https://alvstore.com/rgbw-lighting-zigbee-automation-udaipur): 24V high-CRI RGBW/RGBCW cove lighting (2700K–6000K), local self-healing Zigbee mesh hubs, non-invasive heritage switchboard retrofits, glass touch panels, curtain & cinema scene sync.
+- [Contact & Consultation](https://alvstore.com/contact): Direct site survey booking, WhatsApp, studio directions, and equipment diagnostics.

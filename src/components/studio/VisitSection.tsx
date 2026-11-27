@@ -27,19 +27,30 @@ export const studioFieldSx = {
 
 const WHATSAPP = `https://wa.me/919887601200`;
 
-const ROOM_TYPES = ["A private cinema", "A 4K laser projector setup", "A dedicated listening room", "Living-room surround audio", "After-sales service & calibration", "Something else"];
+const ROOM_TYPES = [
+  "A private cinema",
+  "A 4K laser projector setup",
+  "Speakers & multi-room sound",
+  "Lounge, cafe or restaurant pro audio",
+  "RGBW lighting & Zigbee automation",
+  "A dedicated listening room",
+  "Living-room surround audio",
+  "After-sales service & calibration",
+  "Something else",
+];
 
 /**
  * Consultation enquiry form wired to the backend CRM (`public-lead`) so every
  * room specification and message lands directly in Leads with an admin alert,
  * while preserving WhatsApp, email app, and copy fallbacks.
  */
-export function VisitSection() {
+export function VisitSection({ defaultRoom }: { defaultRoom?: string }) {
+  const initialRoom = defaultRoom && ROOM_TYPES.includes(defaultRoom) ? defaultRoom : ROOM_TYPES[0];
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [city, setCity] = useState("");
-  const [room, setRoom] = useState(ROOM_TYPES[0]);
+  const [room, setRoom] = useState(initialRoom);
   const [note, setNote] = useState("");
   const [website, setWebsite] = useState("");
   const [loadedRoomHint, setLoadedRoomHint] = useState<string | null>(null);

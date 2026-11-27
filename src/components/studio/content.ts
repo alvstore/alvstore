@@ -114,8 +114,9 @@ export const PROCESS = [
 ];
 
 export const NAV = [
-  { label: "Exhibits", href: "#exhibits" },
-  { label: "The collection", href: "#collection" },
-  { label: "After-sales", href: "#lab" },
-  { label: "Consultation", href: "#visit" },
+  { label: "Exhibits", href: "/#exhibits" },
+  { label: "Udaipur Solutions", href: "/#solutions" },
+  { label: "The collection", href: "/#collection" },
+  { label: "After-sales", href: "/#lab" },
+  { label: "Consultation", href: "/#visit" },
 ] as const;

@@ -199,7 +199,7 @@ export function ExhibitsStage() {
                   "@media (prefers-reduced-motion: reduce)": { animation: "none" },
                 }}
               >
-                ALVStore designs, engineers, and calibrates bespoke private cinemas across India with native 4K Sony &amp; JVC laser projection, Denon &amp; Marantz amplification, and JBL Synthesis, KEF, and Bowers &amp; Wilkins acoustics.
+                Udaipur&apos;s bespoke studio for private home theaters, Sony &amp; JVC 4K laser projectors, Denon &amp; Marantz speakers, cafe &amp; lounge pro audio, RGBW lighting, and Zigbee 3.0 automation.
               </Typography>
               <Box
                 sx={{

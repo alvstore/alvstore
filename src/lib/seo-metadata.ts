@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { UdaipurSolutionPillar } from "./udaipur-pillars";
 
 export const SITE_URL = "https://alvstore.com";
 export const OG_IMAGE_URL = `${SITE_URL}/og-studio.png`;
@@ -29,18 +30,18 @@ export const PUBLIC_ROBOTS_METADATA: NonNullable<Metadata["robots"]> = {
 };
 
 export const HOME_METADATA: Metadata = {
-  title: "ALVStore — Bespoke Private Cinemas & Home Theaters",
+  title: "ALVStore Udaipur — Home Theater, Speakers & Zigbee Studio",
   description:
-    "Bespoke private cinemas, 4K laser projection & Dirac Live calibration across India. Authorised Denon, Marantz, JBL Synthesis & KEF partner.",
+    "Udaipur's AV, home theater & smart lighting studio since 2009. 4K laser projectors, speakers, cafe & lounge pro audio, RGBW lights & Zigbee 3.0 automation.",
   robots: PUBLIC_ROBOTS_METADATA,
   alternates: {
     canonical: `${SITE_URL}/`,
   },
   openGraph: {
     type: "website",
-    title: "ALVStore — Bespoke Private Cinemas & Home Theaters",
+    title: "ALVStore Udaipur — Home Theater, Speakers & Zigbee Studio",
     description:
-      "Engineered private cinemas, native 4K laser projection, and Dirac Live spatial acoustics designed, installed, and calibrated across India.",
+      "Private cinemas, 4K laser projectors, pro cafe & lounge sound systems, RGBW architectural lighting & Zigbee 3.0 automation in Udaipur & pan-India.",
     siteName: "ALVStore",
     url: `${SITE_URL}/`,
     locale: "en_IN",
@@ -49,33 +50,33 @@ export const HOME_METADATA: Metadata = {
         url: OG_IMAGE_URL,
         width: 1200,
         height: 630,
-        alt: "ALVStore — Bespoke Private Cinemas & Reference Home Theaters",
+        alt: "ALVStore Udaipur — Home Theater, Pro Audio, Projectors, RGBW Lighting & Zigbee Studio",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     site: "@alvstore",
-    title: "ALVStore — Bespoke Private Cinemas & Home Theaters",
+    title: "ALVStore Udaipur — Home Theater, Speakers & Zigbee Studio",
     description:
-      "Bespoke private cinemas, native 4K laser projection, and Dirac Live spatial acoustics engineered nationwide.",
+      "Bespoke private cinemas, 4K laser projectors, lounge/cafe speakers, RGBW lights & Zigbee automation in Udaipur.",
     images: [OG_IMAGE_URL],
   },
 };
 
 export const CONTACT_METADATA: Metadata = {
-  title: "Contact ALVStore — Private Cinema Consultation",
+  title: "Contact ALVStore Udaipur — AV, Lighting & Cinema Studio",
   description:
-    "Visit our Udaipur studio or book a pan-India home theater consultation, room acoustic blueprint, and 4K laser projection demo. Call +91 98876 01200.",
+    "Visit ALVStore in Sector 11, Hiran Magri, Udaipur or book a site survey for home theater, speakers, projectors, lounge audio, RGBW lights & Zigbee automation.",
   robots: PUBLIC_ROBOTS_METADATA,
   alternates: {
     canonical: `${SITE_URL}/contact`,
   },
   openGraph: {
     type: "website",
-    title: "Contact ALVStore — Private Cinema Consultation",
+    title: "Contact ALVStore Udaipur — AV, Lighting & Cinema Studio",
     description:
-      "Book a private cinema consultation, acoustic site survey, or in-studio 4K laser demo in Udaipur or anywhere in India.",
+      "Book a private cinema consultation, cafe/lounge sound survey, or RGBW & Zigbee demo in Udaipur. Call +91 98876 01200.",
     siteName: "ALVStore",
     url: `${SITE_URL}/contact`,
     locale: "en_IN",
@@ -84,25 +85,61 @@ export const CONTACT_METADATA: Metadata = {
         url: OG_IMAGE_URL,
         width: 1200,
         height: 630,
-        alt: "Contact ALVStore Cinema Engineering Studio",
+        alt: "Contact ALVStore Udaipur AV & Smart Lighting Studio",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     site: "@alvstore",
-    title: "Contact ALVStore — Private Cinema Consultation",
+    title: "Contact ALVStore Udaipur — AV, Lighting & Cinema Studio",
     description:
-      "Visit ALVStore in Udaipur or arrange an on-site home cinema & acoustic consultation across India.",
+      "Visit our Udaipur studio or schedule an on-site home theater, commercial audio & Zigbee automation survey.",
     images: [OG_IMAGE_URL],
   },
 };
 
-const ORGANIZATION_NODE = {
+export function buildSolutionMetadata(pillar: UdaipurSolutionPillar): Metadata {
+  const url = `${SITE_URL}/${pillar.slug}`;
+  return {
+    title: pillar.seoTitle,
+    description: pillar.seoDescription,
+    keywords: pillar.targetKeywords,
+    robots: PUBLIC_ROBOTS_METADATA,
+    alternates: {
+      canonical: url,
+    },
+    openGraph: {
+      type: "website",
+      title: pillar.seoTitle,
+      description: pillar.seoDescription,
+      siteName: "ALVStore",
+      url,
+      locale: "en_IN",
+      images: [
+        {
+          url: OG_IMAGE_URL,
+          width: 1200,
+          height: 630,
+          alt: `${pillar.serviceName} — ALVStore Udaipur`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      site: "@alvstore",
+      title: pillar.seoTitle,
+      description: pillar.seoDescription,
+      images: [OG_IMAGE_URL],
+    },
+  };
+}
+
+export const ORGANIZATION_NODE = {
   "@type": ["HomeAndConstructionBusiness", "ElectronicsStore"],
   "@id": `${SITE_URL}/#organization`,
   name: "ALVStore",
-  alternateName: "ALVStore Cinema Engineering",
+  alternateName: "ALVStore Cinema, Pro Audio & Automation Studio Udaipur",
   foundingDate: "2009",
   url: `${SITE_URL}/`,
   logo: {
@@ -111,7 +148,7 @@ const ORGANIZATION_NODE = {
   },
   image: [OG_IMAGE_URL, LOGO_IMAGE_URL],
   description:
-    "Bespoke private cinema design, native 4K laser projection, architectural spatial acoustics, and reference Denon, Marantz, JBL Synthesis, Bowers & Wilkins & KEF systems.",
+    "Udaipur's audio-visual, home theater, 4K laser projection, commercial lounge/cafe sound, RGBW architectural lighting & Zigbee 3.0 automation studio since 2009.",
   telephone: "+919887601200",
   email: "sales@alvstore.in",
   hasMap:
@@ -138,22 +175,27 @@ const ORGANIZATION_NODE = {
     areaServed: "IN",
   },
   areaServed: [
-    { "@type": "Country", name: "India" },
+    { "@type": "City", name: "Udaipur" },
+    { "@type": "City", name: "Nathdwara" },
+    { "@type": "City", name: "Kumbhalgarh" },
+    { "@type": "City", name: "Chittorgarh" },
+    { "@type": "City", name: "Mount Abu" },
     { "@type": "AdministrativeArea", name: "Rajasthan" },
-    { "@type": "AdministrativeArea", name: "Delhi NCR" },
     { "@type": "AdministrativeArea", name: "Gujarat" },
+    { "@type": "AdministrativeArea", name: "Delhi NCR" },
     { "@type": "AdministrativeArea", name: "Maharashtra" },
+    { "@type": "Country", name: "India" },
   ],
   knowsAbout: [
-    "Bespoke Private Cinemas",
-    "Native 4K Laser Projection",
-    "Dirac Live Room Calibration",
-    "Architectural Acoustic Treatment",
-    "Dolby Atmos 9.4.6 Spatial Audio",
-    "Denon & Marantz Amplification",
-    "JBL Synthesis Reference Systems",
-    "Bowers & Wilkins Architectural Audio",
-    "KEF Uni-Q Loudspeakers",
+    "Bespoke Private Cinemas & Home Theaters",
+    "Native 4K Laser Projectors & Motorized Screens",
+    "Home & Pro Speakers, Subwoofers & PA Systems",
+    "Cafe, Lounge & Rooftop Multi-Zone Audio",
+    "RGBW & Tunable White Architectural Lighting",
+    "Zigbee 3.0 Smart Home & Hospitality Automation",
+    "Dirac Live & Audyssey Room Acoustic Calibration",
+    "Dolby Atmos Spatial Audio",
+    "Denon, Marantz, Arcam, JBL Synthesis, Bowers & Wilkins & KEF",
   ],
   openingHoursSpecification: [
     {
@@ -165,46 +207,71 @@ const ORGANIZATION_NODE = {
   ],
   hasOfferCatalog: {
     "@type": "OfferCatalog",
-    name: "Private Cinema & Acoustic Engineering Services",
+    name: "Udaipur Cinema, Audio, Lighting & Automation Services",
     itemListElement: [
       {
         "@type": "Offer",
         itemOffered: {
           "@type": "Service",
-          name: "Bespoke Private Cinema Design & Engineering",
-          serviceType: "Home Theater Design & Acoustic Engineering",
+          name: "Bespoke Home Theater & Private Cinema Installation",
+          serviceType: "Home Theater Design & Dolby Atmos Acoustic Engineering",
+          url: `${SITE_URL}/home-theater-udaipur`,
           provider: { "@id": `${SITE_URL}/#organization` },
-          areaServed: { "@type": "Country", name: "India" },
+          areaServed: [{ "@type": "City", name: "Udaipur" }, { "@type": "Country", name: "India" }],
         },
       },
       {
         "@type": "Offer",
         itemOffered: {
           "@type": "Service",
-          name: "Native 4K Laser Projection Installation",
-          serviceType: "Sony SXRD & JVC D-ILA 4K Projection Setup",
+          name: "Home, Outdoor & Pro Audio Speakers",
+          serviceType: "Tower, In-Ceiling, Outdoor IP65 & PA Loudspeakers",
+          url: `${SITE_URL}/speakers-udaipur`,
           provider: { "@id": `${SITE_URL}/#organization` },
-          areaServed: { "@type": "Country", name: "India" },
+          areaServed: [{ "@type": "City", name: "Udaipur" }, { "@type": "Country", name: "India" }],
         },
       },
       {
         "@type": "Offer",
         itemOffered: {
           "@type": "Service",
-          name: "Dirac Live & Audyssey Room Acoustic Calibration",
-          serviceType: "Acoustic Room Calibration & Multi-Sub Integration",
+          name: "Native 4K Laser Projectors & Screens",
+          serviceType: "Sony SXRD, JVC D-ILA, UST Laser TVs & Optical Calibration",
+          url: `${SITE_URL}/projectors-udaipur`,
           provider: { "@id": `${SITE_URL}/#organization` },
-          areaServed: { "@type": "Country", name: "India" },
+          areaServed: [{ "@type": "City", name: "Udaipur" }, { "@type": "Country", name: "India" }],
         },
       },
       {
         "@type": "Offer",
         itemOffered: {
           "@type": "Service",
-          name: "Projector Optical Service & Equipment Care",
-          serviceType: "After-Sales Cinema Calibration & Maintenance",
+          name: "Cafe, Lounge & Rooftop Commercial Sound & PA",
+          serviceType: "Multi-Zone 70V/100V BGM Audio, Club Subwoofers & Venue Lighting",
+          url: `${SITE_URL}/commercial-audio-lounge-cafe-udaipur`,
           provider: { "@id": `${SITE_URL}/#organization` },
-          areaServed: { "@type": "Country", name: "India" },
+          areaServed: [{ "@type": "City", name: "Udaipur" }, { "@type": "AdministrativeArea", name: "Rajasthan" }],
+        },
+      },
+      {
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name: "RGBW Architectural Lighting & Zigbee 3.0 Automation",
+          serviceType: "24V RGBCW Lighting & Wireless Zigbee Smart Home Retrofits",
+          url: `${SITE_URL}/rgbw-lighting-zigbee-automation-udaipur`,
+          provider: { "@id": `${SITE_URL}/#organization` },
+          areaServed: [{ "@type": "City", name: "Udaipur" }, { "@type": "Country", name: "India" }],
+        },
+      },
+      {
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name: "Dirac Live Calibration & Projector Optical Maintenance",
+          serviceType: "Acoustic Room Calibration & After-Sales Maintenance",
+          provider: { "@id": `${SITE_URL}/#organization` },
+          areaServed: [{ "@type": "City", name: "Udaipur" }, { "@type": "Country", name: "India" }],
         },
       },
     ],
@@ -230,9 +297,8 @@ export function buildHomeJsonLd() {
         "@type": "WebPage",
         "@id": `${SITE_URL}/#webpage`,
         url: `${SITE_URL}/`,
-        name: "ALVStore — Bespoke Private Cinemas & Home Theaters",
-        description:
-          "Bespoke private cinemas, 4K laser projection & Dirac Live calibration across India. Authorised Denon, Marantz, JBL Synthesis & KEF partner.",
+        name: HOME_METADATA.title,
+        description: HOME_METADATA.description,
         isPartOf: { "@id": `${SITE_URL}/#website` },
         about: { "@id": `${SITE_URL}/#organization` },
         primaryImageOfPage: {
@@ -267,9 +333,8 @@ export function buildContactJsonLd() {
         "@type": "ContactPage",
         "@id": `${SITE_URL}/contact#webpage`,
         url: `${SITE_URL}/contact`,
-        name: "Contact ALVStore — Private Cinema Consultation",
-        description:
-          "Visit our Udaipur studio or book a pan-India home theater consultation, room acoustic blueprint, and 4K laser projection demo.",
+        name: CONTACT_METADATA.title,
+        description: CONTACT_METADATA.description,
         isPartOf: { "@id": `${SITE_URL}/#website` },
         about: { "@id": `${SITE_URL}/#organization` },
         inLanguage: "en-IN",
@@ -287,8 +352,66 @@ export function buildContactJsonLd() {
           {
             "@type": "ListItem",
             position: 2,
-            name: "Contact",
+            name: "Contact Udaipur Studio",
             item: `${SITE_URL}/contact`,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export function buildSolutionJsonLd(pillar: UdaipurSolutionPillar) {
+  const url = `${SITE_URL}/${pillar.slug}`;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      ORGANIZATION_NODE,
+      WEBSITE_NODE,
+      {
+        "@type": "Service",
+        "@id": `${url}#service`,
+        name: pillar.serviceName,
+        serviceType: pillar.serviceType,
+        description: pillar.seoDescription,
+        provider: { "@id": `${SITE_URL}/#organization` },
+        areaServed: [
+          { "@type": "City", name: "Udaipur" },
+          { "@type": "AdministrativeArea", name: "Rajasthan" },
+          { "@type": "Country", name: "India" },
+        ],
+        url,
+      },
+      {
+        "@type": "WebPage",
+        "@id": `${url}#webpage`,
+        url,
+        name: pillar.seoTitle,
+        description: pillar.seoDescription,
+        isPartOf: { "@id": `${SITE_URL}/#website` },
+        about: { "@id": `${url}#service` },
+        mainEntity: { "@id": `${url}#service` },
+        primaryImageOfPage: {
+          "@type": "ImageObject",
+          url: OG_IMAGE_URL,
+        },
+        inLanguage: "en-IN",
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": `${url}#breadcrumb`,
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Home",
+            item: `${SITE_URL}/`,
+          },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: pillar.navLabel,
+            item: url,
           },
         ],
       },

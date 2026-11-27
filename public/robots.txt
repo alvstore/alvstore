@@ -1,6 +1,11 @@
 # Search & AI Search Citability Crawlers
 User-agent: Googlebot
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
@@ -15,6 +20,11 @@ Disallow: /delivery-report/
 
 User-agent: Bingbot
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
@@ -27,6 +37,11 @@ Disallow: /delivery-report/
 
 User-agent: Applebot
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /sales/
@@ -38,6 +53,11 @@ Disallow: /delivery-report/
 User-agent: OAI-SearchBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
@@ -51,6 +71,11 @@ Disallow: /delivery-report/
 User-agent: ChatGPT-User
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /sales/
@@ -62,6 +87,11 @@ Disallow: /delivery-report/
 User-agent: Claude-SearchBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
@@ -75,6 +105,11 @@ Disallow: /delivery-report/
 User-agent: Claude-User
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /sales/
@@ -86,6 +121,11 @@ Disallow: /delivery-report/
 User-agent: PerplexityBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /dashboard
@@ -99,6 +139,11 @@ Disallow: /delivery-report/
 User-agent: Perplexity-User
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /sales/
@@ -111,6 +156,11 @@ Disallow: /delivery-report/
 User-agent: GPTBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /sales/
@@ -122,6 +172,11 @@ Disallow: /delivery-report/
 User-agent: ClaudeBot
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /sales/
@@ -133,12 +188,22 @@ Disallow: /delivery-report/
 User-agent: Google-Extended
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 
 User-agent: Applebot-Extended
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 
@@ -152,6 +217,11 @@ Allow: /
 User-agent: *
 Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
+Allow: /home-theater-udaipur
+Allow: /speakers-udaipur
+Allow: /projectors-udaipur
+Allow: /commercial-audio-lounge-cafe-udaipur
+Allow: /rgbw-lighting-zigbee-automation-udaipur
 Allow: /contact
 Disallow: /api/
 Disallow: /login

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { ArrowOutward } from "@mui/icons-material";
 import { Box, Typography } from "@mui/material";
 import { motion } from "framer-motion";
 import { AnimatedPage } from "@/components/mui";
@@ -10,6 +12,7 @@ import { ProcessSection } from "@/components/studio/ProcessSection";
 import { VisitSection } from "@/components/studio/VisitSection";
 import { StudioFooter } from "@/components/studio/StudioFooter";
 import { EASE, STUDIO, TYPE, FONT } from "@/components/studio/tokens";
+import { UDAIPUR_CORRIDORS, UDAIPUR_PILLARS } from "@/lib/udaipur-pillars";
 
 const BRANDS = [
   { name: "Denon", badge: "DEN", role: "AV Receivers & Multi-Room Audio", tag: "Spatial AVR" },
@@ -145,11 +148,11 @@ export default function AlvStudioHome() {
                     }}
                   >
                     <Box component="strong" sx={{ fontWeight: 600, color: STUDIO.graphite }}>
-                      We design
+                      From Sector 11, Udaipur
                     </Box>
-                    , engineer and install bespoke private cinemas and reference home theaters.
-                    Every system brings together native 4K laser projection, immersive spatial acoustics, and
-                    reference Denon &amp; Marantz amplification.
+                    , we design, supply and calibrate private home theaters, native 4K laser projectors,
+                    hi-fi and commercial speakers, multi-zone cafe and lounge sound systems, RGBW lighting,
+                    and Zigbee 3.0 automation. Every room pairs Denon &amp; Marantz amplification with measured acoustics.
                   </Typography>
                 </Box>
 
@@ -309,6 +312,160 @@ export default function AlvStudioHome() {
             </Box>
           </Box>
 
+          {/* Udaipur Solutions & Verticals Grid (Hub-and-Spoke Pillar Architecture) */}
+          <Box
+            component="section"
+            id="solutions"
+            aria-label="Udaipur audio visual, lighting and automation solutions"
+            sx={{
+              bgcolor: STUDIO.plaster,
+              borderTop: `1px solid ${STUDIO.hairStrong}`,
+              scrollMarginTop: 44,
+            }}
+          >
+            <Box sx={{ mx: "auto", maxWidth: 1520, px: { xs: 2.5, sm: 4, lg: 6 }, py: { xs: 8, md: 11 } }}>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "1fr 1.6fr" },
+                  gap: { xs: 3, md: 8 },
+                  alignItems: "end",
+                  mb: { xs: 4, md: 6 },
+                }}
+              >
+                <Box>
+                  <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.1em", mb: 1.25 }}>
+                    Udaipur Specialties · Five Pillars
+                  </Typography>
+                  <Typography component="h2" sx={{ ...TYPE.section, color: STUDIO.graphite, textWrap: "balance" }}>
+                    Engineered for homes,
+                    <Box component="span" sx={{ display: "block", fontFamily: FONT.text, fontStyle: "italic", fontWeight: 400, fontSize: "0.86em" }}>
+                      cafes, lounges &amp; villas.
+                    </Box>
+                  </Typography>
+                </Box>
+                <Typography sx={{ ...TYPE.lead, color: STUDIO.slate, maxWidth: "56ch" }}>
+                  Explore dedicated guides for every system we architect in Udaipur — from marble-treated Dolby Atmos rooms and 4K laser screens to IP65 rooftop lounge audio and zero-chase Zigbee 3.0 RGBW lighting control.
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(3, 1fr)" },
+                  gap: 2.5,
+                }}
+              >
+                {UDAIPUR_PILLARS.map((pillar, idx) => (
+                  <Box
+                    key={pillar.slug}
+                    component={Link}
+                    href={`/${pillar.slug}`}
+                    sx={{
+                      p: { xs: 2.5, md: 3 },
+                      bgcolor: STUDIO.chalk,
+                      border: `1px solid ${STUDIO.hair}`,
+                      borderRadius: "3px",
+                      textDecoration: "none",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: 1.5,
+                      transition: `transform 220ms ${EASE}, border-color 220ms ${EASE}, box-shadow 220ms ${EASE}`,
+                      "&:hover": {
+                        transform: "translateY(-3px)",
+                        borderColor: STUDIO.brass,
+                        boxShadow: "0 10px 28px rgba(156,123,73,0.12)",
+                      },
+                    }}
+                  >
+                    <Box>
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1.25 }}>
+                        <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          0{idx + 1} · {pillar.navLabel}
+                        </Typography>
+                        <ArrowOutward sx={{ fontSize: "0.95rem !important", color: STUDIO.brass }} />
+                      </Box>
+                      <Typography component="h3" sx={{ fontFamily: FONT.display, fontSize: "1.18rem", fontWeight: 600, color: STUDIO.graphite, lineHeight: 1.25, mb: 1 }}>
+                        {pillar.serviceName}
+                      </Typography>
+                      <Typography sx={{ ...TYPE.placard, fontSize: "0.9rem", color: STUDIO.slate, lineHeight: 1.55 }}>
+                        {pillar.seoDescription}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ ...TYPE.label, color: STUDIO.graphite, fontSize: "0.66rem", pt: 1.25, borderTop: `1px solid ${STUDIO.hair}` }}>
+                      Read Udaipur specifications &amp; room tiers →
+                    </Typography>
+                  </Box>
+                ))}
+                <Box
+                  component={Link}
+                  href="/contact"
+                  sx={{
+                    p: { xs: 2.5, md: 3 },
+                    bgcolor: STUDIO.graphite,
+                    color: STUDIO.chalk,
+                    border: `1px solid ${STUDIO.graphite}`,
+                    borderRadius: "3px",
+                    textDecoration: "none",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: 1.5,
+                    transition: `transform 220ms ${EASE}, border-color 220ms ${EASE}, box-shadow 220ms ${EASE}`,
+                    "&:hover": {
+                      transform: "translateY(-3px)",
+                      borderColor: STUDIO.brass,
+                      boxShadow: "0 10px 28px rgba(22,24,26,0.22)",
+                    },
+                  }}
+                >
+                  <Box>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1.25 }}>
+                      <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        06 · Experience Studio
+                      </Typography>
+                      <ArrowOutward sx={{ fontSize: "0.95rem !important", color: STUDIO.brass }} />
+                    </Box>
+                    <Typography component="h3" sx={{ fontFamily: FONT.display, fontSize: "1.18rem", fontWeight: 600, color: STUDIO.chalk, lineHeight: 1.25, mb: 1 }}>
+                      Book a Sector 11 Studio Audition or On-Site Survey
+                    </Typography>
+                    <Typography sx={{ ...TYPE.placard, fontSize: "0.9rem", color: "rgba(246,244,238,0.78)", lineHeight: 1.55 }}>
+                      Share your villa blueprint, cafe terrace dimensions, or lighting layout with our Udaipur engineering desk for a free written proposal.
+                    </Typography>
+                  </Box>
+                  <Typography sx={{ ...TYPE.label, color: STUDIO.brass, fontSize: "0.66rem", pt: 1.25, borderTop: `1px solid ${STUDIO.hairLight}` }}>
+                    Schedule Udaipur studio visit →
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ mt: 4, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1 }}>
+                <Typography sx={{ ...TYPE.label, color: STUDIO.mist, fontSize: "0.64rem", textTransform: "uppercase", letterSpacing: "0.08em", mr: 1 }}>
+                  Serving Udaipur &amp; Mewar:
+                </Typography>
+                {UDAIPUR_CORRIDORS.map((zone) => (
+                  <Box
+                    key={zone}
+                    component="span"
+                    sx={{
+                      ...TYPE.label,
+                      fontSize: "0.62rem",
+                      color: STUDIO.slate,
+                      px: 1,
+                      py: 0.45,
+                      bgcolor: "rgba(246,244,238,0.7)",
+                      border: `1px solid ${STUDIO.hair}`,
+                      borderRadius: "2px",
+                    }}
+                  >
+                    {zone}
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </Box>
+
           <CollectionSection />
           <ProcessSection />
 
@@ -350,7 +507,15 @@ export default function AlvStudioHome() {
                   },
                   {
                     q: "Does ALVStore handle projects and after-sales outside Udaipur?",
-                    a: "Yes. From our flagship studio at Sector 11, Hiran Magri in Udaipur, Rajasthan, our team conducts pan-India site surveys across Delhi NCR, Gujarat, and Maharashtra, managing CAD blueprints, turnkey acoustic installation, and periodic optical and calibration care nationwide.",
+                    a: "Yes. From our flagship studio at Sector 11, Hiran Magri in Udaipur, Rajasthan, our team conducts pan-India site surveys across Udaipur division, Rajasthan, Delhi NCR, Gujarat, and Maharashtra, managing CAD blueprints, turnkey acoustic installation, and periodic optical care.",
+                  },
+                  {
+                    q: "Do you install permanent sound and lighting systems for cafes, rooftops & lounges?",
+                    a: "Yes. We design concealed 70V/100V background music networks, weatherproof IP65 rooftop speaker arrays, high-SPL club subwoofers, and directional sound spill control alongside synchronized DMX/RGBW bar and terrace lighting across Shobhagpura, Fatehsagar, and Pichola.",
+                  },
+                  {
+                    q: "Can RGBW architectural lights and Zigbee 3.0 automation be installed without rewiring?",
+                    a: "Yes. Compact Zigbee 3.0 smart dimmer modules fit inside existing switch boxes without breaking painted or sandstone heritage walls, coordinating 24V RGBCW cove lights, curtains, and home theater AV scenes locally with zero cloud lag.",
                   },
                 ].map(entry => (
                   <Box
